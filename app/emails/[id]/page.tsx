@@ -1,9 +1,9 @@
-export default function Home() {
+export default function EmailPage({ params }: { params: { id: string } }) {
   return (
-    <main style={{ padding: 40 }}>
-      <h1>Handled is live 🎉</h1>
-      <p>If you see this, deployment works.</p>
-    </main>
+    <div style={{ padding: 40 }}>
+      <h1>Email detail page</h1>
+      <p>Selected email ID: {params.id}</p>
+    </div>
   );
 }
 
