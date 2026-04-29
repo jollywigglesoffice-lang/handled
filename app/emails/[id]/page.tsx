@@ -1,20 +1,9 @@
-import { notFound } from "next/navigation";
-import { EmailDetailView } from "./email-detail-view";
-import { getEmailById } from "@/lib/fake-emails";
-
-type EmailDetailPageProps = {
-  params: Promise<{
-    id: string;
-  }>;
-};
-
-export default async function EmailDetailPage({ params }: EmailDetailPageProps) {
-  const { id } = await params;
-  const email = getEmailById(id);
-
-  if (!email) {
-    notFound();
-  }
-
-  return <EmailDetailView email={email} />;
+export default function Home() {
+  return (
+    <main style={{ padding: 40 }}>
+      <h1>Handled is live 🎉</h1>
+      <p>If you see this, deployment works.</p>
+    </main>
+  );
 }
+
