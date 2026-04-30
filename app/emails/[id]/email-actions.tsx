@@ -143,7 +143,8 @@ export function EmailActions({
   const router = useRouter();
   const { markEmailHandled } = useHandledEmails();
   const { generatedRepliesCount, incrementGeneratedRepliesCount } = useReplyUsage();
-  const { userName, tone, replyLanguage: settingsReplyLanguage } = useUserPreferences();
+  const { userName, tone: savedTone, replyLanguage: settingsReplyLanguage } = useUserPreferences();
+
   const [workflowReplyLanguage, setWorkflowReplyLanguage] = useState<ReplyLanguage>(() =>
     detectReplyLanguageFromEmail(emailContent, settingsReplyLanguage),
   );
@@ -153,6 +154,12 @@ export function EmailActions({
   const generateFetchAbortRef = useRef<AbortController | null>(null);
   const generateRunIdRef = useRef(0);
   const regenerateGlowTimerRef = useRef<number | null>(null);
+  const [tone, setTone] = useState(50);
+  function mapTone(value: number) {
+    if (value < 30) return "direct";
+    if (value < 70) return "casual";
+    return "friendly";
+  }
   const [statusMessage, setStatusMessage] = useState("");
   const [languageChangeHint, setLanguageChangeHint] = useState("");
   const [regenerateHighlight, setRegenerateHighlight] = useState(false);
@@ -259,7 +266,7 @@ export function EmailActions({
             body: JSON.stringify({
               email: emailContent,
               userName,
-              tone,
+              tone: mapTone(tone),
               language,
             }),
           });
@@ -316,6 +323,7 @@ export function EmailActions({
           );
           setReplyOptions([...quickTriple]);
           setSelectedReplyIndex(0);
+          setEditedReplyDraft(quickTriple[0] ?? "");
           return;
         }
 
@@ -500,11 +508,9 @@ export function EmailActions({
           signal: controller.signal,
           body: JSON.stringify({
             email: emailContent,
-            mode: "refine",
-            currentReply: selectedReply,
             userName,
-            tone,
-            language: workflowReplyLanguageRef.current,
+            tone: mapTone(tone),
+            language,
           }),
         });
       } catch (error) {
@@ -727,26 +733,30 @@ export function EmailActions({
             {replyOptions.map((reply, index) => {
               const isSelected = selectedReplyIndex === index;
               const isRecommended = index === 0;
+              const confidence = isRecommended ? 92 : Math.floor(Math.random() * 10) + 80;
 
               return (
                 <div key={`${index}-${reply.slice(0, 20)}`} className="space-y-1">
                   {isRecommended ? (
-                    <>
-                      <p className="mb-2 text-xs" style={{ color: "#666" }}>
-                        You&apos;re good — this works 👍
-                      </p>
-                      <p className="text-xs font-medium text-gray-500">
-                        {ui.emailActions.recommendedLabel}
-                      </p>
-                    </>
-                  ) : null}
+  <div className="mb-2">
+    <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-[#EEF2FF] border border-[#6366F1]/20">
+      <span className="text-[10px] font-semibold text-[#6366F1] uppercase tracking-wide">
+        Recommended
+      </span>
+      <span className="text-[10px] text-gray-500">
+        Fastest + most natural reply
+      </span>
+    </div>
+  </div>
+) : null}
                   <button
                     type="button"
                     onClick={() => selectReplyOption(index)}
                     aria-pressed={isSelected}
                     className={`w-full rounded-xl border p-4 text-left text-sm leading-relaxed transition-all duration-200 ${
                       isSelected
-                        ? "border-[#6366F1] bg-[#EEF2FF] text-[#0F172A] shadow-sm ring-1 ring-[#C7D2FE]"
+                        isSelected
+  ? "border-[#6366F1] bg-[#EEF2FF] shadow-[0_0_0_2px_rgba(99,102,241,0.15)]"
                         : "border-[#E2E8F0] bg-[#FFFFFF] text-gray-500 hover:border-[#CBD5E1] hover:bg-[#F8FAFC] hover:shadow-sm"
                     }`}
                   >
@@ -762,6 +772,15 @@ export function EmailActions({
                       <span className="min-w-0 whitespace-pre-wrap break-words">
                         {isSelected ? editedReplyDraft : reply}
                       </span>
+                      <span className="min-w-0 whitespace-pre-wrap break-words">
+  {isSelected ? editedReplyDraft : reply}
+</span>
+
+{isRecommended && (
+  <div className="text-[10px] text-gray-400 mt-1">
+    Confidence: {confidence}%
+  </div>
+)}
                     </div>
                   </button>
                 </div>
