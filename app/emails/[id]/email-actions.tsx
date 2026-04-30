@@ -731,9 +731,14 @@ export function EmailActions({
               return (
                 <div key={`${index}-${reply.slice(0, 20)}`} className="space-y-1">
                   {isRecommended ? (
-                    <p className="text-xs font-medium text-gray-500">
-                      {ui.emailActions.recommendedLabel}
-                    </p>
+                    <>
+                      <p className="mb-2 text-xs" style={{ color: "#666" }}>
+                        You&apos;re good — this works 👍
+                      </p>
+                      <p className="text-xs font-medium text-gray-500">
+                        {ui.emailActions.recommendedLabel}
+                      </p>
+                    </>
                   ) : null}
                   <button
                     type="button"
