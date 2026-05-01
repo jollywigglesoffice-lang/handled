@@ -160,6 +160,11 @@ export function EmailActions({
     if (value < 70) return "casual";
     return "friendly";
   }
+  function toneToValue(tone: string) {
+    if (tone === "direct") return 20;
+    if (tone === "friendly") return 85;
+    return 50; 
+  }
   const [statusMessage, setStatusMessage] = useState("");
   const [languageChangeHint, setLanguageChangeHint] = useState("");
   const [regenerateHighlight, setRegenerateHighlight] = useState(false);
