@@ -185,7 +185,12 @@ export function EmailActions({
     lowPriority: ui.emailActions.contextLowPriority,
     needsResponse: ui.emailActions.contextNeedsResponse,
   });
-
+  const recommendedTone =
+  contextHint === "needsResponse"
+    ? "friendly"
+    : contextHint === "quickApproval"
+    ? "direct"
+    : "casual";
   useEffect(() => {
     if (savedTone === "professional") {
       setTone(20);
@@ -202,10 +207,25 @@ export function EmailActions({
   
     const timeout = setTimeout(() => {
       generateReplyOptions();
-    }, 500);
+    }, 150);
   
     return () => clearTimeout(timeout);
   }, [tone]);
+  useEffect(() => {
+    let target = 50;
+  
+    if (recommendedTone === "direct") target = 20;
+    if (recommendedTone === "friendly") target = 85;
+  
+    const timeout = setTimeout(() => {
+      setTone((prev) => {
+        if (Math.abs(prev - target) < 10) return prev;
+        return Math.round((prev + target) / 2);
+      });
+    }, 400);
+  
+    return () => clearTimeout(timeout);
+  }, [recommendedTone]);
   useEffect(() => {
     setLanguageChangeHint("");
     setRegenerateHighlight(false);
@@ -757,13 +777,16 @@ export function EmailActions({
           <p className="text-xs text-gray-500">
   Adjust how your reply sounds
 </p>
+<p className="text-xs text-indigo-500 font-medium mb-1">
+Recommended: {recommendedTone}
+</p>
           <div className="space-y-2 p-3 rounded-xl border border-gray-200 bg-white">
   <div className="flex items-center justify-between">
     <label className="text-xs font-medium text-gray-500">
       Tone
     </label>
     <span className="text-xs text-gray-400 capitalize">
-      {mapTone(tone)}
+    {mapTone(tone)} {mapTone(tone) === recommendedTone && "✓"}
     </span>
   </div>
 
