@@ -719,22 +719,7 @@ export function EmailActions({
             ) : null}
           </div>
 
-          <div className="max-w-md space-y-2">
-            <label htmlFor="tone-slider" className="block text-sm font-medium text-[#0F172A]">
-              Tone
-            </label>
-            <input
-              id="tone-slider"
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={tone}
-              onChange={(event) => setTone(Number(event.target.value))}
-              disabled={isGeneratingReplies || isRefining || isClosingView}
-              className="w-full accent-[#6366F1]"
-            />
-          </div>
+      
 
           {isGeneratingReplies ? (
             <div className="space-y-3">
@@ -761,6 +746,9 @@ export function EmailActions({
               {ui.emailActions.chooseReplyDescription}
             </p>
           </div>
+          <p className="text-xs text-gray-500">
+  Adjust how your reply sounds
+</p>
           <div className="space-y-2 p-3 rounded-xl border border-gray-200 bg-white">
   <div className="flex items-center justify-between">
     <label className="text-xs font-medium text-gray-500">
