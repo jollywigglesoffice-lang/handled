@@ -156,7 +156,7 @@ export function EmailActions({
   const regenerateGlowTimerRef = useRef<number | null>(null);
   const [tone, setTone] = useState(50);
   function mapTone(value: number) {
-    if (value < 30) return "direct";
+    if (value < 30) return "professional";
     if (value < 70) return "casual";
     return "friendly";
   }
@@ -185,6 +185,18 @@ export function EmailActions({
     lowPriority: ui.emailActions.contextLowPriority,
     needsResponse: ui.emailActions.contextNeedsResponse,
   });
+
+  useEffect(() => {
+    if (savedTone === "professional") {
+      setTone(20);
+      return;
+    }
+    if (savedTone === "friendly") {
+      setTone(85);
+      return;
+    }
+    setTone(50);
+  }, [savedTone]);
 
   useEffect(() => {
     setLanguageChangeHint("");
@@ -511,7 +523,7 @@ export function EmailActions({
             mode: "refine",
             currentReply: selectedReply,
             userName,
-            tone,
+            tone: mapTone(tone),
             language: workflowReplyLanguageRef.current,
           }),
         });
@@ -707,6 +719,23 @@ export function EmailActions({
             ) : null}
           </div>
 
+          <div className="max-w-md space-y-2">
+            <label htmlFor="tone-slider" className="block text-sm font-medium text-[#0F172A]">
+              Tone
+            </label>
+            <input
+              id="tone-slider"
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={tone}
+              onChange={(event) => setTone(Number(event.target.value))}
+              disabled={isGeneratingReplies || isRefining || isClosingView}
+              className="w-full accent-[#6366F1]"
+            />
+          </div>
+
           {isGeneratingReplies ? (
             <div className="space-y-3">
               <p className="text-sm text-gray-500">{ui.emailActions.generatingReplies}</p>
@@ -718,6 +747,7 @@ export function EmailActions({
             </div>
           ) : null}
 
+         
           {replyOptions.length > 0 ? (
             <div className="space-y-3">
           <p className="text-xs font-medium uppercase tracking-[0.08em] text-gray-500">
@@ -731,6 +761,31 @@ export function EmailActions({
               {ui.emailActions.chooseReplyDescription}
             </p>
           </div>
+          <div className="space-y-2 p-3 rounded-xl border border-gray-200 bg-white">
+  <div className="flex items-center justify-between">
+    <label className="text-xs font-medium text-gray-500">
+      Tone
+    </label>
+    <span className="text-xs text-gray-400 capitalize">
+      {mapTone(tone)}
+    </span>
+  </div>
+
+  <input
+    type="range"
+    min={0}
+    max={100}
+    value={tone}
+    onChange={(e) => setTone(Number(e.target.value))}
+    className="w-full accent-[#6366F1]"
+  />
+
+  <div className="flex justify-between text-[10px] text-gray-400">
+    <span>Direct</span>
+    <span>Casual</span>
+    <span>Friendly</span>
+  </div>
+</div>
           <div className="space-y-3" role="radiogroup" aria-label="Choose a reply">
             {replyOptions.map((reply, index) => {
               const isSelected = selectedReplyIndex === index;
