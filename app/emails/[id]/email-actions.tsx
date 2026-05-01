@@ -773,13 +773,25 @@ Recommended: {recommendedTone}
     <label className="text-xs font-medium text-gray-500">
       Tone
     </label>
-    <span className="text-xs text-gray-400 capitalize">
-    {mapTone(tone) !== recommendedTone && (
-  <p className="text-[10px] text-purple-500 mt-1">
-    Recommended: {recommendedTone}
-  </p>
+    <span
+  className={`text-xs font-medium capitalize transition-all duration-200 ${
+    tone < 30
+      ? "text-red-500"
+      : tone < 70
+      ? "text-indigo-500"
+      : "text-green-500"
+  }`}
+>
+  {mapTone(tone)}
+</span>
+{mapTone(tone) !== recommendedTone && (
+  <button
+    onClick={() => setTone(toneToValue(recommendedTone))}
+    className="text-[10px] text-purple-500 mt-1 hover:underline transition"
+  >
+    ⚡ Suggested: {recommendedTone} (tap to apply)
+  </button>
 )}
-    </span>
   </div>
 
   <input
