@@ -508,9 +508,11 @@ export function EmailActions({
           signal: controller.signal,
           body: JSON.stringify({
             email: emailContent,
+            mode: "refine",
+            currentReply: selectedReply,
             userName,
-            tone: mapTone(tone),
-            language,
+            tone,
+            language: workflowReplyLanguageRef.current,
           }),
         });
       } catch (error) {
@@ -755,8 +757,7 @@ export function EmailActions({
                     aria-pressed={isSelected}
                     className={`w-full rounded-xl border p-4 text-left text-sm leading-relaxed transition-all duration-200 ${
                       isSelected
-                        isSelected
-  ? "border-[#6366F1] bg-[#EEF2FF] shadow-[0_0_0_2px_rgba(99,102,241,0.15)]"
+                        ? "border-[#6366F1] bg-[#EEF2FF] shadow-[0_0_0_2px_rgba(99,102,241,0.15)]"
                         : "border-[#E2E8F0] bg-[#FFFFFF] text-gray-500 hover:border-[#CBD5E1] hover:bg-[#F8FAFC] hover:shadow-sm"
                     }`}
                   >
@@ -772,9 +773,6 @@ export function EmailActions({
                       <span className="min-w-0 whitespace-pre-wrap break-words">
                         {isSelected ? editedReplyDraft : reply}
                       </span>
-                      <span className="min-w-0 whitespace-pre-wrap break-words">
-  {isSelected ? editedReplyDraft : reply}
-</span>
 
 {isRecommended && (
   <div className="text-[10px] text-gray-400 mt-1">
