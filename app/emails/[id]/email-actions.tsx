@@ -197,7 +197,15 @@ export function EmailActions({
     }
     setTone(50);
   }, [savedTone]);
-
+  useEffect(() => {
+    if (!replyOptions.length) return;
+  
+    const timeout = setTimeout(() => {
+      generateReplyOptions();
+    }, 500);
+  
+    return () => clearTimeout(timeout);
+  }, [tone]);
   useEffect(() => {
     setLanguageChangeHint("");
     setRegenerateHighlight(false);
