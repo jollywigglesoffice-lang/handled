@@ -205,27 +205,15 @@ export function EmailActions({
   useEffect(() => {
     if (!replyOptions.length) return;
   
+    const delay = tone < 30 || tone > 70 ? 120 : 180;
+  
     const timeout = setTimeout(() => {
       generateReplyOptions();
-    }, 150);
+    }, delay);
   
     return () => clearTimeout(timeout);
   }, [tone]);
-  useEffect(() => {
-    let target = 50;
-  
-    if (recommendedTone === "direct") target = 20;
-    if (recommendedTone === "friendly") target = 85;
-  
-    const timeout = setTimeout(() => {
-      setTone((prev) => {
-        if (Math.abs(prev - target) < 10) return prev;
-        return Math.round((prev + target) / 2);
-      });
-    }, 400);
-  
-    return () => clearTimeout(timeout);
-  }, [recommendedTone]);
+ 
   useEffect(() => {
     setLanguageChangeHint("");
     setRegenerateHighlight(false);
@@ -786,16 +774,22 @@ Recommended: {recommendedTone}
       Tone
     </label>
     <span className="text-xs text-gray-400 capitalize">
-    {mapTone(tone)} {mapTone(tone) === recommendedTone && "✓"}
+    {mapTone(tone) !== recommendedTone && (
+  <p className="text-[10px] text-purple-500 mt-1">
+    Recommended: {recommendedTone}
+  </p>
+)}
     </span>
   </div>
 
   <input
-    type="range"
-    min={0}
-    max={100}
-    value={tone}
-    onChange={(e) => setTone(Number(e.target.value))}
+  type="range"
+  min={0}
+  max={100}
+  value={tone}
+  onChange={(e) => setTone(Number(e.target.value))}
+  onMouseUp={() => generateReplyOptions()}
+  onTouchEnd={() => generateReplyOptions()}
     className="w-full accent-[#6366F1]"
   />
 
