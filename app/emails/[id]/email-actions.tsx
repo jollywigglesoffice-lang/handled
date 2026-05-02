@@ -807,20 +807,36 @@ Recommended: {recommendedTone}
 </div>
   </div>
 
-  <input
+  <div className="relative w-full">
+
+{/* Gray track */}
+<div className="absolute top-1/2 -translate-y-1/2 w-full h-2 bg-gray-200 rounded-full" />
+
+{/* Colored fill */}
+<div
+  className={`absolute top-1/2 -translate-y-1/2 h-2 rounded-full transition-all duration-200 ${
+    tone < 30
+      ? "bg-red-500"
+      : tone < 70
+      ? "bg-indigo-500"
+      : "bg-green-500"
+  }`}
+  style={{ width: `${tone}%` }}
+/>
+
+{/* SLIDER */}
+<input
   type="range"
   min={0}
   max={100}
   value={tone}
   onChange={(e) => {
     const raw = Number(e.target.value);
-  
-    // find closest snap point
+
     const closest = SNAP_POINTS.reduce((prev, curr) =>
       Math.abs(curr - raw) < Math.abs(prev - raw) ? curr : prev
     );
-  
-    // if close enough → snap
+
     if (Math.abs(raw - closest) < 6) {
       setTone(closest);
     } else {
@@ -830,14 +846,10 @@ Recommended: {recommendedTone}
   onInput={() => generateReplyOptions()}
   onMouseUp={() => generateReplyOptions()}
   onTouchEnd={() => generateReplyOptions()}
-  className={`w-full cursor-pointer transition-all duration-200 active:scale-[1.01] bg-gradient-to-r ${
-    tone < 30
-      ? "from-red-200 to-red-500"
-      : tone < 70
-      ? "from-indigo-200 to-indigo-500"
-      : "from-green-200 to-green-500"
-  }`}
-  />
+  className="relative w-full bg-transparent appearance-none cursor-pointer z-10"
+/>
+
+</div>
 
   <div className="flex justify-between text-[10px] text-gray-400">
     <span>Direct</span>
