@@ -863,41 +863,32 @@ Recommended: {recommendedTone}
   type="range"
   min={0}
   max={100}
-  value={tone}
+  value={liveTone}
   onChange={(e) => {
     const raw = Number(e.target.value);
-    setLiveTone(raw);  
+  
+    // live UI update
+    setLiveTone(raw);
+  
     const closest = SNAP_POINTS.reduce((prev, curr) =>
       Math.abs(curr - raw) < Math.abs(prev - raw) ? curr : prev
     );
   
     const distance = Math.abs(raw - closest);
   
-    // 🎯 Magnetic snapping (stronger near targets)
+    // magnetic snapping
     if (distance < 8) {
-      setTone((prev) => Math.round((prev + closest) / 2));
-    
-      // ✨ micro pulse effect
+      setLiveTone(closest);
+  
       setIsSnapping(true);
       setTimeout(() => setIsSnapping(false), 120);
-    
+  
       return;
-    }
-  
-    // ⚡ Velocity-based feel (fast vs slow drag)
-    const delta = raw - tone;
-    const speed = Math.abs(delta);
-  
-    if (speed > 10) {
-      // fast drag → follow closely
-      setTone(raw);
-    } else {
-      // slow drag → smooth precision
-      setTone((prev) => Math.round((prev + raw) / 2));
     }
   }}
   onInput={() => generateReplyOptions()}
   onMouseUp={() => {
+    setTone(liveTone);
     setTimeout(() => generateReplyOptions(), 120);
   }}
   onTouchEnd={() => {
