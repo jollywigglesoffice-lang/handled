@@ -155,6 +155,7 @@ export function EmailActions({
   const generateRunIdRef = useRef(0);
   const regenerateGlowTimerRef = useRef<number | null>(null);
   const [tone, setTone] = useState(50);
+  const [liveTone, setLiveTone] = useState(tone);
   const [isSnapping, setIsSnapping] = useState(false);
   const SNAP_POINTS = [20, 50, 85]; // direct, casual, friendly
   function mapTone(value: number) {
@@ -212,14 +213,14 @@ export function EmailActions({
   useEffect(() => {
     if (!replyOptions.length) return;
   
-    const delay = tone < 30 || tone > 70 ? 120 : 180;
-  
-    const timeout = setTimeout(() => {
-      generateReplyOptions();
-    }, delay);
-  
-    return () => clearTimeout(timeout);
-  }, [tone]);
+    const delay = liveTone < 30 || liveTone > 70 ? 120 : 180;
+
+const timeout = setTimeout(() => {
+  generateReplyOptions();
+}, delay);
+
+return () => clearTimeout(timeout);
+  }, [liveTone]);
  
   useEffect(() => {
     setLanguageChangeHint("");
@@ -783,9 +784,9 @@ Recommended: {recommendedTone}
     <span
   key={mapTone(tone)}
   className={`text-xs font-medium capitalize transition-all duration-300 ease-out ${
-    tone < 30
+    livetone < 30
       ? "text-red-500"
-      : tone < 70
+      : livetone < 70
       ? "text-indigo-500"
       : "text-green-500"
   }`}
@@ -832,14 +833,13 @@ Recommended: {recommendedTone}
 {/* Colored fill */}
 <div
   className={`absolute top-1/2 -translate-y-1/2 h-2 rounded-full transition-all duration-200 ${
-    tone < 30
-      ? "bg-red-500"
-      : tone < 70
-      ? "bg-indigo-500"
-      : "bg-green-500"
+    liveTone < 30
+? "bg-red-500"
+: liveTone < 70
+? "bg-indigo-500"
+: "bg-green-500"
   }`}
-  style={{ width: `${tone}%` }}
-/>
+  style={{ width: `${liveTone}%` }}/>
 
 {/* SLIDER */}
 <input
@@ -849,7 +849,7 @@ Recommended: {recommendedTone}
   value={tone}
   onChange={(e) => {
     const raw = Number(e.target.value);
-  
+    setLiveTone(raw);  
     const closest = SNAP_POINTS.reduce((prev, curr) =>
       Math.abs(curr - raw) < Math.abs(prev - raw) ? curr : prev
     );
