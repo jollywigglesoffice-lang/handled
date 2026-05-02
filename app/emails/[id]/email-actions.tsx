@@ -155,6 +155,7 @@ export function EmailActions({
   const generateRunIdRef = useRef(0);
   const regenerateGlowTimerRef = useRef<number | null>(null);
   const [tone, setTone] = useState(50);
+  const [isSnapping, setIsSnapping] = useState(false);
   const SNAP_POINTS = [20, 50, 85]; // direct, casual, friendly
   function mapTone(value: number) {
     if (value < 30) return "professional";
@@ -789,7 +790,12 @@ Recommended: {recommendedTone}
       : "text-green-500"
   }`}
 >
+<span
+  key={mapTone(tone)}
+  className="inline-block transition-all duration-300 ease-out"
+>
   {mapTone(tone)}
+</span>
 </span>
 <div
   className={`transition-all duration-300 ease-out ${
@@ -802,12 +808,23 @@ Recommended: {recommendedTone}
     onClick={() => setTone(toneToValue(recommendedTone))}
     className="text-[10px] text-purple-500 mt-1 hover:underline transition"
   >
-    ⚡ Suggested: {recommendedTone} (tap to apply)
+    <button
+  onClick={() => setTone(
+    recommendedTone === "direct"
+      ? 20
+      : recommendedTone === "friendly"
+      ? 85
+      : 50
+  )}
+  className="text-[11px] text-indigo-500 mt-1 hover:underline transition-all duration-200 hover:scale-105 active:scale-95"
+>
+  ⚡ Apply recommended: {recommendedTone}
+</button>
   </button>
 </div>
   </div>
 
-  <div className="relative w-full">
+  <div className={`relative w-full ${isSnapping ? "scale-[1.01]" : ""} transition-all duration-150`}>
 
 {/* Gray track */}
 <div className="absolute top-1/2 -translate-y-1/2 w-full h-2 bg-gray-200 rounded-full" />
@@ -842,6 +859,11 @@ Recommended: {recommendedTone}
     // 🎯 Magnetic snapping (stronger near targets)
     if (distance < 8) {
       setTone((prev) => Math.round((prev + closest) / 2));
+    
+      // ✨ micro pulse effect
+      setIsSnapping(true);
+      setTimeout(() => setIsSnapping(false), 120);
+    
       return;
     }
   
