@@ -832,20 +832,38 @@ Recommended: {recommendedTone}
   value={tone}
   onChange={(e) => {
     const raw = Number(e.target.value);
-
+  
     const closest = SNAP_POINTS.reduce((prev, curr) =>
       Math.abs(curr - raw) < Math.abs(prev - raw) ? curr : prev
     );
-
-    if (Math.abs(raw - closest) < 6) {
-      setTone(closest);
-    } else {
+  
+    const distance = Math.abs(raw - closest);
+  
+    // 🎯 Magnetic snapping (stronger near targets)
+    if (distance < 8) {
+      setTone((prev) => Math.round((prev + closest) / 2));
+      return;
+    }
+  
+    // ⚡ Velocity-based feel (fast vs slow drag)
+    const delta = raw - tone;
+    const speed = Math.abs(delta);
+  
+    if (speed > 10) {
+      // fast drag → follow closely
       setTone(raw);
+    } else {
+      // slow drag → smooth precision
+      setTone((prev) => Math.round((prev + raw) / 2));
     }
   }}
   onInput={() => generateReplyOptions()}
-  onMouseUp={() => generateReplyOptions()}
-  onTouchEnd={() => generateReplyOptions()}
+  onMouseUp={() => {
+    setTimeout(() => generateReplyOptions(), 120);
+  }}
+  onTouchEnd={() => {
+    setTimeout(() => generateReplyOptions(), 120);
+  }}
   className="relative w-full bg-transparent appearance-none cursor-pointer z-10
   [&::-webkit-slider-thumb]:appearance-none
   [&::-webkit-slider-thumb]:h-5
