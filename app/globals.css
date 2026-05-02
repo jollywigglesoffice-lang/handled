@@ -35,6 +35,11 @@ body {
   }
 }
 
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+  }
+}
 .subtle-shimmer {
   background-image: linear-gradient(
     110deg,

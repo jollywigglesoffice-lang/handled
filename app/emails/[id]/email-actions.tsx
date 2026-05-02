@@ -964,9 +964,9 @@ Recommended: {recommendedTone}
                     aria-pressed={isSelected}
                     className={`w-full rounded-xl border p-4 text-left text-sm leading-relaxed transition-all duration-200 ${
                       isSelected
-                        ? "border-[#6366F1] bg-[#EEF2FF] shadow-[0_0_0_2px_rgba(99,102,241,0.15)]"
-                        : "border-[#E2E8F0] bg-[#FFFFFF] text-gray-500 hover:border-[#CBD5E1] hover:bg-[#F8FAFC] hover:shadow-sm"
-                    }`}
+                        ? "border-[#6366F1] bg-[#EEF2FF] shadow-md ring-2 ring-indigo-200 scale-[1.01] transition-all duration-200"
+                        : "border-[#E2E8F0] bg-white text-gray-500 hover:border-[#6366F1] hover:bg-[#F8FAFF] hover:shadow-md transition-all duration-200" hover:bg-[#F8FAFC] hover:shadow-sm"
+                    }`} ${isGeneratingReplies ? "animate-pulse opacity-70" : ""}`}
                   >
                     <div className="flex items-start gap-3">
                       <span
@@ -978,13 +978,28 @@ Recommended: {recommendedTone}
                         aria-hidden="true"
                       />
                       <span className="min-w-0 whitespace-pre-wrap break-words">
-                        {isSelected ? editedReplyDraft : reply}
+                      <span
+  key={isSelected ? editedReplyDraft : reply}
+  className="inline-block transition-all duration-300 ease-out opacity-0 animate-[fadeIn_0.3s_forwards]"
+>
+  {isSelected ? editedReplyDraft : reply}
+</span>
                       </span>
 
 {isRecommended && (
-  <div className="text-[10px] text-gray-400 mt-1">
-    Confidence: {confidence}%
+  <div className="mt-2">
+  <div className="flex items-center justify-between text-[10px] text-gray-400 mb-1">
+    <span>Confidence</span>
+    <span>{confidence}%</span>
   </div>
+
+  <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
+    <div
+      className="h-full bg-indigo-500 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+      style={{ width: `${confidence}%` }}
+    />
+  </div>
+</div>
 )}
                     </div>
                   </button>
