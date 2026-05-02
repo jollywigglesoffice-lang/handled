@@ -784,9 +784,9 @@ Recommended: {recommendedTone}
     <span
   key={mapTone(tone)}
   className={`text-xs font-medium capitalize transition-all duration-300 ease-out ${
-    livetone < 30
+    liveTone < 30
       ? "text-red-500"
-      : livetone < 70
+      : liveTone < 70
       ? "text-indigo-500"
       : "text-green-500"
   }`}
