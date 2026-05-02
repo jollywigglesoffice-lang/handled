@@ -103,6 +103,29 @@ function ensureThreeReplies(
     out[2] ?? fallbackReplies[2],
   ];
 }
+function generatePreviewReply(tone: number, index: number) {
+  if (tone < 30) {
+    return [
+      "Sounds good.",
+      "Approved.",
+      "Go ahead."
+    ][index];
+  }
+
+  if (tone < 70) {
+    return [
+      "That works for me.",
+      "I’m okay with this.",
+      "Let’s move forward."
+    ][index];
+  }
+
+  return [
+    "Hey! That sounds great 😊",
+    "I love this idea, let’s do it!",
+    "Yes!! This works perfectly 🙌"
+  ][index];
+}
 
 function getContextHint(
   emailContent: string,
@@ -285,7 +308,11 @@ return () => clearTimeout(timeout);
       try {
         setLanguageChangeHint("");
         setIsGeneratingReplies(true);
-        setReplyOptions([]);
+        setReplyOptions([
+          generatePreviewReply(liveTone, 0),
+          generatePreviewReply(liveTone, 1),
+          generatePreviewReply(liveTone, 2),
+        ]);
         setSelectedReplyIndex(null);
         setEditedReplyDraft("");
         editedReplyDraftRef.current = "";
