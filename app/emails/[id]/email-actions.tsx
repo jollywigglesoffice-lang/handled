@@ -155,6 +155,7 @@ export function EmailActions({
   const generateRunIdRef = useRef(0);
   const regenerateGlowTimerRef = useRef<number | null>(null);
   const [tone, setTone] = useState(50);
+  const SNAP_POINTS = [20, 50, 85]; // direct, casual, friendly
   function mapTone(value: number) {
     if (value < 30) return "professional";
     if (value < 70) return "casual";
@@ -779,7 +780,8 @@ Recommended: {recommendedTone}
       Tone
     </label>
     <span
-  className={`text-xs font-medium capitalize transition-all duration-200 ${
+  key={mapTone(tone)}
+  className={`text-xs font-medium capitalize transition-all duration-300 ease-out ${
     tone < 30
       ? "text-red-500"
       : tone < 70
@@ -789,14 +791,20 @@ Recommended: {recommendedTone}
 >
   {mapTone(tone)}
 </span>
-{mapTone(tone) !== recommendedTone && (
+<div
+  className={`transition-all duration-300 ease-out ${
+    mapTone(tone) !== recommendedTone
+      ? "opacity-100 translate-y-0"
+      : "opacity-0 -translate-y-1 pointer-events-none"
+  }`}
+>
   <button
     onClick={() => setTone(toneToValue(recommendedTone))}
     className="text-[10px] text-purple-500 mt-1 hover:underline transition"
   >
     ⚡ Suggested: {recommendedTone} (tap to apply)
   </button>
-)}
+</div>
   </div>
 
   <input
@@ -804,10 +812,31 @@ Recommended: {recommendedTone}
   min={0}
   max={100}
   value={tone}
-  onChange={(e) => setTone(Number(e.target.value))}
+  onChange={(e) => {
+    const raw = Number(e.target.value);
+  
+    // find closest snap point
+    const closest = SNAP_POINTS.reduce((prev, curr) =>
+      Math.abs(curr - raw) < Math.abs(prev - raw) ? curr : prev
+    );
+  
+    // if close enough → snap
+    if (Math.abs(raw - closest) < 6) {
+      setTone(closest);
+    } else {
+      setTone(raw);
+    }
+  }}
+  onInput={() => generateReplyOptions()}
   onMouseUp={() => generateReplyOptions()}
   onTouchEnd={() => generateReplyOptions()}
-    className="w-full accent-[#6366F1]"
+  className={`w-full cursor-pointer transition-all duration-200 active:scale-[1.01] bg-gradient-to-r ${
+    tone < 30
+      ? "from-red-200 to-red-500"
+      : tone < 70
+      ? "from-indigo-200 to-indigo-500"
+      : "from-green-200 to-green-500"
+  }`}
   />
 
   <div className="flex justify-between text-[10px] text-gray-400">
