@@ -194,6 +194,7 @@ export function EmailActions({
   const [statusMessage, setStatusMessage] = useState("");
   const [languageChangeHint, setLanguageChangeHint] = useState("");
   const [regenerateHighlight, setRegenerateHighlight] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
   const [isGeneratingReplies, setIsGeneratingReplies] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [isClosingView, setIsClosingView] = useState(false);
@@ -294,6 +295,7 @@ return () => clearTimeout(timeout);
   }, [selectedReplyIndex]);
 
   const generateReplyOptions = useCallback(async (options?: { skipUsageIncrement?: boolean }) => {
+      setIsThinking(true);
       const language = workflowReplyLanguageRef.current;
       const fallbackTriple = getClientFallbackReplies(language);
       const runId = ++generateRunIdRef.current;
@@ -313,6 +315,7 @@ return () => clearTimeout(timeout);
           generatePreviewReply(liveTone, 1),
           generatePreviewReply(liveTone, 2),
         ]);
+        setIsThinking(false);
         setSelectedReplyIndex(null);
         setEditedReplyDraft("");
         editedReplyDraftRef.current = "";
@@ -920,13 +923,22 @@ Recommended: {recommendedTone}
   </div>
 </div>
           <div className="space-y-3" role="radiogroup" aria-label="Choose a reply">
+            {isThinking && (
+              <div className="text-sm text-gray-400 italic animate-pulse mb-2">
+                Thinking...
+              </div>
+            )}
             {replyOptions.map((reply, index) => {
               const isSelected = selectedReplyIndex === index;
               const isRecommended = index === 0;
               const confidence = isRecommended ? 92 : Math.floor(Math.random() * 10) + 80;
 
               return (
-                <div key={`${index}-${reply.slice(0, 20)}`} className="space-y-1">
+                <div
+                  key={`${index}_${reply.slice(0, 20)}`}
+                  className="space-y-1 opacity-0 translate-y-2 animate-[fadeInUp_0.35s_ease-out_forwards]"
+                  style={{ animationDelay: `${index * 60}ms` }}
+                >
                   {isRecommended ? (
   <div className="mb-2">
     <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-[#EEF2FF] border border-[#6366F1]/20">
@@ -961,7 +973,9 @@ Recommended: {recommendedTone}
                       <div className="min-w-0 flex-1 space-y-2">
                         <span className="block whitespace-pre-wrap break-words">
                           <span className="inline-block transition-all duration-300 ease-out animate-[fadeIn_0.3s_forwards]">
-                            {isSelected ? editedReplyDraft : reply}
+                            <span className="inline-block animate-[fadeIn_0.2s_ease-out]">
+                              {isSelected ? editedReplyDraft : reply}
+                            </span>
                           </span>
                         </span>
                         {isRecommended ? (
