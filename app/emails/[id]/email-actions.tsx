@@ -846,7 +846,21 @@ Recommended: {recommendedTone}
   onInput={() => generateReplyOptions()}
   onMouseUp={() => generateReplyOptions()}
   onTouchEnd={() => generateReplyOptions()}
-  className="relative w-full bg-transparent appearance-none cursor-pointer z-10"
+  className="relative w-full bg-transparent appearance-none cursor-pointer z-10
+  [&::-webkit-slider-thumb]:appearance-none
+  [&::-webkit-slider-thumb]:h-5
+  [&::-webkit-slider-thumb]:w-5
+  [&::-webkit-slider-thumb]:rounded-full
+  [&::-webkit-slider-thumb]:bg-white
+  [&::-webkit-slider-thumb]:border-2
+  [&::-webkit-slider-thumb]:border-indigo-500
+  [&::-webkit-slider-thumb]:shadow-md
+  [&::-webkit-slider-thumb]:transition-all
+  [&::-webkit-slider-thumb]:duration-200
+  [&::-webkit-slider-thumb]:hover:scale-110
+  [&::-webkit-slider-thumb]:active:scale-125
+  [&::-webkit-slider-thumb]:active:shadow-lg
+"
 />
 
 </div>
