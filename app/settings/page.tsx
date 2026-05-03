@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LogoutButton } from "@/app/components/logout-button";
 import { ModeSelector } from "./mode-selector";
 import { PersonalizationSettings } from "./personalization-settings";
 import { useUiCopy } from "@/app/use-ui-copy";
@@ -11,13 +12,14 @@ export default function SettingsPage() {
   return (
     <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
-        <div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/"
             className="text-sm font-medium text-[#6366F1] transition-all duration-200 hover:opacity-90 active:scale-95"
           >
             {ui.common.backToInbox}
           </Link>
+          <LogoutButton />
         </div>
 
         <section className="space-y-4 rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm">

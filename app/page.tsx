@@ -9,6 +9,7 @@ import {
   type InboxSectionTitle,
 } from "@/lib/fake-emails";
 import { useHandledEmails } from "@/app/handled-emails-context";
+import { AuthNav } from "@/app/components/auth-nav";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
 
@@ -310,12 +311,15 @@ export default function Home() {
               <p className="text-sm font-medium uppercase tracking-[0.2em] text-gray-500">
                 {ui.home.brandTag}
               </p>
-              <Link
-                href="/settings"
-                className="rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#6366F1] transition-all duration-200 hover:bg-[#F8FAFC] active:scale-95"
-              >
-                {ui.home.settingsButton}
-              </Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <AuthNav />
+                <Link
+                  href="/settings"
+                  className="rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#6366F1] transition-all duration-200 hover:bg-[#F8FAFC] active:scale-95"
+                >
+                  {ui.home.settingsButton}
+                </Link>
+              </div>
             </div>
             <p className="text-sm font-semibold tracking-[0.01em] text-[#4F46E5] [text-shadow:0_1px_0_rgba(255,255,255,0.8),0_6px_16px_rgba(79,70,229,0.14)]">
               {ui.home.quickTopLine}

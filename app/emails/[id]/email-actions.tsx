@@ -1,5 +1,6 @@
 "use client";
 
+import type { User } from "@supabase/supabase-js";
 import {
   useCallback,
   useEffect,
@@ -16,6 +17,7 @@ import {
 } from "@/app/user-preferences-context";
 import { detectReplyLanguageFromEmail } from "@/lib/detect-reply-language";
 import { useUiCopy } from "@/app/use-ui-copy";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type EmailActionsProps = {
   emailId: string;
@@ -142,7 +144,10 @@ function readReplyMemoryForUser(userId: string | null): ReplyMemory | null {
 const USAGE_RESET_PERIOD_MS = 24 * 60 * 60 * 1000;
 
 /** Per-user usage; resets count if more than 24h since `usage_time_${userId}`. */
-function readUsageCountWithDailyReset(userId: string): number {
+function readUsageCountWithDailyReset(userId: string | null): number {
+  if (!userId) {
+    return 0;
+  }
   const storageKey = `usage_${userId}`;
   const timeKey = `usage_time_${userId}`;
   const lastTime = Number(localStorage.getItem(timeKey) || "0");
@@ -303,21 +308,15 @@ export function EmailActions({
   const { generatedRepliesCount, incrementGeneratedRepliesCount } = useReplyUsage();
   const { userName, tone: savedTone, replyLanguage: settingsReplyLanguage } = useUserPreferences();
 
-  const [userId, setUserId] = useState<string | null>(() => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-    let id = localStorage.getItem("userId");
-    if (!id) {
-      id = `user_${Math.random().toString(36).slice(2)}`;
-      localStorage.setItem("userId", id);
-    }
-    return id;
-  });
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [authError, setAuthError] = useState("");
 
-  const [memoryProfile, setMemoryProfile] = useState<ReplyMemory | null>(() =>
-    readReplyMemoryForUser(userId),
-  );
+  const userId = authUser?.id ?? null;
+
+  const [memoryProfile, setMemoryProfile] = useState<ReplyMemory | null>(null);
 
   const [workflowReplyLanguage, setWorkflowReplyLanguage] = useState<ReplyLanguage>(() =>
     detectReplyLanguageFromEmail(emailContent, settingsReplyLanguage),
@@ -328,8 +327,8 @@ export function EmailActions({
   const generateFetchAbortRef = useRef<AbortController | null>(null);
   const generateRunIdRef = useRef(0);
   const regenerateGlowTimerRef = useRef<number | null>(null);
-  const [tone, setTone] = useState(() => readReplyMemoryForUser(userId)?.preferredTone ?? 50);
-  const [liveTone, setLiveTone] = useState(() => readReplyMemoryForUser(userId)?.preferredTone ?? 50);
+  const [tone, setTone] = useState(50);
+  const [liveTone, setLiveTone] = useState(50);
   const [isSnapping, setIsSnapping] = useState(false);
   const SNAP_POINTS = [20, 50, 85]; // direct, casual, friendly
   function mapTone(value: number) {
@@ -366,12 +365,8 @@ export function EmailActions({
   const [sendSuccessMessage, setSendSuccessMessage] = useState("");
   const [showSendSuccess, setShowSendSuccess] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
-  const [usageCount, setUsageCount] = useState(() => {
-    if (typeof window === "undefined" || userId === null) {
-      return 0;
-    }
-    return readUsageCountWithDailyReset(userId);
-  });
+  const [isPro, setIsPro] = useState(false);
+  const [usageCount, setUsageCount] = useState(0);
   const contextHint = getContextHint(emailContent, {
     quickApproval: ui.emailActions.contextQuickApproval,
     lowPriority: ui.emailActions.contextLowPriority,
@@ -392,17 +387,29 @@ export function EmailActions({
           ? "direct"
           : "casual";
 
+  useEffect(() => {
+    void supabaseBrowser.auth.getUser().then(({ data }) => {
+      setAuthUser(data.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+      setAuthUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   useLayoutEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
-    if (userId === null) {
-      let id = localStorage.getItem("userId");
-      if (!id) {
-        id = `user_${Math.random().toString(36).slice(2)}`;
-        localStorage.setItem("userId", id);
-      }
-      setUserId(id);
+    if (!userId) {
+      setMemoryProfile(null);
+      setUsageCount(0);
       return;
     }
     const mem = readReplyMemoryForUser(userId);
@@ -413,6 +420,40 @@ export function EmailActions({
       setLiveTone(pref);
     }
     setUsageCount(readUsageCountWithDailyReset(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    void fetch("/api/create-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ userId }),
+    });
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      setIsPro(false);
+      setShowUpgrade(false);
+      return;
+    }
+
+    const ac = new AbortController();
+    void fetch(`/api/get-user?userId=${encodeURIComponent(userId)}`, {
+      signal: ac.signal,
+      credentials: "same-origin",
+    })
+      .then((res) => res.json() as Promise<{ isPro?: boolean }>)
+      .then((data) => {
+        setIsPro(Boolean(data.isPro));
+      })
+      .catch(() => {});
+
+    return () => ac.abort();
   }, [userId]);
 
   useEffect(() => {
@@ -525,7 +566,7 @@ return () => clearTimeout(timeout);
       if (userId === null) {
         return;
       }
-      if (usageCount >= FREE_LIMIT) {
+      if (!isPro && usageCount >= FREE_LIMIT) {
         trackEvent("limit_reached");
         setStatusMessage("You're out of free replies for today.");
         setShowUpgrade(true);
@@ -535,15 +576,17 @@ return () => clearTimeout(timeout);
         tone: liveTone,
         usageCount,
       });
-      setUsageCount((prev) => {
-        const next = prev + 1;
-        if (typeof window !== "undefined") {
-          const timeKey = `usage_time_${userId}`;
-          localStorage.setItem(`usage_${userId}`, next.toString());
-          localStorage.setItem(timeKey, Date.now().toString());
-        }
-        return next;
-      });
+      if (!isPro) {
+        setUsageCount((prev) => {
+          const next = prev + 1;
+          if (typeof window !== "undefined") {
+            const timeKey = `usage_time_${userId}`;
+            localStorage.setItem(`usage_${userId}`, next.toString());
+            localStorage.setItem(timeKey, Date.now().toString());
+          }
+          return next;
+        });
+      }
       setIsThinking(true);
       const language = workflowReplyLanguageRef.current;
       const fallbackTriple = getClientFallbackReplies(language);
@@ -785,6 +828,7 @@ return () => clearTimeout(timeout);
     [
       emailContent,
       incrementGeneratedRepliesCount,
+      isPro,
       liveTone,
       memoryProfile,
       tone,
@@ -1068,6 +1112,91 @@ return () => clearTimeout(timeout);
     }, 2700);
   }
 
+  async function handleAuthSubmit() {
+    setAuthError("");
+
+    if (!authEmail || !authPassword) {
+      setAuthError("Enter your email and password.");
+      return;
+    }
+
+    const result =
+      authMode === "signup"
+        ? await supabaseBrowser.auth.signUp({
+            email: authEmail,
+            password: authPassword,
+          })
+        : await supabaseBrowser.auth.signInWithPassword({
+            email: authEmail,
+            password: authPassword,
+          });
+
+    if (result.error) {
+      setAuthError(result.error.message);
+      return;
+    }
+
+    setAuthUser(result.data.user ?? null);
+  }
+
+  async function handleLogout() {
+    await supabaseBrowser.auth.signOut();
+    setAuthUser(null);
+  }
+
+  if (!authUser) {
+    return (
+      <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Sign in to use Handled</h2>
+          <p className="text-sm text-gray-500">
+            Save your tone preferences, usage, and Pro access across devices.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <input
+            type="email"
+            value={authEmail}
+            onChange={(e) => setAuthEmail(e.target.value)}
+            placeholder="Email"
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+            autoComplete="email"
+          />
+
+          <input
+            type="password"
+            value={authPassword}
+            onChange={(e) => setAuthPassword(e.target.value)}
+            placeholder="Password"
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+            autoComplete={authMode === "login" ? "current-password" : "new-password"}
+          />
+
+          {authError ? <p className="text-xs text-red-500">{authError}</p> : null}
+
+          <button
+            type="button"
+            onClick={() => void handleAuthSubmit()}
+            className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+          >
+            {authMode === "login" ? "Sign in" : "Create account"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}
+            className="w-full text-xs text-gray-400 hover:text-gray-600"
+          >
+            {authMode === "login"
+              ? "Need an account? Create one"
+              : "Already have an account? Sign in"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`space-y-5 rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 shadow-sm transition-all duration-500 ${
@@ -1091,9 +1220,18 @@ return () => clearTimeout(timeout);
         </svg>
         {ui.emailActions.actionsTitle}
       </h2>
-      <p className="text-[9px] text-gray-300" suppressHydrationWarning>
-        ID: {userId ?? "…"}
-      </p>
+      {userId ? (
+        <p className="text-[9px] text-gray-300" suppressHydrationWarning>
+          ID: {userId}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => void handleLogout()}
+        className="text-left text-[10px] text-gray-400 hover:text-gray-600"
+      >
+        Sign out
+      </button>
       <div className="flex flex-wrap gap-4">
         <button
           type="button"
@@ -1183,14 +1321,16 @@ return () => clearTimeout(timeout);
 Recommended: {recommendedTone}
 </p>
 <p className="mt-2 text-sm font-semibold text-indigo-600">
-  {Math.max(0, FREE_LIMIT - usageCount)} replies left today
+  {isPro
+    ? "Unlimited replies (Pro)"
+    : `${Math.max(0, FREE_LIMIT - usageCount)} replies left today`}
 </p>
-{usageCount >= FREE_LIMIT - 2 && usageCount < FREE_LIMIT ? (
+{!isPro && usageCount >= FREE_LIMIT - 2 && usageCount < FREE_LIMIT ? (
   <p className="mt-1 text-[11px] text-orange-500">
     Almost out — consider upgrading soon
   </p>
 ) : null}
-{usageCount === FREE_LIMIT - 1 ? (
+{!isPro && usageCount === FREE_LIMIT - 1 ? (
   <p className="mt-1 text-[11px] text-red-500">
     Last free reply — upgrade next
   </p>
@@ -1340,10 +1480,12 @@ if (distance < 6) {
             aria-label="Choose a reply"
             aria-busy={isStreaming}
           >
-            <p className="mb-2 text-[11px] text-gray-400">
-              Upgrade for unlimited replies and faster AI performance
-            </p>
-            {usageCount >= FREE_LIMIT ? (
+            {!isPro ? (
+              <p className="mb-2 text-[11px] text-gray-400">
+                Upgrade for unlimited replies and faster AI performance
+              </p>
+            ) : null}
+            {!isPro && usageCount >= FREE_LIMIT ? (
               <div className="mb-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-700">
                 {"You're out of free replies for today."}
               </div>
@@ -1353,7 +1495,7 @@ if (distance < 6) {
                 Thinking...
               </div>
             )}
-            {usageCount >= 2 && usageCount < FREE_LIMIT ? (
+            {!isPro && usageCount >= 2 && usageCount < FREE_LIMIT ? (
               <div className="mb-2 text-[11px] text-gray-400">
                 Want unlimited replies? Upgrade anytime.
               </div>
@@ -1593,10 +1735,24 @@ if (distance < 6) {
             <button
               type="button"
               className="w-full rounded-lg bg-indigo-600 py-2 font-medium text-white shadow-md transition hover:bg-indigo-700"
-              onClick={() => {
+              onClick={async () => {
                 trackEvent("upgrade_clicked");
-                // placeholder for checkout
-                alert("Checkout coming soon");
+
+                const res = await fetch("/api/create-checkout-session", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "same-origin",
+                  body: JSON.stringify({
+                    userId,
+                    email: authUser.email,
+                  }),
+                });
+
+                const data = (await res.json()) as { url?: string; error?: string };
+
+                if (data.url) {
+                  window.location.href = data.url;
+                }
               }}
             >
               Upgrade to Pro
