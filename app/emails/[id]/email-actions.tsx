@@ -26,6 +26,8 @@ type EmailActionsProps = {
 
 const FETCH_REPLY_TIMEOUT_MS = 14_000;
 
+const FREE_LIMIT = 10;
+
 const workflowLanguageOptions: Array<{ value: ReplyLanguage; label: string }> = [
   { value: "english", label: "English" },
   { value: "italian", label: "Italian" },
@@ -301,6 +303,12 @@ export function EmailActions({
   const [replyCopied, setReplyCopied] = useState(false);
   const [sendSuccessMessage, setSendSuccessMessage] = useState("");
   const [showSendSuccess, setShowSendSuccess] = useState(false);
+  const [usageCount, setUsageCount] = useState(() => {
+    if (typeof window === "undefined") {
+      return 0;
+    }
+    return Number(localStorage.getItem("usageCount") || "0");
+  });
   const contextHint = getContextHint(emailContent, {
     quickApproval: ui.emailActions.contextQuickApproval,
     lowPriority: ui.emailActions.contextLowPriority,
@@ -411,6 +419,17 @@ return () => clearTimeout(timeout);
   );
 
   const generateReplyOptions = useCallback(async (options?: { skipUsageIncrement?: boolean }) => {
+      if (usageCount >= FREE_LIMIT) {
+        setStatusMessage("Free limit reached. Upgrade to continue.");
+        return;
+      }
+      setUsageCount((prev) => {
+        const next = prev + 1;
+        if (typeof window !== "undefined") {
+          localStorage.setItem("usageCount", next.toString());
+        }
+        return next;
+      });
       setIsThinking(true);
       const language = workflowReplyLanguageRef.current;
       const fallbackTriple = getClientFallbackReplies(language);
@@ -656,6 +675,7 @@ return () => clearTimeout(timeout);
       memoryProfile,
       tone,
       ui.emailActions,
+      usageCount,
       userName,
     ],
   );
@@ -1044,6 +1064,9 @@ return () => clearTimeout(timeout);
 <p className="text-xs text-indigo-500 font-medium mb-1">
 Recommended: {recommendedTone}
 </p>
+<p className="mb-2 text-[10px] text-gray-400">
+  {Math.max(0, FREE_LIMIT - usageCount)} free replies left
+</p>
           <div className="space-y-2 p-3 rounded-xl border border-gray-200 bg-white">
   <div className="flex items-center justify-between">
     <label className="text-xs font-medium text-gray-500">
@@ -1186,6 +1209,14 @@ if (distance < 6) {
             aria-label="Choose a reply"
             aria-busy={isStreaming}
           >
+            {usageCount >= FREE_LIMIT ? (
+              <div className="mb-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-700">
+                You’ve reached your free limit.
+                <button type="button" className="ml-2 font-medium underline">
+                  Upgrade
+                </button>
+              </div>
+            ) : null}
             {isThinking && (
               <div className="text-sm text-gray-400 italic animate-pulse mb-2">
                 Thinking...
