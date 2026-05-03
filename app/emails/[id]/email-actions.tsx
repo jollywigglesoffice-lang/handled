@@ -869,7 +869,45 @@ Recommended: {recommendedTone}
   value={liveTone}
   onChange={(e) => {
     const raw = Number(e.target.value);
-  
+
+// 🔥 LIVE UI
+setLiveTone(raw);
+
+// ⚡ VELOCITY LOGIC
+const delta = raw - tone;
+const speed = Math.abs(delta);
+
+// 🎯 INTENT DETECTION
+const intent =
+  speed > 12
+    ? "dramatic"
+    : speed > 5
+    ? "adjust"
+    : "precision";
+
+// 🧠 APPLY BEHAVIOR
+if (intent === "dramatic") {
+  setTone(raw);
+} else if (intent === "adjust") {
+  setTone((prev) => Math.round((prev + raw) / 2));
+} else {
+  setTone((prev) => Math.round(prev + (raw - prev) * 0.2));
+}
+
+// 🧲 OPTIONAL: keep snapping AFTER
+const closest = SNAP_POINTS.reduce((prev, curr) =>
+  Math.abs(curr - raw) < Math.abs(prev - raw) ? curr : prev
+);
+
+const distance = Math.abs(raw - closest);
+
+if (distance < 6) {
+  setTone(closest);
+  setLiveTone(closest);
+
+  setIsSnapping(true);
+  setTimeout(() => setIsSnapping(false), 120);
+}
     // live UI update
     setLiveTone(raw);
   
