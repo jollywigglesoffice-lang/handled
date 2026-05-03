@@ -5,6 +5,7 @@ type ReplyRequestBody = {
   userName?: string;
   tone?: "casual" | "professional" | "friendly";
   language?: "english" | "italian" | "spanish" | "french" | "german";
+  stream?: boolean;
 };
 
 function cleanReply(text: string) {
@@ -172,6 +173,167 @@ function mergeGenerateReplies(
 
 const DEFAULT_REFINE_FALLBACK = "Got it, thanks! I'll get back to you.";
 
+const REPLY_STREAM_SEPARATOR = "---REPLY---";
+
+function createGenerateReplyNdjsonStream(
+  email: string,
+  userName: string | undefined,
+  tone: "casual" | "professional" | "friendly",
+  language: "english" | "italian" | "spanish" | "french" | "german",
+  languageLabel: string,
+  apiKey: string,
+  upstreamSignal: AbortSignal,
+): Response {
+  const streamPrompt = `Write 3 different short reply variations to this email.
+
+Rules:
+- Keep each reply under 3 sentences
+- Keep each reply short and quick
+- If the email is simple, keep each reply to one sentence
+- Use natural, human language, like texting a colleague
+- Avoid corporate tone
+- Avoid overly polite language
+- Avoid sounding overly helpful
+- Keep the tone ${tone}
+- Write every reply in ${languageLabel}. (All three variations must be in that language.)
+- The first reply is the recommended default (may be slightly fuller when a greeting fits naturally)
+- Replies 2 and 3 should be alternate phrasings, each meaningfully different from the others
+- Keep it simple and direct
+- If appropriate, include the person's name
+- If appropriate, make the reply sound like it was written by ${userName ?? "the user"}
+
+Format (critical):
+- Output plain text only. No JSON. No markdown fences.
+- Output reply 1, then a line containing exactly ${REPLY_STREAM_SEPARATOR}, then reply 2, then a line with exactly ${REPLY_STREAM_SEPARATOR}, then reply 3.
+
+Tone:
+- calm
+- clear
+- direct
+
+Email:
+${email}`;
+
+  const encoder = new TextEncoder();
+  const body = new ReadableStream({
+    async start(controller) {
+      const controllerRef = controller;
+      const openAiResponse = await fetch(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "HTTP-Referer": "http://localhost:3001",
+            "X-Title": "Handled App",
+          },
+          body: JSON.stringify({
+            model: "openai/gpt-4o-mini",
+            temperature: 0.7,
+            stream: true,
+            messages: [
+              {
+                role: "user",
+                content: streamPrompt,
+              },
+            ],
+          }),
+          signal: upstreamSignal,
+        },
+      ).catch((err) => {
+        console.error("[api/reply] Stream upstream fetch failed", err);
+        return null;
+      });
+
+      if (!openAiResponse || !openAiResponse.ok || !openAiResponse.body) {
+        controllerRef.enqueue(
+          encoder.encode(
+            JSON.stringify({
+              error: "stream_unavailable",
+              message: "Upstream stream failed",
+            }) + "\n",
+          ),
+        );
+        controllerRef.close();
+        return;
+      }
+
+      const reader = openAiResponse.body.getReader();
+      const decoder = new TextDecoder();
+      let sseCarry = "";
+      let assistantBuffer = "";
+      const lastSlots = ["", "", ""];
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          sseCarry += decoder.decode(value, { stream: true });
+          const rawLines = sseCarry.split("\n");
+          sseCarry = rawLines.pop() ?? "";
+
+          for (const line of rawLines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) {
+              continue;
+            }
+            const payload = trimmed.slice(5).trim();
+            if (payload === "[DONE]") {
+              continue;
+            }
+            try {
+              const json = JSON.parse(payload) as {
+                choices?: Array<{ delta?: { content?: string } }>;
+              };
+              const piece = json.choices?.[0]?.delta?.content;
+              if (typeof piece === "string" && piece.length > 0) {
+                assistantBuffer += piece;
+              }
+            } catch {
+              // ignore partial SSE JSON
+            }
+          }
+
+          const segments = assistantBuffer.split(REPLY_STREAM_SEPARATOR);
+          const slots = [
+            segments[0] ?? "",
+            segments[1] ?? "",
+            segments[2] ?? "",
+          ];
+          for (let i = 0; i < 3; i++) {
+            if (slots[i].length > lastSlots[i].length) {
+              const text = slots[i].slice(lastSlots[i].length);
+              lastSlots[i] = slots[i];
+              controllerRef.enqueue(
+                encoder.encode(JSON.stringify({ index: i, text }) + "\n"),
+              );
+            }
+          }
+        }
+      } catch (error) {
+        console.error("[api/reply] Stream read failed", error);
+        controllerRef.enqueue(
+          encoder.encode(
+            JSON.stringify({ error: "stream_read", message: String(error) }) + "\n",
+          ),
+        );
+      } finally {
+        controllerRef.close();
+      }
+    },
+  });
+
+  return new Response(body, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 function getRefineFallback(
   tone: "casual" | "professional" | "friendly",
   language: "english" | "italian" | "spanish" | "french" | "german",
@@ -236,6 +398,18 @@ export async function POST(request: Request) {
     }
 
     return Response.json({ replies: getFallbackReplies(tone, language, userName) });
+  }
+
+  if (body.stream === true && mode === "generate") {
+    return createGenerateReplyNdjsonStream(
+      email,
+      userName,
+      tone,
+      language,
+      languageLabel,
+      apiKey,
+      request.signal,
+    );
   }
 
   const prompt =

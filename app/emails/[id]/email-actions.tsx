@@ -195,6 +195,8 @@ export function EmailActions({
   const [languageChangeHint, setLanguageChangeHint] = useState("");
   const [regenerateHighlight, setRegenerateHighlight] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const [streamedReplies, setStreamedReplies] = useState<string[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [isGeneratingReplies, setIsGeneratingReplies] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [isClosingView, setIsClosingView] = useState(false);
@@ -315,11 +317,11 @@ return () => clearTimeout(timeout);
           generatePreviewReply(liveTone, 1),
           generatePreviewReply(liveTone, 2),
         ]);
-        setIsThinking(false);
         setSelectedReplyIndex(null);
         setEditedReplyDraft("");
         editedReplyDraftRef.current = "";
         setStatusMessage(ui.emailActions.statusPreparing);
+        setStreamedReplies([]);
 
         let response: Response;
         try {
@@ -334,6 +336,7 @@ return () => clearTimeout(timeout);
               userName,
               tone: mapTone(tone),
               language,
+              stream: true,
             }),
           });
         } catch (error) {
@@ -353,11 +356,102 @@ return () => clearTimeout(timeout);
           }
           const triple = ensureThreeReplies([], fallbackTriple);
           setReplyOptions([...triple]);
+          setStreamedReplies([...triple]);
           setSelectedReplyIndex(0);
           return;
         }
 
         if (runId !== generateRunIdRef.current) {
+          return;
+        }
+
+        const contentType = response.headers.get("content-type") ?? "";
+        const streamBody = response.body;
+        if (
+          response.ok &&
+          streamBody &&
+          (contentType.includes("ndjson") || contentType.includes("x-ndjson"))
+        ) {
+          let streamHadError = false;
+          try {
+            setIsStreaming(true);
+            const reader = streamBody.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            const replies: string[] = ["", "", ""];
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) {
+                break;
+              }
+
+              buffer += decoder.decode(value, { stream: true });
+              const chunks = buffer.split("\n");
+              buffer = chunks.pop() ?? "";
+
+              for (const chunk of chunks) {
+                const line = chunk.trim();
+                if (!line) {
+                  continue;
+                }
+                try {
+                  const parsed = JSON.parse(line) as {
+                    index?: number;
+                    text?: string;
+                    error?: string;
+                  };
+                  if (parsed.error !== undefined) {
+                    streamHadError = true;
+                    continue;
+                  }
+                  if (parsed.index !== undefined && parsed.text !== undefined) {
+                    const i = parsed.index;
+                    if (i >= 0 && i < 3) {
+                      replies[i] += parsed.text;
+                      setReplyOptions([...replies]);
+                      setStreamedReplies([...replies]);
+                    }
+                  }
+                } catch {
+                  // ignore partial JSON
+                }
+              }
+            }
+
+            if (runId !== generateRunIdRef.current) {
+              return;
+            }
+
+            const quickTriple = ensureThreeReplies(replies, fallbackTriple);
+            setReplyOptions([...quickTriple]);
+            setStreamedReplies([...quickTriple]);
+            setSelectedReplyIndex(0);
+            setEditedReplyDraft(quickTriple[0] ?? "");
+            setStatusMessage(
+              streamHadError
+                ? ui.emailActions.statusGenerateFailed
+                : ui.emailActions.statusChooseReply,
+            );
+            if (!options?.skipUsageIncrement) {
+              incrementGeneratedRepliesCount();
+            }
+          } catch (e) {
+            console.error(e);
+            if (runId !== generateRunIdRef.current) {
+              return;
+            }
+            const triple = ensureThreeReplies([], fallbackTriple);
+            setReplyOptions([...triple]);
+            setStreamedReplies([...triple]);
+            setSelectedReplyIndex(0);
+            setStatusMessage(ui.emailActions.statusUnexpectedFallback);
+          } finally {
+            if (runId === generateRunIdRef.current) {
+              setIsStreaming(false);
+              setIsThinking(false);
+            }
+          }
           return;
         }
 
@@ -372,6 +466,7 @@ return () => clearTimeout(timeout);
           setStatusMessage(ui.emailActions.statusInvalidJson);
           const triple = ensureThreeReplies([], fallbackTriple);
           setReplyOptions([...triple]);
+          setStreamedReplies([...triple]);
           setSelectedReplyIndex(0);
           return;
         }
@@ -388,6 +483,7 @@ return () => clearTimeout(timeout);
             result.error ?? ui.emailActions.statusGenerateFailed,
           );
           setReplyOptions([...quickTriple]);
+          setStreamedReplies([...quickTriple]);
           setSelectedReplyIndex(0);
           setEditedReplyDraft(quickTriple[0] ?? "");
           return;
@@ -398,6 +494,8 @@ return () => clearTimeout(timeout);
         }
 
         setReplyOptions([...quickTriple]);
+        setStreamedReplies([...quickTriple]);
+        setIsThinking(false);
         setSelectedReplyIndex(0);
         setStatusMessage(ui.emailActions.statusChooseReply);
         if (!options?.skipUsageIncrement) {
@@ -411,15 +509,17 @@ return () => clearTimeout(timeout);
         setStatusMessage(ui.emailActions.statusUnexpectedFallback);
         const triple = ensureThreeReplies([], fallbackTriple);
         setReplyOptions([...triple]);
+        setStreamedReplies([...triple]);
         setSelectedReplyIndex(0);
       } finally {
         window.clearTimeout(timeoutId);
         if (runId === generateRunIdRef.current) {
           setIsGeneratingReplies(false);
+          setIsThinking(false);
         }
       }
     },
-    [emailContent, incrementGeneratedRepliesCount, tone, ui.emailActions, userName],
+    [emailContent, incrementGeneratedRepliesCount, liveTone, tone, ui.emailActions, userName],
   );
 
   const generateReplyOptionsRef = useRef(generateReplyOptions);
@@ -942,7 +1042,12 @@ if (distance < 6) {
     <span>Friendly</span>
   </div>
 </div>
-          <div className="space-y-3" role="radiogroup" aria-label="Choose a reply">
+          <div
+            className="space-y-3"
+            role="radiogroup"
+            aria-label="Choose a reply"
+            aria-busy={isStreaming}
+          >
             {isThinking && (
               <div className="text-sm text-gray-400 italic animate-pulse mb-2">
                 Thinking...
@@ -952,6 +1057,9 @@ if (distance < 6) {
               const isSelected = selectedReplyIndex === index;
               const isRecommended = index === 0;
               const confidence = isRecommended ? 92 : Math.floor(Math.random() * 10) + 80;
+              const isPartial =
+                isStreaming &&
+                (streamedReplies[index] ?? reply).length < 20;
 
               return (
                 <div
@@ -993,9 +1101,16 @@ if (distance < 6) {
                       <div className="min-w-0 flex-1 space-y-2">
                         <span className="block whitespace-pre-wrap break-words">
                           <span className="inline-block transition-all duration-300 ease-out animate-[fadeIn_0.3s_forwards]">
-                            <span className="inline-block animate-[fadeIn_0.2s_ease-out]">
+                            <span
+                              className={`inline-block animate-[fadeIn_0.2s_ease-out] transition-all duration-300 ${
+                                isPartial ? "opacity-70 italic" : "opacity-100"
+                              }`}
+                            >
                               {isSelected ? editedReplyDraft : reply}
                             </span>
+                            {isStreaming && isSelected ? (
+                              <span className="ml-1 animate-pulse">▌</span>
+                            ) : null}
                           </span>
                         </span>
                         {isRecommended ? (
