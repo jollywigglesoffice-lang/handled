@@ -26,7 +26,21 @@ type EmailActionsProps = {
 
 const FETCH_REPLY_TIMEOUT_MS = 14_000;
 
-const FREE_LIMIT = 10;
+const FREE_LIMIT = 5;
+
+const PRICING = {
+  pro: {
+    name: "Pro",
+    price: "€9",
+    period: "/month",
+    features: [
+      "Unlimited replies",
+      "Smarter tone control",
+      "Faster AI responses",
+      "Priority improvements",
+    ],
+  },
+};
 
 const workflowLanguageOptions: Array<{ value: ReplyLanguage; label: string }> = [
   { value: "english", label: "English" },
@@ -112,15 +126,51 @@ export type ReplyMemory = {
   recentReplies?: string[];
 };
 
-function readReplyMemoryFromStorage(): ReplyMemory | null {
-  if (typeof window === "undefined") {
+function readReplyMemoryForUser(userId: string | null): ReplyMemory | null {
+  if (typeof window === "undefined" || userId === null) {
     return null;
   }
   try {
-    return JSON.parse(localStorage.getItem("replyMemory") || "null") as ReplyMemory | null;
+    return JSON.parse(
+      localStorage.getItem(`memory_${userId}`) || "null",
+    ) as ReplyMemory | null;
   } catch {
     return null;
   }
+}
+
+const USAGE_RESET_PERIOD_MS = 24 * 60 * 60 * 1000;
+
+/** Per-user usage; resets count if more than 24h since `usage_time_${userId}`. */
+function readUsageCountWithDailyReset(userId: string): number {
+  const storageKey = `usage_${userId}`;
+  const timeKey = `usage_time_${userId}`;
+  const lastTime = Number(localStorage.getItem(timeKey) || "0");
+  const now = Date.now();
+  if (now - lastTime > USAGE_RESET_PERIOD_MS) {
+    localStorage.setItem(storageKey, "0");
+    localStorage.setItem(timeKey, now.toString());
+    return 0;
+  }
+  return Number(localStorage.getItem(storageKey) || "0");
+}
+
+function trackEvent(name: string, data: Record<string, unknown> = {}) {
+  if (typeof window === "undefined") return;
+
+  let existing: unknown[] = [];
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem("analytics") || "[]");
+    existing = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    existing = [];
+  }
+  existing.push({
+    name,
+    data,
+    time: Date.now(),
+  });
+  localStorage.setItem("analytics", JSON.stringify(existing));
 }
 
 function detectIntent(text: string) {
@@ -253,8 +303,20 @@ export function EmailActions({
   const { generatedRepliesCount, incrementGeneratedRepliesCount } = useReplyUsage();
   const { userName, tone: savedTone, replyLanguage: settingsReplyLanguage } = useUserPreferences();
 
+  const [userId, setUserId] = useState<string | null>(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+    let id = localStorage.getItem("userId");
+    if (!id) {
+      id = `user_${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem("userId", id);
+    }
+    return id;
+  });
+
   const [memoryProfile, setMemoryProfile] = useState<ReplyMemory | null>(() =>
-    readReplyMemoryFromStorage(),
+    readReplyMemoryForUser(userId),
   );
 
   const [workflowReplyLanguage, setWorkflowReplyLanguage] = useState<ReplyLanguage>(() =>
@@ -266,8 +328,8 @@ export function EmailActions({
   const generateFetchAbortRef = useRef<AbortController | null>(null);
   const generateRunIdRef = useRef(0);
   const regenerateGlowTimerRef = useRef<number | null>(null);
-  const [tone, setTone] = useState(() => readReplyMemoryFromStorage()?.preferredTone ?? 50);
-  const [liveTone, setLiveTone] = useState(() => readReplyMemoryFromStorage()?.preferredTone ?? 50);
+  const [tone, setTone] = useState(() => readReplyMemoryForUser(userId)?.preferredTone ?? 50);
+  const [liveTone, setLiveTone] = useState(() => readReplyMemoryForUser(userId)?.preferredTone ?? 50);
   const [isSnapping, setIsSnapping] = useState(false);
   const SNAP_POINTS = [20, 50, 85]; // direct, casual, friendly
   function mapTone(value: number) {
@@ -303,11 +365,12 @@ export function EmailActions({
   const [replyCopied, setReplyCopied] = useState(false);
   const [sendSuccessMessage, setSendSuccessMessage] = useState("");
   const [showSendSuccess, setShowSendSuccess] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [usageCount, setUsageCount] = useState(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || userId === null) {
       return 0;
     }
-    return Number(localStorage.getItem("usageCount") || "0");
+    return readUsageCountWithDailyReset(userId);
   });
   const contextHint = getContextHint(emailContent, {
     quickApproval: ui.emailActions.contextQuickApproval,
@@ -328,6 +391,36 @@ export function EmailActions({
         : contextHint === "quickApproval"
           ? "direct"
           : "casual";
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (userId === null) {
+      let id = localStorage.getItem("userId");
+      if (!id) {
+        id = `user_${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem("userId", id);
+      }
+      setUserId(id);
+      return;
+    }
+    const mem = readReplyMemoryForUser(userId);
+    setMemoryProfile(mem);
+    const pref = mem?.preferredTone;
+    if (typeof pref === "number" && !Number.isNaN(pref)) {
+      setTone(pref);
+      setLiveTone(pref);
+    }
+    setUsageCount(readUsageCountWithDailyReset(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    if (showUpgrade) {
+      trackEvent("upgrade_shown");
+    }
+  }, [showUpgrade]);
+
   useEffect(() => {
     if (savedTone === "professional") {
       setTone(20);
@@ -387,22 +480,32 @@ return () => clearTimeout(timeout);
     }
   }, [selectedReplyIndex, replyOptions]);
 
-  const updateMemory = useCallback((newTone: number, reply: string) => {
-    setMemoryProfile((prev) => {
-      const updated: ReplyMemory = {
-        preferredTone: newTone,
-        lastUsedAt: Date.now(),
-        recentReplies: [...(prev?.recentReplies ?? []).slice(-4), reply],
-      };
-      if (typeof window !== "undefined") {
-        localStorage.setItem("replyMemory", JSON.stringify(updated));
+  const updateMemory = useCallback(
+    (newTone: number, reply: string) => {
+      if (userId === null) {
+        return;
       }
-      return updated;
-    });
-  }, []);
+      setMemoryProfile((prev) => {
+        const updated: ReplyMemory = {
+          preferredTone: newTone,
+          lastUsedAt: Date.now(),
+          recentReplies: [...(prev?.recentReplies ?? []).slice(-4), reply],
+        };
+        if (typeof window !== "undefined") {
+          localStorage.setItem(`memory_${userId}`, JSON.stringify(updated));
+        }
+        return updated;
+      });
+    },
+    [userId],
+  );
 
   const selectReplyOption = useCallback(
     (index: number) => {
+      trackEvent("reply_selected", {
+        index,
+        tone: liveTone,
+      });
       const replySnapshot = replyOptions[index] ?? "";
       setReplyOptions((previous) => {
         if (selectedReplyIndex === null) {
@@ -419,14 +522,25 @@ return () => clearTimeout(timeout);
   );
 
   const generateReplyOptions = useCallback(async (options?: { skipUsageIncrement?: boolean }) => {
-      if (usageCount >= FREE_LIMIT) {
-        setStatusMessage("Free limit reached. Upgrade to continue.");
+      if (userId === null) {
         return;
       }
+      if (usageCount >= FREE_LIMIT) {
+        trackEvent("limit_reached");
+        setStatusMessage("You're out of free replies for today.");
+        setShowUpgrade(true);
+        return;
+      }
+      trackEvent("generate_reply", {
+        tone: liveTone,
+        usageCount,
+      });
       setUsageCount((prev) => {
         const next = prev + 1;
         if (typeof window !== "undefined") {
-          localStorage.setItem("usageCount", next.toString());
+          const timeKey = `usage_time_${userId}`;
+          localStorage.setItem(`usage_${userId}`, next.toString());
+          localStorage.setItem(timeKey, Date.now().toString());
         }
         return next;
       });
@@ -676,6 +790,7 @@ return () => clearTimeout(timeout);
       tone,
       ui.emailActions,
       usageCount,
+      userId,
       userName,
     ],
   );
@@ -976,6 +1091,9 @@ return () => clearTimeout(timeout);
         </svg>
         {ui.emailActions.actionsTitle}
       </h2>
+      <p className="text-[9px] text-gray-300" suppressHydrationWarning>
+        ID: {userId ?? "…"}
+      </p>
       <div className="flex flex-wrap gap-4">
         <button
           type="button"
@@ -1064,9 +1182,19 @@ return () => clearTimeout(timeout);
 <p className="text-xs text-indigo-500 font-medium mb-1">
 Recommended: {recommendedTone}
 </p>
-<p className="mb-2 text-[10px] text-gray-400">
-  {Math.max(0, FREE_LIMIT - usageCount)} free replies left
+<p className="mt-2 text-sm font-semibold text-indigo-600">
+  {Math.max(0, FREE_LIMIT - usageCount)} replies left today
 </p>
+{usageCount >= FREE_LIMIT - 2 && usageCount < FREE_LIMIT ? (
+  <p className="mt-1 text-[11px] text-orange-500">
+    Almost out — consider upgrading soon
+  </p>
+) : null}
+{usageCount === FREE_LIMIT - 1 ? (
+  <p className="mt-1 text-[11px] text-red-500">
+    Last free reply — upgrade next
+  </p>
+) : null}
           <div className="space-y-2 p-3 rounded-xl border border-gray-200 bg-white">
   <div className="flex items-center justify-between">
     <label className="text-xs font-medium text-gray-500">
@@ -1130,6 +1258,9 @@ Recommended: {recommendedTone}
   value={liveTone}
   onChange={(e) => {
     const raw = Number(e.target.value);
+    trackEvent("tone_changed", {
+      value: raw,
+    });
 
 // 🔥 LIVE UI
 setLiveTone(raw);
@@ -1209,12 +1340,12 @@ if (distance < 6) {
             aria-label="Choose a reply"
             aria-busy={isStreaming}
           >
+            <p className="mb-2 text-[11px] text-gray-400">
+              Upgrade for unlimited replies and faster AI performance
+            </p>
             {usageCount >= FREE_LIMIT ? (
               <div className="mb-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-700">
-                You’ve reached your free limit.
-                <button type="button" className="ml-2 font-medium underline">
-                  Upgrade
-                </button>
+                {"You're out of free replies for today."}
               </div>
             ) : null}
             {isThinking && (
@@ -1222,6 +1353,11 @@ if (distance < 6) {
                 Thinking...
               </div>
             )}
+            {usageCount >= 2 && usageCount < FREE_LIMIT ? (
+              <div className="mb-2 text-[11px] text-gray-400">
+                Want unlimited replies? Upgrade anytime.
+              </div>
+            ) : null}
             {replyOptions.map((reply, index) => {
               const isSelected = selectedReplyIndex === index;
               const isRecommended = index === 0;
@@ -1410,6 +1546,71 @@ if (distance < 6) {
         <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-sm leading-relaxed text-gray-500">
           {ui.emailActions.usageLimitMessage}
         </p>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() =>
+          console.log(JSON.parse(localStorage.getItem("analytics") || "[]"))
+        }
+        className="mt-2 text-[10px] text-gray-400"
+      >
+        View analytics
+      </button>
+
+      {showUpgrade ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
+          <div className="w-[90%] max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-2 text-lg font-semibold text-gray-800">
+              Unlock Unlimited Replies
+            </h2>
+
+            <p className="mb-4 text-sm text-gray-500">
+              {
+                "You've reached today's free limit. Upgrade to continue without interruptions."
+              }
+            </p>
+
+            <div className="mb-4 rounded-lg border border-gray-200 bg-indigo-50 p-4">
+              <p className="text-sm font-semibold text-gray-700">{PRICING.pro.name}</p>
+
+              <span className="mt-0.5 block text-[10px] font-medium text-indigo-500">
+                Most popular
+              </span>
+
+              <p className="text-xl font-bold text-indigo-600">
+                {PRICING.pro.price}
+                <span className="text-sm text-gray-500">{PRICING.pro.period}</span>
+              </p>
+
+              <ul className="mt-2 space-y-1 text-sm text-gray-600">
+                {PRICING.pro.features.map((f, i) => (
+                  <li key={i}>✔ {f}</li>
+                ))}
+              </ul>
+            </div>
+
+            <button
+              type="button"
+              className="w-full rounded-lg bg-indigo-600 py-2 font-medium text-white shadow-md transition hover:bg-indigo-700"
+              onClick={() => {
+                trackEvent("upgrade_clicked");
+                // placeholder for checkout
+                alert("Checkout coming soon");
+              }}
+            >
+              Upgrade to Pro
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowUpgrade(false)}
+              className="mt-2 w-full text-sm text-gray-400"
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
       ) : null}
 
       <div
