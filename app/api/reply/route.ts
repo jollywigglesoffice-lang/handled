@@ -8,11 +8,17 @@ type ReplyRequestBody = {
   stream?: boolean;
   intent?: string;
   personality?: { style?: string; rules?: string };
+  memory?: {
+    preferredTone?: number;
+    lastUsedAt?: number;
+    recentReplies?: string[];
+  } | null;
 };
 
 function replyContextAppendix(
   intent: string | undefined,
   personality: ReplyRequestBody["personality"],
+  memory: ReplyRequestBody["memory"],
 ): string {
   const parts: string[] = [];
   if (intent) {
@@ -20,6 +26,17 @@ function replyContextAppendix(
   }
   if (personality?.style && personality?.rules) {
     parts.push(`Personality (${personality.style}): ${personality.rules}`);
+  }
+  if (memory?.preferredTone != null && !Number.isNaN(memory.preferredTone)) {
+    parts.push(
+      `User habit: recent tone slider preference centers around ${memory.preferredTone} (0=most direct, 100=most warm). Lean slightly toward that habit without repeating prior replies verbatim.`,
+    );
+  }
+  if (memory?.recentReplies?.length) {
+    const samples = memory.recentReplies.slice(-3).join(" | ");
+    parts.push(
+      `Recent replies the user actually sent or chose (style reference only; do not copy): ${samples}`,
+    );
   }
   if (parts.length === 0) {
     return "";
@@ -204,8 +221,9 @@ function createGenerateReplyNdjsonStream(
   upstreamSignal: AbortSignal,
   intent: string | undefined,
   personality: ReplyRequestBody["personality"],
+  memory: ReplyRequestBody["memory"],
 ): Response {
-  const contextBlock = replyContextAppendix(intent, personality);
+  const contextBlock = replyContextAppendix(intent, personality, memory);
   const streamPrompt = `Write 3 different short reply variations to this email.
 
 Rules:
@@ -434,10 +452,11 @@ export async function POST(request: Request) {
       request.signal,
       body.intent,
       body.personality,
+      body.memory,
     );
   }
 
-  const contextBlock = replyContextAppendix(body.intent, body.personality);
+  const contextBlock = replyContextAppendix(body.intent, body.personality, body.memory);
 
   const prompt =
     mode === "refine"

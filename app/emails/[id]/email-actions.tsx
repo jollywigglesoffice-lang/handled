@@ -104,6 +104,23 @@ function ensureThreeReplies(
   ];
 }
 
+export type ReplyMemory = {
+  preferredTone?: number;
+  lastUsedAt?: number;
+  recentReplies?: string[];
+};
+
+function readReplyMemoryFromStorage(): ReplyMemory | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    return JSON.parse(localStorage.getItem("replyMemory") || "null") as ReplyMemory | null;
+  } catch {
+    return null;
+  }
+}
+
 function detectIntent(text: string) {
   const lower = text.toLowerCase();
 
@@ -148,8 +165,27 @@ function buildPersonality(tone: number, intent: string) {
   };
 }
 
-function generatePreviewReply(tone: number, index: number, emailBody: string) {
+function generatePreviewReply(
+  tone: number,
+  index: number,
+  emailBody: string,
+  memory: ReplyMemory | null,
+) {
   const _intent = detectIntent(emailBody);
+  const prefersFriendly = (memory?.preferredTone ?? 0) > 70;
+  const prefersDirect = (memory?.preferredTone ?? 100) < 30;
+
+  if (prefersDirect) {
+    return ["Approved.", "Proceed.", "Looks good."][index];
+  }
+
+  if (prefersFriendly) {
+    return [
+      "This looks great — happy to move forward!",
+      "Really like this direction 😊",
+      "Thanks for sharing — this is awesome!",
+    ][index];
+  }
 
   if (tone < 30) {
     return [
@@ -215,6 +251,10 @@ export function EmailActions({
   const { generatedRepliesCount, incrementGeneratedRepliesCount } = useReplyUsage();
   const { userName, tone: savedTone, replyLanguage: settingsReplyLanguage } = useUserPreferences();
 
+  const [memoryProfile, setMemoryProfile] = useState<ReplyMemory | null>(() =>
+    readReplyMemoryFromStorage(),
+  );
+
   const [workflowReplyLanguage, setWorkflowReplyLanguage] = useState<ReplyLanguage>(() =>
     detectReplyLanguageFromEmail(emailContent, settingsReplyLanguage),
   );
@@ -224,8 +264,8 @@ export function EmailActions({
   const generateFetchAbortRef = useRef<AbortController | null>(null);
   const generateRunIdRef = useRef(0);
   const regenerateGlowTimerRef = useRef<number | null>(null);
-  const [tone, setTone] = useState(50);
-  const [liveTone, setLiveTone] = useState(tone);
+  const [tone, setTone] = useState(() => readReplyMemoryFromStorage()?.preferredTone ?? 50);
+  const [liveTone, setLiveTone] = useState(() => readReplyMemoryFromStorage()?.preferredTone ?? 50);
   const [isSnapping, setIsSnapping] = useState(false);
   const SNAP_POINTS = [20, 50, 85]; // direct, casual, friendly
   function mapTone(value: number) {
@@ -266,12 +306,20 @@ export function EmailActions({
     lowPriority: ui.emailActions.contextLowPriority,
     needsResponse: ui.emailActions.contextNeedsResponse,
   });
+  function memoryToneToRecommendedStyle(value: number): "friendly" | "direct" | "casual" {
+    if (value < 30) return "direct";
+    if (value < 70) return "casual";
+    return "friendly";
+  }
+
   const recommendedTone =
-  contextHint === "needsResponse"
-    ? "friendly"
-    : contextHint === "quickApproval"
-    ? "direct"
-    : "casual";
+    memoryProfile?.preferredTone != null && !Number.isNaN(memoryProfile.preferredTone)
+      ? memoryToneToRecommendedStyle(memoryProfile.preferredTone)
+      : contextHint === "needsResponse"
+        ? "friendly"
+        : contextHint === "quickApproval"
+          ? "direct"
+          : "casual";
   useEffect(() => {
     if (savedTone === "professional") {
       setTone(20);
@@ -331,17 +379,36 @@ return () => clearTimeout(timeout);
     }
   }, [selectedReplyIndex, replyOptions]);
 
-  const selectReplyOption = useCallback((index: number) => {
-    setReplyOptions((previous) => {
-      if (selectedReplyIndex === null) {
-        return previous;
+  const updateMemory = useCallback((newTone: number, reply: string) => {
+    setMemoryProfile((prev) => {
+      const updated: ReplyMemory = {
+        preferredTone: newTone,
+        lastUsedAt: Date.now(),
+        recentReplies: [...(prev?.recentReplies ?? []).slice(-4), reply],
+      };
+      if (typeof window !== "undefined") {
+        localStorage.setItem("replyMemory", JSON.stringify(updated));
       }
-      return previous.map((reply, i) =>
-        i === selectedReplyIndex ? editedReplyDraftRef.current : reply,
-      );
+      return updated;
     });
-    setSelectedReplyIndex(index);
-  }, [selectedReplyIndex]);
+  }, []);
+
+  const selectReplyOption = useCallback(
+    (index: number) => {
+      const replySnapshot = replyOptions[index] ?? "";
+      setReplyOptions((previous) => {
+        if (selectedReplyIndex === null) {
+          return previous;
+        }
+        return previous.map((reply, i) =>
+          i === selectedReplyIndex ? editedReplyDraftRef.current : reply,
+        );
+      });
+      setSelectedReplyIndex(index);
+      updateMemory(liveTone, replySnapshot);
+    },
+    [liveTone, replyOptions, selectedReplyIndex, updateMemory],
+  );
 
   const generateReplyOptions = useCallback(async (options?: { skipUsageIncrement?: boolean }) => {
       setIsThinking(true);
@@ -360,9 +427,9 @@ return () => clearTimeout(timeout);
         setLanguageChangeHint("");
         setIsGeneratingReplies(true);
         setReplyOptions([
-          generatePreviewReply(liveTone, 0, emailContent),
-          generatePreviewReply(liveTone, 1, emailContent),
-          generatePreviewReply(liveTone, 2, emailContent),
+          generatePreviewReply(liveTone, 0, emailContent, memoryProfile),
+          generatePreviewReply(liveTone, 1, emailContent, memoryProfile),
+          generatePreviewReply(liveTone, 2, emailContent, memoryProfile),
         ]);
         setSelectedReplyIndex(null);
         setEditedReplyDraft("");
@@ -395,6 +462,7 @@ return () => clearTimeout(timeout);
               stream: true,
               intent,
               personality,
+              memory: memoryProfile,
             }),
           });
         } catch (error) {
@@ -581,7 +649,15 @@ return () => clearTimeout(timeout);
         }
       }
     },
-    [emailContent, incrementGeneratedRepliesCount, liveTone, tone, ui.emailActions, userName],
+    [
+      emailContent,
+      incrementGeneratedRepliesCount,
+      liveTone,
+      memoryProfile,
+      tone,
+      ui.emailActions,
+      userName,
+    ],
   );
 
   const generateReplyOptionsRef = useRef(generateReplyOptions);
@@ -1135,6 +1211,9 @@ if (distance < 6) {
     <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-[#EEF2FF] border border-[#6366F1]/20">
       <span className="text-[10px] font-semibold text-[#6366F1] uppercase tracking-wide">
         Recommended
+        {memoryProfile ? (
+          <span className="ml-2 text-[9px] font-normal normal-case text-gray-400">(learned)</span>
+        ) : null}
       </span>
       <span className="text-[10px] text-gray-500">
         Fastest + most natural reply
