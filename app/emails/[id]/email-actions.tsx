@@ -103,27 +103,74 @@ function ensureThreeReplies(
     out[2] ?? fallbackReplies[2],
   ];
 }
-function generatePreviewReply(tone: number, index: number) {
+
+function detectIntent(text: string) {
+  const lower = text.toLowerCase();
+
+  if (lower.includes("approve") || lower.includes("ok to proceed")) return "approval";
+  if (lower.includes("issue") || lower.includes("problem") || lower.includes("not working"))
+    return "problem";
+  if (lower.includes("schedule") || lower.includes("meeting")) return "scheduling";
+  if (lower.includes("thanks") || lower.includes("thank you")) return "gratitude";
+
+  return "general";
+}
+
+function buildPersonality(tone: number, intent: string) {
+  const intentLine =
+    intent === "approval"
+      ? " Intent: approval / go-ahead — prioritize brevity and clear confirmation."
+      : intent === "problem"
+        ? " Intent: problem — acknowledge clearly; avoid dismissive phrasing."
+        : intent === "scheduling"
+          ? " Intent: scheduling — be concrete about availability when relevant."
+          : intent === "gratitude"
+            ? " Intent: gratitude — brief, genuine reciprocity when appropriate."
+            : "";
+
+  if (tone < 30) {
+    return {
+      style: "direct",
+      rules: `Be concise, clear, no fluff, confident, minimal words.${intentLine}`,
+    };
+  }
+
+  if (tone < 70) {
+    return {
+      style: "balanced",
+      rules: `Be natural, polite, slightly warm, professional.${intentLine}`,
+    };
+  }
+
+  return {
+    style: "friendly",
+    rules: `Be warm, human, engaging, slightly expressive but still professional.${intentLine}`,
+  };
+}
+
+function generatePreviewReply(tone: number, index: number, emailBody: string) {
+  const _intent = detectIntent(emailBody);
+
   if (tone < 30) {
     return [
-      "Sounds good.",
-      "Approved.",
-      "Go ahead."
+      "Sounds good. Approved.",
+      "Proceed with this.",
+      "This works. Go ahead.",
     ][index];
   }
 
   if (tone < 70) {
     return [
-      "That works for me.",
-      "I’m okay with this.",
-      "Let’s move forward."
+      "This looks good to me. Happy to proceed.",
+      "I’m aligned with this. Let’s move forward.",
+      "Thanks for sharing — this works well.",
     ][index];
   }
 
   return [
-    "Hey! That sounds great 😊",
-    "I love this idea, let’s do it!",
-    "Yes!! This works perfectly 🙌"
+    "This looks great — really appreciate the effort here!",
+    "Love this direction, happy to move forward 😊",
+    "Thanks for putting this together, it looks fantastic!",
   ][index];
 }
 
@@ -313,15 +360,24 @@ return () => clearTimeout(timeout);
         setLanguageChangeHint("");
         setIsGeneratingReplies(true);
         setReplyOptions([
-          generatePreviewReply(liveTone, 0),
-          generatePreviewReply(liveTone, 1),
-          generatePreviewReply(liveTone, 2),
+          generatePreviewReply(liveTone, 0, emailContent),
+          generatePreviewReply(liveTone, 1, emailContent),
+          generatePreviewReply(liveTone, 2, emailContent),
         ]);
         setSelectedReplyIndex(null);
         setEditedReplyDraft("");
         editedReplyDraftRef.current = "";
-        setStatusMessage(ui.emailActions.statusPreparing);
+        setStatusMessage(
+          liveTone < 30
+            ? "Generating direct reply..."
+            : liveTone < 70
+              ? "Crafting balanced response..."
+              : "Writing a warm, human reply...",
+        );
         setStreamedReplies([]);
+
+        const intent = detectIntent(emailContent);
+        const personality = buildPersonality(liveTone, intent);
 
         let response: Response;
         try {
@@ -337,6 +393,8 @@ return () => clearTimeout(timeout);
               tone: mapTone(tone),
               language,
               stream: true,
+              intent,
+              personality,
             }),
           });
         } catch (error) {
@@ -409,6 +467,10 @@ return () => clearTimeout(timeout);
                     const i = parsed.index;
                     if (i >= 0 && i < 3) {
                       replies[i] += parsed.text;
+                      const variation = Math.random();
+                      if (variation > 0.8) {
+                        replies[i] += "";
+                      }
                       setReplyOptions([...replies]);
                       setStreamedReplies([...replies]);
                     }
@@ -1056,7 +1118,8 @@ if (distance < 6) {
             {replyOptions.map((reply, index) => {
               const isSelected = selectedReplyIndex === index;
               const isRecommended = index === 0;
-              const confidence = isRecommended ? 92 : Math.floor(Math.random() * 10) + 80;
+              const confidence =
+                isRecommended ? 92 : 85 + Math.floor((liveTone / 100) * 10);
               const isPartial =
                 isStreaming &&
                 (streamedReplies[index] ?? reply).length < 20;

@@ -6,7 +6,26 @@ type ReplyRequestBody = {
   tone?: "casual" | "professional" | "friendly";
   language?: "english" | "italian" | "spanish" | "french" | "german";
   stream?: boolean;
+  intent?: string;
+  personality?: { style?: string; rules?: string };
 };
+
+function replyContextAppendix(
+  intent: string | undefined,
+  personality: ReplyRequestBody["personality"],
+): string {
+  const parts: string[] = [];
+  if (intent) {
+    parts.push(`Inferred email intent: ${intent}. Adapt goals and phrasing to match this intent.`);
+  }
+  if (personality?.style && personality?.rules) {
+    parts.push(`Personality (${personality.style}): ${personality.rules}`);
+  }
+  if (parts.length === 0) {
+    return "";
+  }
+  return `\n\n${parts.join("\n")}`;
+}
 
 function cleanReply(text: string) {
   return text.trim().replace(/^["'\-\d.\)\s]+/, "");
@@ -183,7 +202,10 @@ function createGenerateReplyNdjsonStream(
   languageLabel: string,
   apiKey: string,
   upstreamSignal: AbortSignal,
+  intent: string | undefined,
+  personality: ReplyRequestBody["personality"],
 ): Response {
+  const contextBlock = replyContextAppendix(intent, personality);
   const streamPrompt = `Write 3 different short reply variations to this email.
 
 Rules:
@@ -210,6 +232,7 @@ Tone:
 - calm
 - clear
 - direct
+${contextBlock}
 
 Email:
 ${email}`;
@@ -409,8 +432,12 @@ export async function POST(request: Request) {
       languageLabel,
       apiKey,
       request.signal,
+      body.intent,
+      body.personality,
     );
   }
+
+  const contextBlock = replyContextAppendix(body.intent, body.personality);
 
   const prompt =
     mode === "refine"
@@ -469,6 +496,7 @@ Tone:
 - calm
 - clear
 - direct
+${contextBlock}
 
 Return valid JSON only in this exact shape:
 {"replies":["recommended reply","alternate 1","alternate 2"]}
