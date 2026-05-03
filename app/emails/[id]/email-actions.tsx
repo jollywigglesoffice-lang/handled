@@ -908,24 +908,6 @@ if (distance < 6) {
   setIsSnapping(true);
   setTimeout(() => setIsSnapping(false), 120);
 }
-    // live UI update
-    setLiveTone(raw);
-  
-    const closest = SNAP_POINTS.reduce((prev, curr) =>
-      Math.abs(curr - raw) < Math.abs(prev - raw) ? curr : prev
-    );
-  
-    const distance = Math.abs(raw - closest);
-  
-    // magnetic snapping
-    if (distance < 8) {
-      setLiveTone(closest);
-  
-      setIsSnapping(true);
-      setTimeout(() => setIsSnapping(false), 120);
-  
-      return;
-    }
   }}
   onInput={() => generateReplyOptions()}
   onMouseUp={() => {
