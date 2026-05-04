@@ -267,6 +267,30 @@ function generatePreviewReply(
   ][index];
 }
 
+function getFallbackReplies(currentTone: number) {
+  if (currentTone < 30) {
+    return [
+      "Approved. Please go ahead.",
+      "This works for me. You can proceed.",
+      "Confirmed. Please move forward with this.",
+    ];
+  }
+
+  if (currentTone < 70) {
+    return [
+      "Thanks for sending this over. This looks good to me.",
+      "I've reviewed this and I'm happy to move forward.",
+      "Thanks, this works for me. Please proceed.",
+    ];
+  }
+
+  return [
+    "Thanks for putting this together — this looks great to me.",
+    "I really appreciate the update. This works well, please go ahead.",
+    "Thanks for sharing this. I'm happy with the direction and you can move forward.",
+  ];
+}
+
 function getContextHint(
   emailContent: string,
   labels: { quickApproval: string; lowPriority: string; needsResponse: string },
@@ -327,6 +351,7 @@ export function EmailActions({
   const previousEmailIdRef = useRef(emailId);
   const generateFetchAbortRef = useRef<AbortController | null>(null);
   const generateRunIdRef = useRef(0);
+  const lastAutoGenerateKeyRef = useRef<string | null>(null);
   const regenerateGlowTimerRef = useRef<number | null>(null);
   const [tone, setTone] = useState(50);
   const [liveTone, setLiveTone] = useState(50);
@@ -576,12 +601,24 @@ return () => clearTimeout(timeout);
         usageCount,
       });
 
-      const previewReplies = [
-        generatePreviewReply(liveTone, 0, emailContent, memoryProfile),
-        generatePreviewReply(liveTone, 1, emailContent, memoryProfile),
-        generatePreviewReply(liveTone, 2, emailContent, memoryProfile),
-      ];
-      setReplyOptions(previewReplies);
+      const fallbackReplies = getFallbackReplies(liveTone);
+      setReplyOptions((current) => {
+        if (current.length > 0) return current;
+        return fallbackReplies;
+      });
+
+      let primeFirstReply: string | null = null;
+      setSelectedReplyIndex((prev) => {
+        if (prev === null) {
+          primeFirstReply = fallbackReplies[0];
+          return 0;
+        }
+        return prev;
+      });
+      if (primeFirstReply !== null) {
+        setEditedReplyDraft(primeFirstReply);
+        editedReplyDraftRef.current = primeFirstReply;
+      }
 
       setIsThinking(true);
       const language = workflowReplyLanguageRef.current;
@@ -598,9 +635,14 @@ return () => clearTimeout(timeout);
       try {
         setLanguageChangeHint("");
         setIsGeneratingReplies(true);
-        setSelectedReplyIndex(null);
-        setEditedReplyDraft("");
-        editedReplyDraftRef.current = "";
+        const previewReplies = [
+          generatePreviewReply(liveTone, 0, emailContent, memoryProfile),
+          generatePreviewReply(liveTone, 1, emailContent, memoryProfile),
+          generatePreviewReply(liveTone, 2, emailContent, memoryProfile),
+        ];
+        setReplyOptions(previewReplies);
+        setEditedReplyDraft(previewReplies[0] ?? "");
+        editedReplyDraftRef.current = previewReplies[0] ?? "";
         setStatusMessage(
           liveTone < 30
             ? "Generating direct reply..."
@@ -827,15 +869,19 @@ return () => clearTimeout(timeout);
           return;
         }
         console.error("generateReplyOptions failed", error);
-        setReplyOptions((current) => (current.length ? current : previewReplies));
+        setReplyOptions((current) => (current.length > 0 ? current : fallbackReplies));
+        setSelectedReplyIndex((current) => current ?? 0);
+        setEditedReplyDraft((draft) => {
+          const next = draft.trim() ? draft : fallbackReplies[0];
+          editedReplyDraftRef.current = next;
+          return next;
+        });
         setStatusMessage("Showing quick reply suggestions.");
       } finally {
         window.clearTimeout(timeoutId);
-        if (runId === generateRunIdRef.current) {
-          setIsThinking(false);
-          setIsGeneratingReplies(false);
-          setIsStreaming(false);
-        }
+        setIsThinking(false);
+        setIsGeneratingReplies(false);
+        setIsStreaming(false);
       }
     },
     [
@@ -856,13 +902,31 @@ return () => clearTimeout(timeout);
     if (!authUser?.id) return;
     if (!emailContent) return;
     if (replyOptions.length > 0) return;
+
+    const fallbackReplies = getFallbackReplies(liveTone);
+    setReplyOptions(fallbackReplies);
+    setSelectedReplyIndex(0);
+    setEditedReplyDraft(fallbackReplies[0]);
+    editedReplyDraftRef.current = fallbackReplies[0];
+  }, [authUser?.id, emailContent, liveTone, replyOptions.length]);
+
+  useEffect(() => {
+    if (!authUser?.id) {
+      lastAutoGenerateKeyRef.current = null;
+      return;
+    }
+    if (!emailContent) return;
     if (isGeneratingReplies || isThinking || isStreaming) return;
+
+    const key = `${authUser.id}:${emailId}`;
+    if (lastAutoGenerateKeyRef.current === key) return;
+    lastAutoGenerateKeyRef.current = key;
 
     void generateReplyOptions({ skipUsageIncrement: true });
   }, [
     authUser?.id,
+    emailId,
     emailContent,
-    replyOptions.length,
     isGeneratingReplies,
     isThinking,
     isStreaming,
@@ -1176,8 +1240,9 @@ return () => clearTimeout(timeout);
     }
 
     if (authMode === "signup") {
+      setAuthPassword("");
       setAuthNotice(
-        "Account created! Please check your email and confirm your account before signing in.",
+        "Account created! Please check your email to confirm your account. After confirming, come back here and sign in.",
       );
       if (!result.data.session) {
         setAuthUser(null);
@@ -1230,7 +1295,7 @@ return () => clearTimeout(timeout);
             </div>
           ) : null}
           {authNotice ? (
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium leading-relaxed text-indigo-700">
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold leading-relaxed text-indigo-700">
               {authNotice}
             </div>
           ) : null}
@@ -1367,7 +1432,7 @@ return () => clearTimeout(timeout);
 
           {replyOptions.length === 0 && !isGeneratingReplies && !isThinking ? (
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-              No replies yet. Click &quot;Edit Reply&quot; to generate suggestions.
+              No reply suggestions are showing yet. Try refreshing or clicking Edit Reply.
             </div>
           ) : null}
 
