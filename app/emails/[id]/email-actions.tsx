@@ -432,6 +432,8 @@ export function EmailActions({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId }),
+    }).catch((error) => {
+      console.error("create-user frontend error", error);
     });
   }, [userId]);
 
@@ -449,6 +451,7 @@ export function EmailActions({
       })
       .catch((error) => {
         console.error("get-user frontend error", error);
+        setIsPro(false);
       });
   }, [userId]);
 
@@ -562,7 +565,7 @@ return () => clearTimeout(timeout);
       if (userId === null) {
         return;
       }
-      if (!isPro && usageCount >= FREE_LIMIT) {
+      if (!options?.skipUsageIncrement && !isPro && usageCount >= FREE_LIMIT) {
         trackEvent("limit_reached");
         setStatusMessage("You're out of free replies for today.");
         setShowUpgrade(true);
@@ -572,17 +575,14 @@ return () => clearTimeout(timeout);
         tone: liveTone,
         usageCount,
       });
-      if (!isPro) {
-        setUsageCount((prev) => {
-          const next = prev + 1;
-          if (typeof window !== "undefined") {
-            const timeKey = `usage_time_${userId}`;
-            localStorage.setItem(`usage_${userId}`, next.toString());
-            localStorage.setItem(timeKey, Date.now().toString());
-          }
-          return next;
-        });
-      }
+
+      const previewReplies = [
+        generatePreviewReply(liveTone, 0, emailContent, memoryProfile),
+        generatePreviewReply(liveTone, 1, emailContent, memoryProfile),
+        generatePreviewReply(liveTone, 2, emailContent, memoryProfile),
+      ];
+      setReplyOptions(previewReplies);
+
       setIsThinking(true);
       const language = workflowReplyLanguageRef.current;
       const fallbackTriple = getClientFallbackReplies(language);
@@ -598,11 +598,6 @@ return () => clearTimeout(timeout);
       try {
         setLanguageChangeHint("");
         setIsGeneratingReplies(true);
-        setReplyOptions([
-          generatePreviewReply(liveTone, 0, emailContent, memoryProfile),
-          generatePreviewReply(liveTone, 1, emailContent, memoryProfile),
-          generatePreviewReply(liveTone, 2, emailContent, memoryProfile),
-        ]);
         setSelectedReplyIndex(null);
         setEditedReplyDraft("");
         editedReplyDraftRef.current = "";
@@ -737,6 +732,18 @@ return () => clearTimeout(timeout);
             );
             if (!options?.skipUsageIncrement) {
               incrementGeneratedRepliesCount();
+              if (!isPro) {
+                setUsageCount((prev) => {
+                  const next = prev + 1;
+                  if (typeof window !== "undefined") {
+                    const storageKey = `usage_${userId}`;
+                    const timeKey = `usage_time_${userId}`;
+                    localStorage.setItem(storageKey, next.toString());
+                    localStorage.setItem(timeKey, Date.now().toString());
+                  }
+                  return next;
+                });
+              }
             }
           } catch (e) {
             console.error(e);
@@ -802,22 +809,32 @@ return () => clearTimeout(timeout);
         setStatusMessage(ui.emailActions.statusChooseReply);
         if (!options?.skipUsageIncrement) {
           incrementGeneratedRepliesCount();
+          if (!isPro) {
+            setUsageCount((prev) => {
+              const next = prev + 1;
+              if (typeof window !== "undefined") {
+                const storageKey = `usage_${userId}`;
+                const timeKey = `usage_time_${userId}`;
+                localStorage.setItem(storageKey, next.toString());
+                localStorage.setItem(timeKey, Date.now().toString());
+              }
+              return next;
+            });
+          }
         }
       } catch (error) {
         if (runId !== generateRunIdRef.current) {
           return;
         }
-        console.error("[EmailActions] Unexpected error while generating replies", error);
-        setStatusMessage(ui.emailActions.statusUnexpectedFallback);
-        const triple = ensureThreeReplies([], fallbackTriple);
-        setReplyOptions([...triple]);
-        setStreamedReplies([...triple]);
-        setSelectedReplyIndex(0);
+        console.error("generateReplyOptions failed", error);
+        setReplyOptions((current) => (current.length ? current : previewReplies));
+        setStatusMessage("Showing quick reply suggestions.");
       } finally {
         window.clearTimeout(timeoutId);
         if (runId === generateRunIdRef.current) {
-          setIsGeneratingReplies(false);
           setIsThinking(false);
+          setIsGeneratingReplies(false);
+          setIsStreaming(false);
         }
       }
     },
@@ -834,6 +851,23 @@ return () => clearTimeout(timeout);
       userName,
     ],
   );
+
+  useEffect(() => {
+    if (!authUser?.id) return;
+    if (!emailContent) return;
+    if (replyOptions.length > 0) return;
+    if (isGeneratingReplies || isThinking || isStreaming) return;
+
+    void generateReplyOptions({ skipUsageIncrement: true });
+  }, [
+    authUser?.id,
+    emailContent,
+    replyOptions.length,
+    isGeneratingReplies,
+    isThinking,
+    isStreaming,
+    generateReplyOptions,
+  ]);
 
   const generateReplyOptionsRef = useRef(generateReplyOptions);
 
@@ -872,7 +906,7 @@ return () => clearTimeout(timeout);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
-      void generateReplyOptionsRef.current();
+      void generateReplyOptionsRef.current({ skipUsageIncrement: true });
     }, 0);
 
     return () => {
@@ -1266,7 +1300,9 @@ return () => clearTimeout(timeout);
         <button
           type="button"
           onClick={() => replyDraftTextareaRef.current?.focus()}
-          disabled={selectedReplyIndex === null || replyOptions.length === 0}
+          disabled={
+            replyOptions.length === 0 || isGeneratingReplies || isThinking
+          }
           className="rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#0F172A] transition-all duration-200 hover:bg-[#F1F5F9] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {ui.emailActions.editReplyButton}
@@ -1287,8 +1323,7 @@ return () => clearTimeout(timeout);
         </button>
       </div>
 
-      {isGeneratingReplies || replyOptions.length > 0 ? (
-        <div className="space-y-4 border-t border-gray-200 pt-5">
+      <div className="space-y-4 border-t border-gray-200 pt-5">
           <div className="max-w-md space-y-2">
             <label
               htmlFor="workflow-reply-language"
@@ -1330,7 +1365,12 @@ return () => clearTimeout(timeout);
             </div>
           ) : null}
 
-         
+          {replyOptions.length === 0 && !isGeneratingReplies && !isThinking ? (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+              No replies yet. Click &quot;Edit Reply&quot; to generate suggestions.
+            </div>
+          ) : null}
+
           {replyOptions.length > 0 ? (
             <div className="space-y-3">
           <p className="text-xs font-medium uppercase tracking-[0.08em] text-gray-500">
@@ -1706,7 +1746,6 @@ if (distance < 6) {
             </div>
           ) : null}
         </div>
-      ) : null}
 
       {statusMessage ? (
         <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-sm leading-relaxed text-gray-500">
