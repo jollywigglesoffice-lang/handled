@@ -1120,6 +1120,7 @@ return () => clearTimeout(timeout);
     const appUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
       (typeof window !== "undefined" ? window.location.origin : "");
+    const emailRedirectTo = `${appUrl}/auth/confirmed`;
 
     const result =
       authMode === "signup"
@@ -1127,7 +1128,7 @@ return () => clearTimeout(timeout);
             email: authEmail,
             password: authPassword,
             options: {
-              emailRedirectTo: appUrl,
+              emailRedirectTo,
             },
           })
         : await supabaseBrowser.auth.signInWithPassword({
@@ -1140,12 +1141,15 @@ return () => clearTimeout(timeout);
       return;
     }
 
-    if (authMode === "signup" && !result.data.session) {
+    if (authMode === "signup") {
       setAuthNotice(
-        "Account created. Please check your email to confirm your account, then come back and sign in.",
+        "Account created! Please check your email and confirm your account before signing in.",
       );
-      setAuthUser(null);
-      return;
+      if (!result.data.session) {
+        setAuthUser(null);
+        return;
+      }
+      setAuthNotice("");
     }
 
     setAuthUser(result.data.session?.user ?? result.data.user ?? null);
@@ -1186,8 +1190,16 @@ return () => clearTimeout(timeout);
             autoComplete={authMode === "login" ? "current-password" : "new-password"}
           />
 
-          {authError ? <p className="text-xs text-red-500">{authError}</p> : null}
-          {authNotice ? <p className="text-xs text-indigo-600">{authNotice}</p> : null}
+          {authError ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium leading-relaxed text-red-700">
+              {authError}
+            </div>
+          ) : null}
+          {authNotice ? (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium leading-relaxed text-indigo-700">
+              {authNotice}
+            </div>
+          ) : null}
 
           <button
             type="button"
