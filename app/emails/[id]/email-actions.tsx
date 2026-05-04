@@ -313,6 +313,7 @@ export function EmailActions({
   const [authPassword, setAuthPassword] = useState("");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authError, setAuthError] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
 
   const userId = authUser?.id ?? null;
 
@@ -430,7 +431,6 @@ export function EmailActions({
     void fetch("/api/create-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
       body: JSON.stringify({ userId }),
     });
   }, [userId]);
@@ -442,18 +442,14 @@ export function EmailActions({
       return;
     }
 
-    const ac = new AbortController();
-    void fetch(`/api/get-user?userId=${encodeURIComponent(userId)}`, {
-      signal: ac.signal,
-      credentials: "same-origin",
-    })
-      .then((res) => res.json() as Promise<{ isPro?: boolean }>)
-      .then((data) => {
+    void fetch(`/api/get-user?userId=${encodeURIComponent(userId)}`)
+      .then((res) => res.json())
+      .then((data: { isPro?: boolean }) => {
         setIsPro(Boolean(data.isPro));
       })
-      .catch(() => {});
-
-    return () => ac.abort();
+      .catch((error) => {
+        console.error("get-user frontend error", error);
+      });
   }, [userId]);
 
   useEffect(() => {
@@ -1114,17 +1110,25 @@ return () => clearTimeout(timeout);
 
   async function handleAuthSubmit() {
     setAuthError("");
+    setAuthNotice("");
 
     if (!authEmail || !authPassword) {
       setAuthError("Enter your email and password.");
       return;
     }
 
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (typeof window !== "undefined" ? window.location.origin : "");
+
     const result =
       authMode === "signup"
         ? await supabaseBrowser.auth.signUp({
             email: authEmail,
             password: authPassword,
+            options: {
+              emailRedirectTo: appUrl,
+            },
           })
         : await supabaseBrowser.auth.signInWithPassword({
             email: authEmail,
@@ -1136,10 +1140,19 @@ return () => clearTimeout(timeout);
       return;
     }
 
-    setAuthUser(result.data.user ?? null);
+    if (authMode === "signup" && !result.data.session) {
+      setAuthNotice(
+        "Account created. Please check your email to confirm your account, then come back and sign in.",
+      );
+      setAuthUser(null);
+      return;
+    }
+
+    setAuthUser(result.data.session?.user ?? result.data.user ?? null);
   }
 
   async function handleLogout() {
+    setAuthNotice("");
     await supabaseBrowser.auth.signOut();
     setAuthUser(null);
   }
@@ -1174,6 +1187,7 @@ return () => clearTimeout(timeout);
           />
 
           {authError ? <p className="text-xs text-red-500">{authError}</p> : null}
+          {authNotice ? <p className="text-xs text-indigo-600">{authNotice}</p> : null}
 
           <button
             type="button"
@@ -1185,7 +1199,11 @@ return () => clearTimeout(timeout);
 
           <button
             type="button"
-            onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}
+            onClick={() => {
+              setAuthMode(authMode === "login" ? "signup" : "login");
+              setAuthNotice("");
+              setAuthError("");
+            }}
             className="w-full text-xs text-gray-400 hover:text-gray-600"
           >
             {authMode === "login"

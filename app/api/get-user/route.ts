@@ -1,39 +1,34 @@
 import { NextResponse } from "next/server";
-import { getSupabase } from "@/lib/supabase";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { supabase } from "@/lib/supabase";
 
 export async function GET(req: Request) {
-  const userId = new URL(req.url).searchParams.get("userId")?.trim();
-  if (!userId) {
-    return NextResponse.json({ isPro: false }, { status: 400 });
+  try {
+    const { searchParams } = new URL(req.url);
+    const userId = searchParams.get("userId");
+
+    if (!userId) {
+      return NextResponse.json({ error: "Missing userId", isPro: false }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+      .from("users")
+      .select("is_pro")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("get-user error", error);
+      return NextResponse.json({ error: error.message, isPro: false }, { status: 500 });
+    }
+
+    if (!data) {
+      await supabase.from("users").upsert({ id: userId });
+      return NextResponse.json({ isPro: false });
+    }
+
+    return NextResponse.json({ isPro: Boolean(data.is_pro) });
+  } catch (error) {
+    console.error("get-user route error", error);
+    return NextResponse.json({ error: "Server error", isPro: false }, { status: 500 });
   }
-
-  const authClient = await createSupabaseServerClient();
-  if (!authClient) {
-    return NextResponse.json({ isPro: false });
-  }
-
-  const {
-    data: { user },
-  } = await authClient.auth.getUser();
-  if (!user?.id || user.id !== userId) {
-    return NextResponse.json({ isPro: false }, { status: 403 });
-  }
-
-  const admin = getSupabase();
-  if (!admin) {
-    return NextResponse.json({ isPro: false });
-  }
-
-  const { data, error } = await admin
-    .from("users")
-    .select("is_pro")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) {
-    return NextResponse.json({ isPro: false });
-  }
-
-  return NextResponse.json({ isPro: Boolean(data?.is_pro) });
 }
