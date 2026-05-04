@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -393,6 +394,16 @@ export function EmailActions({
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [isPro, setIsPro] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
+
+  const emergencyReplies = useMemo(
+    () => [
+      "Thanks for sending this over. This looks good to me.",
+      "I've reviewed this and I'm happy to move forward.",
+      "Thanks, this works for me. Please proceed.",
+    ],
+    [],
+  );
+
   const contextHint = getContextHint(emailContent, {
     quickApproval: ui.emailActions.contextQuickApproval,
     lowPriority: ui.emailActions.contextLowPriority,
@@ -571,19 +582,24 @@ return () => clearTimeout(timeout);
         index,
         tone: liveTone,
       });
-      const replySnapshot = replyOptions[index] ?? "";
+      const selectedReply =
+        replyOptions[index] ?? emergencyReplies[index] ?? emergencyReplies[0];
       setReplyOptions((previous) => {
+        const base =
+          previous.length > 0 ? previous : [...emergencyReplies];
         if (selectedReplyIndex === null) {
-          return previous;
+          return base;
         }
-        return previous.map((reply, i) =>
+        return base.map((reply, i) =>
           i === selectedReplyIndex ? editedReplyDraftRef.current : reply,
         );
       });
       setSelectedReplyIndex(index);
-      updateMemory(liveTone, replySnapshot);
+      setEditedReplyDraft(selectedReply);
+      editedReplyDraftRef.current = selectedReply;
+      updateMemory(liveTone, selectedReply);
     },
-    [liveTone, replyOptions, selectedReplyIndex, updateMemory],
+    [emergencyReplies, liveTone, replyOptions, selectedReplyIndex, updateMemory],
   );
 
   const generateReplyOptions = useCallback(async (options?: { skipUsageIncrement?: boolean }) => {
@@ -1010,6 +1026,16 @@ return () => clearTimeout(timeout);
     };
   }, [sendSuccessMessage]);
 
+  useEffect(() => {
+    if (!authUser?.id) return;
+    if (!emailContent) return;
+    if (selectedReplyIndex !== null) return;
+
+    setSelectedReplyIndex(0);
+    setEditedReplyDraft(emergencyReplies[0]);
+    editedReplyDraftRef.current = emergencyReplies[0];
+  }, [authUser?.id, emailContent, emergencyReplies, selectedReplyIndex]);
+
   async function handleCopyReply() {
     const text = editedReplyDraft.trim();
     if (!text) {
@@ -1260,6 +1286,9 @@ return () => clearTimeout(timeout);
     setAuthUser(null);
   }
 
+  const visibleReplies =
+    replyOptions.length > 0 ? replyOptions : emergencyReplies;
+
   if (!authUser) {
     return (
       <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -1366,7 +1395,7 @@ return () => clearTimeout(timeout);
           type="button"
           onClick={() => replyDraftTextareaRef.current?.focus()}
           disabled={
-            replyOptions.length === 0 || isGeneratingReplies || isThinking
+            visibleReplies.length === 0 || isGeneratingReplies || isThinking
           }
           className="rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#0F172A] transition-all duration-200 hover:bg-[#F1F5F9] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -1430,14 +1459,7 @@ return () => clearTimeout(timeout);
             </div>
           ) : null}
 
-          {replyOptions.length === 0 && !isGeneratingReplies && !isThinking ? (
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-              No reply suggestions are showing yet. Try refreshing or clicking Edit Reply.
-            </div>
-          ) : null}
-
-          {replyOptions.length > 0 ? (
-            <div className="space-y-3">
+          <div className="space-y-3">
           <p className="text-xs font-medium uppercase tracking-[0.08em] text-gray-500">
             {contextHint}
           </p>
@@ -1635,11 +1657,14 @@ if (distance < 6) {
                 Want unlimited replies? Upgrade anytime.
               </div>
             ) : null}
-            {replyOptions.map((reply, index) => {
+            <p className="text-[11px] text-gray-400">
+              Debug: replyOptions={replyOptions.length}, visibleReplies=
+              {visibleReplies.length}, signedIn={authUser?.id ? "yes" : "no"}
+            </p>
+            {visibleReplies.map((reply, index) => {
               const isSelected = selectedReplyIndex === index;
               const isRecommended = index === 0;
-              const confidence =
-                isRecommended ? 92 : 85 + Math.floor((liveTone / 100) * 10);
+              const confidence = isRecommended ? 92 : 85;
               const isPartial =
                 isStreaming &&
                 (streamedReplies[index] ?? reply).length < 20;
@@ -1809,7 +1834,6 @@ if (distance < 6) {
             </p>
           ) : null}
             </div>
-          ) : null}
         </div>
 
       {statusMessage ? (
