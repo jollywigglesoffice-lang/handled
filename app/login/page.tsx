@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,13 +15,14 @@ export default function LoginPage() {
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const supabase = createBrowserSupabaseClient();
-    if (!supabase) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
+    if (!url.startsWith("http") || !key) {
       setError("Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
       return;
     }
     setLoading(true);
-    const { error: signError } = await supabase.auth.signInWithPassword({
+    const { error: signError } = await supabaseBrowser.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
@@ -36,13 +37,14 @@ export default function LoginPage() {
 
   async function handleSignUp() {
     setError(null);
-    const supabase = createBrowserSupabaseClient();
-    if (!supabase) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
+    if (!url.startsWith("http") || !key) {
       setError("Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
       return;
     }
     setLoading(true);
-    const { error: signError } = await supabase.auth.signUp({
+    const { error: signError } = await supabaseBrowser.auth.signUp({
       email: email.trim(),
       password,
     });

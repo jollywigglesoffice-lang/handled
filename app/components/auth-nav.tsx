@@ -1,31 +1,23 @@
 "use client";
 
-import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { LogoutButton } from "@/app/components/logout-button";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export function AuthNav() {
   const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
-    const supabase = createBrowserSupabaseClient();
-    if (!supabase) {
-      return;
-    }
-
     const sync = async () => {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await supabaseBrowser.auth.getSession();
       setSignedIn(Boolean(data.session?.user));
     };
     void sync();
 
-    const { data } = supabase.auth.onAuthStateChange(
-      (_event: AuthChangeEvent, session: Session | null) => {
-        setSignedIn(Boolean(session?.user));
-      },
-    );
+    const { data } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+      setSignedIn(Boolean(session?.user));
+    });
 
     return () => {
       data.subscription.unsubscribe();

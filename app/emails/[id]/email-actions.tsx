@@ -467,28 +467,39 @@ export function EmailActions({
     let mounted = true;
 
     async function loadUser() {
-      const { data: userData } = await supabaseBrowser.auth.getUser();
-      const { data: sessionData } = await supabaseBrowser.auth.getSession();
+      try {
+        const { data: sessionData } = await supabaseBrowser.auth.getSession();
+        const sessionUser = sessionData.session?.user ?? null;
 
-      const user = userData.user ?? sessionData.session?.user ?? null;
+        if (sessionUser) {
+          if (!mounted) return;
+          setAuthUser(sessionUser);
+          return;
+        }
 
-      if (!mounted) return;
+        const { data: userData } = await supabaseBrowser.auth.getUser();
 
-      setAuthUser(user);
+        if (!mounted) return;
+
+        setAuthUser(userData.user ?? null);
+      } catch (error) {
+        console.error("email actions auth load error", error);
+        if (!mounted) return;
+        setAuthUser(null);
+      }
     }
 
     void loadUser();
 
-    const {
-      data: { subscription },
-    } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      setAuthUser(session?.user ?? null);
-    });
+    const { data: listener } = supabaseBrowser.auth.onAuthStateChange(
+      (_event, session) => {
+        setAuthUser(session?.user ?? null);
+      },
+    );
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      listener.subscription.unsubscribe();
     };
   }, []);
 
@@ -1357,10 +1368,10 @@ return () => clearTimeout(timeout);
       return;
     }
 
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      (typeof window !== "undefined" ? window.location.origin : "");
-    const emailRedirectTo = `${appUrl}/auth/confirmed`;
+    const emailRedirectTo =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/auth/confirmed`
+        : "";
 
     const result =
       authMode === "signup"

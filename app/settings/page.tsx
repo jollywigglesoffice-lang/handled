@@ -57,33 +57,46 @@ export default function SettingsPage() {
     }
 
     async function loadUser() {
-      const { data: userData } = await supabaseBrowser.auth.getUser();
-      const { data: sessionData } = await supabaseBrowser.auth.getSession();
+      try {
+        const { data: sessionData } = await supabaseBrowser.auth.getSession();
+        const sessionUser = sessionData.session?.user ?? null;
 
-      const user = userData.user ?? sessionData.session?.user ?? null;
+        if (sessionUser) {
+          if (!mounted) return;
+          setAuthUser(sessionUser);
+          setIsLoading(false);
+          await syncProfileForUser(sessionUser);
+          return;
+        }
 
-      if (!mounted) return;
+        const { data: userData } = await supabaseBrowser.auth.getUser();
 
-      setAuthUser(user);
-      setIsLoading(false);
+        if (!mounted) return;
 
-      await syncProfileForUser(user);
+        setAuthUser(userData.user ?? null);
+        setIsLoading(false);
+        await syncProfileForUser(userData.user ?? null);
+      } catch (error) {
+        console.error("settings auth load error", error);
+        if (!mounted) return;
+        setAuthUser(null);
+        setIsLoading(false);
+      }
     }
 
     void loadUser();
 
-    const {
-      data: { subscription },
-    } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      setAuthUser(session?.user ?? null);
-      setIsLoading(false);
-      void syncProfileForUser(session?.user ?? null);
-    });
+    const { data: listener } = supabaseBrowser.auth.onAuthStateChange(
+      (_event, session) => {
+        setAuthUser(session?.user ?? null);
+        setIsLoading(false);
+        void syncProfileForUser(session?.user ?? null);
+      },
+    );
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      listener.subscription.unsubscribe();
     };
   }, []);
 
@@ -198,6 +211,10 @@ export default function SettingsPage() {
             <h1 className="mt-1 text-3xl font-semibold text-[#0F172A]">Settings</h1>
             <p className="mt-2 text-sm text-gray-500">
               Manage your account, plan, billing, and preferences.
+            </p>
+            <p className="text-[10px] text-gray-400">
+              Auth debug:{" "}
+              {authUser?.email ? `signed in as ${authUser.email}` : "not signed in"}
             </p>
           </div>
 
