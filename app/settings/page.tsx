@@ -275,6 +275,45 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        <section className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+                Coming soon
+              </p>
+
+              <h2 className="mt-1 text-lg font-semibold text-gray-900">
+                Multiple email accounts
+              </h2>
+
+              <p className="mt-2 text-sm leading-relaxed text-gray-500">
+                Soon you&apos;ll be able to connect more than one inbox and manage your work,
+                personal, and business emails from one calm place.
+              </p>
+            </div>
+
+            <span className="rounded-full border border-indigo-100 bg-white px-3 py-1 text-[10px] font-semibold text-indigo-600">
+              In progress
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-2 text-sm text-gray-600 sm:grid-cols-3">
+            <div className="rounded-xl border border-indigo-50 bg-white/70 p-3">
+              ✔ Unified inbox
+            </div>
+            <div className="rounded-xl border border-indigo-50 bg-white/70 p-3">
+              ✔ Separate identities
+            </div>
+            <div className="rounded-xl border border-indigo-50 bg-white/70 p-3">
+              ✔ AI triage
+            </div>
+          </div>
+
+          <p className="mt-4 text-xs text-gray-400">
+            Pro users will get early access when this feature launches.
+          </p>
+        </section>
+
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-900">Usage</h2>
 

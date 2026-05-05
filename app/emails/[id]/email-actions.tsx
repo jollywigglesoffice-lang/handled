@@ -1396,6 +1396,25 @@ return () => clearTimeout(timeout);
         </Link>
       </div>
 
+      {!isPro ? (
+        <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+          Coming soon: connect multiple inboxes and manage all your email accounts in one
+          place.
+          <button
+            type="button"
+            onClick={() => setShowUpgrade(true)}
+            className="ml-1 font-semibold underline"
+          >
+            Pro users get early access.
+          </button>
+        </div>
+      ) : (
+        <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+          Coming soon: multiple inboxes. As a Pro user, you&apos;ll be first in line for early
+          access.
+        </div>
+      )}
+
       <button
         type="button"
         onClick={() => void handleLogout()}
