@@ -344,6 +344,11 @@ export default function SettingsPage() {
           <p className="mt-4 text-xs text-gray-400">
             Pro users will get early access when this feature launches.
           </p>
+
+          <p className="mt-3 text-xs leading-relaxed text-gray-400">
+            Future Gmail integration will focus on drafting and organizing first. Sending will
+            always require your approval.
+          </p>
         </section>
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -416,6 +421,38 @@ export default function SettingsPage() {
         </section>
 
         <PersonalizationSettings />
+
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900">Trust &amp; Safety</h2>
+
+          <div className="mt-4 space-y-3">
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+              <p className="text-sm font-semibold text-emerald-800">You approve every reply</p>
+              <p className="mt-1 text-sm leading-relaxed text-emerald-700">
+                Handled never sends emails without your approval. It helps you draft, refine, and
+                decide faster.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+              <p className="text-sm font-semibold text-gray-800">
+                Your preferences improve your experience
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-gray-500">
+                Your workflow mode, tone settings, and reply habits help Handled make better
+                suggestions for you.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4">
+              <p className="text-sm font-semibold text-indigo-800">Gmail connection is coming</p>
+              <p className="mt-1 text-sm leading-relaxed text-indigo-700">
+                When inbox connection launches, Handled will help you manage multiple email
+                accounts from one calm place.
+              </p>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   );

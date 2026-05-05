@@ -16,6 +16,10 @@ export default function AuthConfirmedPage() {
           Your account is ready. Please return to Handled and sign in to continue.
         </p>
 
+        <p className="mt-3 text-xs leading-relaxed text-gray-400">
+          Handled helps you write better replies faster while keeping you in control.
+        </p>
+
         <Link
           href="/emails/budget-approval-april"
           className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"

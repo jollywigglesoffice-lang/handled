@@ -50,6 +50,13 @@ const PRICING = {
   },
 };
 
+const TRUST_COPY = {
+  neverSend: "Handled never sends emails without your approval.",
+  privacy: "Your preferences are used to improve your replies.",
+  gmailSoon:
+    "When Gmail connection launches, Handled will help draft replies — not send them without permission.",
+};
+
 const workflowLanguageOptions: Array<{ value: ReplyLanguage; label: string }> = [
   { value: "english", label: "English" },
   { value: "italian", label: "Italian" },
@@ -1427,6 +1434,10 @@ return () => clearTimeout(timeout);
           </p>
         </div>
 
+        <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-500">
+          🔒 Handled helps draft replies, but never sends emails without your approval.
+        </div>
+
         <div className="space-y-2">
           <input
             type="email"
@@ -1507,6 +1518,16 @@ return () => clearTimeout(timeout);
         {ui.emailActions.actionsTitle}
       </h2>
 
+      <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs leading-relaxed text-emerald-800">
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5">🔒</span>
+          <div>
+            <p className="font-semibold">You stay in control.</p>
+            <p className="mt-1">{TRUST_COPY.neverSend}</p>
+          </div>
+        </div>
+      </div>
+
       <div className="mb-1 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
         <p className="text-sm font-semibold text-indigo-600">
           {isPro
@@ -1541,10 +1562,10 @@ return () => clearTimeout(timeout);
         <p className="mt-1 text-xs text-gray-500">{workflowBehavior.explanation}</p>
 
         {workflowMode === "handle" ? (
-          <p className="mt-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-[11px] text-gray-500">
-            Safety note: Handled prepares the response, but never sends anything without your
-            approval.
-          </p>
+          <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+            Even in Handle It For Me mode, Handled prepares the response but never sends anything
+            without your approval.
+          </div>
         ) : null}
       </div>
 
@@ -2066,6 +2087,11 @@ if (distance < 6) {
                 ))}
               </ul>
             </div>
+
+            <p className="mt-3 rounded-xl bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-500">
+              🔒 Pro gives you unlimited reply help. You still approve every response before
+              anything is sent.
+            </p>
 
             <button
               type="button"
