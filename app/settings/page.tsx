@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [activationMessage, setActivationMessage] = useState("");
 
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(() => {
     if (typeof window === "undefined") return "assist";
@@ -35,6 +36,13 @@ export default function SettingsPage() {
     }
   }
 
+  async function refreshUserProfile(userId: string) {
+    const res = await fetch(`/api/get-user?userId=${encodeURIComponent(userId)}`);
+    const profile = (await res.json()) as { isPro?: boolean };
+    setIsPro(Boolean(profile.isPro));
+    return Boolean(profile.isPro);
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -46,10 +54,8 @@ export default function SettingsPage() {
         return;
       }
       try {
-        const res = await fetch(`/api/get-user?userId=${encodeURIComponent(user.id)}`);
-        const profile = (await res.json()) as { isPro?: boolean };
+        await refreshUserProfile(user.id);
         if (!mounted) return;
-        setIsPro(Boolean(profile.isPro));
         setUsageCount(readUsageCountWithDailyReset(user.id));
       } catch (error) {
         if (!mounted) return;
@@ -100,6 +106,41 @@ export default function SettingsPage() {
       listener.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!authUser?.id) return;
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const upgraded = params.get("upgraded");
+
+    if (upgraded !== "true") return;
+
+    setActivationMessage("Payment received. Activating Pro...");
+
+    let attempts = 0;
+
+    const interval = window.setInterval(async () => {
+      attempts += 1;
+
+      const active = await refreshUserProfile(authUser.id);
+
+      if (active) {
+        setActivationMessage("Pro is active 🎉");
+        window.clearInterval(interval);
+        return;
+      }
+
+      if (attempts >= 10) {
+        setActivationMessage(
+          "Payment succeeded, but Pro is still activating. Refresh in a moment.",
+        );
+        window.clearInterval(interval);
+      }
+    }, 2000);
+
+    return () => window.clearInterval(interval);
+  }, [authUser?.id]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -246,6 +287,12 @@ export default function SettingsPage() {
             Back to inbox
           </Link>
         </header>
+
+        {activationMessage ? (
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700">
+            {activationMessage}
+          </div>
+        ) : null}
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-4">

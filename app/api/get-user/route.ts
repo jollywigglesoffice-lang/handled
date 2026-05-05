@@ -12,7 +12,7 @@ export async function GET(req: Request) {
 
     const { data, error } = await supabase
       .from("users")
-      .select("is_pro")
+      .select("is_pro, stripe_customer_id")
       .eq("id", userId)
       .maybeSingle();
 
@@ -23,10 +23,13 @@ export async function GET(req: Request) {
 
     if (!data) {
       await supabase.from("users").upsert({ id: userId });
-      return NextResponse.json({ isPro: false });
+      return NextResponse.json({ isPro: false, stripeCustomerId: null });
     }
 
-    return NextResponse.json({ isPro: Boolean(data.is_pro) });
+    return NextResponse.json({
+      isPro: Boolean(data.is_pro),
+      stripeCustomerId: data.stripe_customer_id || null,
+    });
   } catch (error) {
     console.error("get-user route error", error);
     return NextResponse.json({ error: "Server error", isPro: false }, { status: 500 });

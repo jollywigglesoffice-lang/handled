@@ -475,7 +475,13 @@ export function EmailActions({
 
     async function loadUser() {
       try {
-        const { data: sessionData } = await supabaseBrowser.auth.getSession();
+        const { data: sessionData, error: sessionError } =
+          await supabaseBrowser.auth.getSession();
+
+        if (sessionError) {
+          console.error("email page getSession error", sessionError);
+        }
+
         const sessionUser = sessionData.session?.user ?? null;
 
         if (sessionUser) {
@@ -484,13 +490,17 @@ export function EmailActions({
           return;
         }
 
-        const { data: userData } = await supabaseBrowser.auth.getUser();
+        const { data: userData, error: userError } = await supabaseBrowser.auth.getUser();
+
+        if (userError) {
+          console.error("email page getUser error", userError);
+        }
 
         if (!mounted) return;
 
         setAuthUser(userData.user ?? null);
       } catch (error) {
-        console.error("email actions auth load error", error);
+        console.error("email page auth load failed", error);
         if (!mounted) return;
         setAuthUser(null);
       }
@@ -1382,19 +1392,29 @@ return () => clearTimeout(timeout);
         ? `${window.location.origin}/auth/confirmed`
         : "";
 
-    const result =
-      authMode === "signup"
-        ? await supabaseBrowser.auth.signUp({
-            email: authEmail,
-            password: authPassword,
-            options: {
-              emailRedirectTo,
-            },
-          })
-        : await supabaseBrowser.auth.signInWithPassword({
-            email: authEmail,
-            password: authPassword,
-          });
+    let result:
+      | Awaited<ReturnType<typeof supabaseBrowser.auth.signUp>>
+      | Awaited<ReturnType<typeof supabaseBrowser.auth.signInWithPassword>>;
+
+    try {
+      result =
+        authMode === "signup"
+          ? await supabaseBrowser.auth.signUp({
+              email: authEmail,
+              password: authPassword,
+              options: {
+                emailRedirectTo,
+              },
+            })
+          : await supabaseBrowser.auth.signInWithPassword({
+              email: authEmail,
+              password: authPassword,
+            });
+    } catch (error) {
+      console.error("email auth submit failed", error);
+      setAuthError("Could not connect to authentication. Please refresh and try again.");
+      return;
+    }
 
     if (result.error) {
       setAuthError(result.error.message);

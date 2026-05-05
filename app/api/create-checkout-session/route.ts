@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { supabase } from "@/lib/supabase";
 
 export async function POST(req: Request) {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -31,10 +32,42 @@ export async function POST(req: Request) {
       apiVersion: "2026-04-22.dahlia",
     });
 
+    let customerId: string | undefined;
+
+    const { data: existingUser } = await supabase
+      .from("users")
+      .select("stripe_customer_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    customerId = existingUser?.stripe_customer_id || undefined;
+
+    if (!customerId) {
+      const customers = await stripe.customers.list({
+        email,
+        limit: 1,
+      });
+
+      customerId = customers.data[0]?.id;
+
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email,
+          metadata: { userId },
+        });
+        customerId = customer.id;
+      }
+
+      await supabase.from("users").upsert({
+        id: userId,
+        stripe_customer_id: customerId,
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
+      customer: customerId,
       payment_method_types: ["card"],
-      customer_email: email,
       line_items: [
         {
           price_data: {
@@ -53,6 +86,11 @@ export async function POST(req: Request) {
       ],
       metadata: {
         userId,
+      },
+      subscription_data: {
+        metadata: {
+          userId,
+        },
       },
       success_url: `${appUrl}/settings?upgraded=true`,
       cancel_url: `${appUrl}/settings?canceled=true`,
