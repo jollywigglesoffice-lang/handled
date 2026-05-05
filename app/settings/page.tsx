@@ -5,16 +5,34 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { FREE_LIMIT, readUsageCountWithDailyReset } from "@/lib/daily-usage";
-import { ModeSelector } from "./mode-selector";
+import type { WorkflowMode } from "@/lib/workflow-mode";
+import { WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
 import { PersonalizationSettings } from "./personalization-settings";
+import { useUiCopy } from "@/app/use-ui-copy";
 
 export default function SettingsPage() {
+  const ui = useUiCopy();
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPro, setIsPro] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
   const [billingLoading, setBillingLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(() => {
+    if (typeof window === "undefined") return "assist";
+    return (
+      (localStorage.getItem(WORKFLOW_MODE_KEY) as WorkflowMode | null) || "assist"
+    );
+  });
+
+  function updateWorkflowMode(mode: WorkflowMode) {
+    setWorkflowMode(mode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(WORKFLOW_MODE_KEY, mode);
+      window.dispatchEvent(new Event("handled-workflow-mode-changed"));
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -39,16 +57,13 @@ export default function SettingsPage() {
     }
 
     async function loadUser() {
-      const { data: userData, error } = await supabaseBrowser.auth.getUser();
-      if (error) {
-        console.error("settings getUser error", error);
-      }
-
+      const { data: userData } = await supabaseBrowser.auth.getUser();
       const { data: sessionData } = await supabaseBrowser.auth.getSession();
+
+      const user = userData.user ?? sessionData.session?.user ?? null;
 
       if (!mounted) return;
 
-      const user = userData.user ?? sessionData.session?.user ?? null;
       setAuthUser(user);
       setIsLoading(false);
 
@@ -352,8 +367,34 @@ export default function SettingsPage() {
           <p className="mt-2 text-sm text-gray-500">
             Choose how Handled should assist with your inbox.
           </p>
-          <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50/80 p-4">
-            <ModeSelector />
+          <div className="mt-4 space-y-3">
+            {(
+              [
+                { id: "assist" as const, copyKey: "assistMe" as const },
+                { id: "clean" as const, copyKey: "cleanMyInbox" as const },
+                { id: "handle" as const, copyKey: "handleItForMe" as const },
+              ] as const
+            ).map(({ id, copyKey }) => {
+              const modeCopy = ui.modeSelector.modes[copyKey];
+              const isSelected = workflowMode === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => updateWorkflowMode(id)}
+                  className={`w-full rounded-xl border p-4 text-left transition-all duration-200 hover:shadow-sm active:scale-[0.99] ${
+                    isSelected
+                      ? "border-[#6366F1] bg-[#F8FAFC] shadow-[0_1px_3px_rgba(15,23,42,0.05)]"
+                      : "border-[#E2E8F0] bg-[#FFFFFF] hover:border-[#6366F1]/40"
+                  }`}
+                >
+                  <p className="text-lg font-medium text-[#0F172A]">{modeCopy.name}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-gray-500">
+                    {modeCopy.description}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </section>
 

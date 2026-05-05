@@ -1,9 +1,19 @@
+type WorkflowBehaviorPayload = {
+  label: string;
+  replyCount: number;
+  toneBias: number;
+  recommendationLabel: string;
+  status: string;
+  explanation: string;
+};
+
 type ReplyRequestBody = {
   email?: string;
   mode?: "generate" | "refine";
   currentReply?: string;
   userName?: string;
   tone?: "casual" | "professional" | "friendly";
+  toneSlider?: number;
   language?: "english" | "italian" | "spanish" | "french" | "german";
   stream?: boolean;
   intent?: string;
@@ -13,12 +23,17 @@ type ReplyRequestBody = {
     lastUsedAt?: number;
     recentReplies?: string[];
   } | null;
+  workflowMode?: "assist" | "clean" | "handle";
+  workflowBehavior?: WorkflowBehaviorPayload;
 };
 
 function replyContextAppendix(
   intent: string | undefined,
   personality: ReplyRequestBody["personality"],
   memory: ReplyRequestBody["memory"],
+  workflowMode?: ReplyRequestBody["workflowMode"],
+  workflowBehavior?: ReplyRequestBody["workflowBehavior"],
+  toneSlider?: number,
 ): string {
   const parts: string[] = [];
   if (intent) {
@@ -26,6 +41,16 @@ function replyContextAppendix(
   }
   if (personality?.style && personality?.rules) {
     parts.push(`Personality (${personality.style}): ${personality.rules}`);
+  }
+  if (typeof toneSlider === "number" && !Number.isNaN(toneSlider)) {
+    parts.push(
+      `Tone slider reference (0=direct, 100=warm): ${toneSlider}. Align phrasing with this position.`,
+    );
+  }
+  if (workflowMode && workflowBehavior) {
+    parts.push(
+      `Workflow mode: ${workflowBehavior.label} (${workflowMode}). ${workflowBehavior.explanation} The first reply should read clearly as the "${workflowBehavior.recommendationLabel}" option.`,
+    );
   }
   if (memory?.preferredTone != null && !Number.isNaN(memory.preferredTone)) {
     parts.push(
@@ -222,8 +247,18 @@ function createGenerateReplyNdjsonStream(
   intent: string | undefined,
   personality: ReplyRequestBody["personality"],
   memory: ReplyRequestBody["memory"],
+  workflowMode: ReplyRequestBody["workflowMode"],
+  workflowBehavior: ReplyRequestBody["workflowBehavior"],
+  toneSlider: number | undefined,
 ): Response {
-  const contextBlock = replyContextAppendix(intent, personality, memory);
+  const contextBlock = replyContextAppendix(
+    intent,
+    personality,
+    memory,
+    workflowMode,
+    workflowBehavior,
+    toneSlider,
+  );
   const streamPrompt = `Write 3 different short reply variations to this email.
 
 Rules:
@@ -453,10 +488,20 @@ export async function POST(request: Request) {
       body.intent,
       body.personality,
       body.memory,
+      body.workflowMode,
+      body.workflowBehavior,
+      body.toneSlider,
     );
   }
 
-  const contextBlock = replyContextAppendix(body.intent, body.personality, body.memory);
+  const contextBlock = replyContextAppendix(
+    body.intent,
+    body.personality,
+    body.memory,
+    body.workflowMode,
+    body.workflowBehavior,
+    body.toneSlider,
+  );
 
   const prompt =
     mode === "refine"

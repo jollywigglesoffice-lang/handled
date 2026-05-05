@@ -24,6 +24,8 @@ import {
 import { detectReplyLanguageFromEmail } from "@/lib/detect-reply-language";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import type { WorkflowMode } from "@/lib/workflow-mode";
+import { WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
 
 type EmailActionsProps = {
   emailId: string;
@@ -252,7 +254,22 @@ function generatePreviewReply(
   ][index];
 }
 
-function getFallbackReplies(currentTone: number) {
+function getFallbackReplies(currentTone: number, mode: WorkflowMode) {
+  if (mode === "clean") {
+    return [
+      "Confirmed. You can move forward with this.",
+      "Thanks — this works for me. Please proceed.",
+    ];
+  }
+
+  if (mode === "handle") {
+    return [
+      "Thanks for the update. I've reviewed it and I'm happy to approve this.",
+      "This looks good to me. Please go ahead and move forward.",
+      "Thanks for handling this — I'm aligned with the proposed update.",
+    ];
+  }
+
   if (currentTone < 30) {
     return [
       "Approved. Please go ahead.",
@@ -274,6 +291,39 @@ function getFallbackReplies(currentTone: number) {
     "I really appreciate the update. This works well, please go ahead.",
     "Thanks for sharing this. I'm happy with the direction and you can move forward.",
   ];
+}
+
+function getWorkflowBehavior(mode: WorkflowMode) {
+  if (mode === "clean") {
+    return {
+      label: "Clean My Inbox",
+      replyCount: 2,
+      toneBias: -15,
+      recommendationLabel: "Fastest clear-out reply",
+      status: "Prioritizing the fastest way to clear this email...",
+      explanation: "Optimized to resolve this quickly and reduce inbox clutter.",
+    };
+  }
+
+  if (mode === "handle") {
+    return {
+      label: "Handle It For Me",
+      replyCount: 3,
+      toneBias: 10,
+      recommendationLabel: "Best action",
+      status: "Preparing the strongest recommended action...",
+      explanation: "Optimized for a confident, ready-to-use response.",
+    };
+  }
+
+  return {
+    label: "Assist Me",
+    replyCount: 3,
+    toneBias: 0,
+    recommendationLabel: "Recommended",
+    status: "Writing helpful reply options...",
+    explanation: "You stay in control and choose the best response.",
+  };
 }
 
 function getContextHint(
@@ -379,14 +429,19 @@ export function EmailActions({
   const [isPro, setIsPro] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
 
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(() => {
+    if (typeof window === "undefined") return "assist";
+    return (
+      (localStorage.getItem(WORKFLOW_MODE_KEY) as WorkflowMode | null) || "assist"
+    );
+  });
+
   const emergencyReplies = useMemo(
-    () => [
-      "Thanks for sending this over. This looks good to me.",
-      "I've reviewed this and I'm happy to move forward.",
-      "Thanks, this works for me. Please proceed.",
-    ],
-    [],
+    () => getFallbackReplies(liveTone, workflowMode),
+    [liveTone, workflowMode],
   );
+
+  const workflowBehavior = getWorkflowBehavior(workflowMode);
 
   const contextHint = getContextHint(emailContent, {
     quickApproval: ui.emailActions.contextQuickApproval,
@@ -409,18 +464,57 @@ export function EmailActions({
           : "casual";
 
   useEffect(() => {
-    void supabaseBrowser.auth.getUser().then(({ data }) => {
-      setAuthUser(data.user ?? null);
-    });
+    let mounted = true;
+
+    async function loadUser() {
+      const { data: userData } = await supabaseBrowser.auth.getUser();
+      const { data: sessionData } = await supabaseBrowser.auth.getSession();
+
+      const user = userData.user ?? sessionData.session?.user ?? null;
+
+      if (!mounted) return;
+
+      setAuthUser(user);
+    }
+
+    void loadUser();
 
     const {
       data: { subscription },
     } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
       setAuthUser(session?.user ?? null);
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const syncWorkflowMode = () => {
+      const saved =
+        (localStorage.getItem(WORKFLOW_MODE_KEY) as WorkflowMode | null) || "assist";
+
+      setWorkflowMode(saved);
+    };
+
+    syncWorkflowMode();
+
+    window.addEventListener("storage", syncWorkflowMode);
+    window.addEventListener("focus", syncWorkflowMode);
+    window.addEventListener("handled-workflow-mode-changed", syncWorkflowMode);
+
+    return () => {
+      window.removeEventListener("storage", syncWorkflowMode);
+      window.removeEventListener("focus", syncWorkflowMode);
+      window.removeEventListener(
+        "handled-workflow-mode-changed",
+        syncWorkflowMode,
+      );
     };
   }, []);
 
@@ -601,7 +695,13 @@ return () => clearTimeout(timeout);
         usageCount,
       });
 
-      const fallbackReplies = getFallbackReplies(liveTone);
+      const wfBehavior = getWorkflowBehavior(workflowMode);
+      const adjustedTone = Math.min(
+        100,
+        Math.max(0, liveTone + wfBehavior.toneBias),
+      );
+
+      const fallbackReplies = getFallbackReplies(liveTone, workflowMode);
       setReplyOptions((current) => {
         if (current.length > 0) return current;
         return fallbackReplies;
@@ -635,25 +735,19 @@ return () => clearTimeout(timeout);
       try {
         setLanguageChangeHint("");
         setIsGeneratingReplies(true);
-        const previewReplies = [
-          generatePreviewReply(liveTone, 0, emailContent, memoryProfile),
-          generatePreviewReply(liveTone, 1, emailContent, memoryProfile),
-          generatePreviewReply(liveTone, 2, emailContent, memoryProfile),
-        ];
+        const previewReplies = Array.from(
+          { length: wfBehavior.replyCount },
+          (_, i) =>
+            generatePreviewReply(adjustedTone, i, emailContent, memoryProfile),
+        );
         setReplyOptions(previewReplies);
         setEditedReplyDraft(previewReplies[0] ?? "");
         editedReplyDraftRef.current = previewReplies[0] ?? "";
-        setStatusMessage(
-          liveTone < 30
-            ? "Generating direct reply..."
-            : liveTone < 70
-              ? "Crafting balanced response..."
-              : "Writing a warm, human reply...",
-        );
+        setStatusMessage(wfBehavior.status);
         setStreamedReplies([]);
 
         const intent = detectIntent(emailContent);
-        const personality = buildPersonality(liveTone, intent);
+        const personality = buildPersonality(adjustedTone, intent);
 
         let response: Response;
         try {
@@ -666,12 +760,15 @@ return () => clearTimeout(timeout);
             body: JSON.stringify({
               email: emailContent,
               userName,
-              tone: mapTone(tone),
+              tone: mapTone(adjustedTone),
+              toneSlider: adjustedTone,
               language,
               stream: true,
               intent,
               personality,
               memory: memoryProfile,
+              workflowMode,
+              workflowBehavior: wfBehavior,
             }),
           });
         } catch (error) {
@@ -871,6 +968,7 @@ return () => clearTimeout(timeout);
       usageCount,
       userId,
       userName,
+      workflowMode,
     ],
   );
 
@@ -879,12 +977,25 @@ return () => clearTimeout(timeout);
     if (!emailContent) return;
     if (replyOptions.length > 0) return;
 
-    const fallbackReplies = getFallbackReplies(liveTone);
+    const fallbackReplies = getFallbackReplies(liveTone, workflowMode);
     setReplyOptions(fallbackReplies);
     setSelectedReplyIndex(0);
     setEditedReplyDraft(fallbackReplies[0]);
     editedReplyDraftRef.current = fallbackReplies[0];
-  }, [authUser?.id, emailContent, liveTone, replyOptions.length]);
+  }, [authUser?.id, emailContent, liveTone, replyOptions.length, workflowMode]);
+
+  useEffect(() => {
+    if (!authUser?.id) return;
+    if (!emailContent) return;
+
+    const fallbackReplies = getFallbackReplies(liveTone, workflowMode);
+    setReplyOptions(fallbackReplies);
+    setSelectedReplyIndex(0);
+    setEditedReplyDraft(fallbackReplies[0]);
+    editedReplyDraftRef.current = fallbackReplies[0];
+
+    setStatusMessage(getWorkflowBehavior(workflowMode).status);
+  }, [workflowMode, authUser?.id, emailContent]);
 
   useEffect(() => {
     if (!authUser?.id) {
@@ -1291,8 +1402,9 @@ return () => clearTimeout(timeout);
     setAuthUser(null);
   }
 
-  const visibleReplies =
+  const visibleRepliesBase =
     replyOptions.length > 0 ? replyOptions : emergencyReplies;
+  const visibleReplies = visibleRepliesBase.slice(0, workflowBehavior.replyCount);
 
   if (!authUser) {
     return (
@@ -1385,15 +1497,44 @@ return () => clearTimeout(timeout);
       </h2>
 
       <div className="mb-1 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-        <span className="text-xs text-gray-500">
-          {isPro ? "Pro plan" : `${Math.max(0, FREE_LIMIT - usageCount)} replies left today`}
-        </span>
+        <p className="text-sm font-semibold text-indigo-600">
+          {isPro
+            ? "Unlimited replies"
+            : `${Math.max(0, FREE_LIMIT - usageCount)} replies left today`}
+        </p>
         <Link
           href="/settings"
           className="text-xs font-medium text-indigo-600 hover:underline"
         >
           Settings & Billing
         </Link>
+      </div>
+
+      <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+              Workflow mode
+            </p>
+            <p className="text-sm font-semibold text-gray-900">{workflowBehavior.label}</p>
+          </div>
+
+          <Link
+            href="/settings"
+            className="text-xs font-medium text-indigo-600 hover:underline"
+          >
+            Change
+          </Link>
+        </div>
+
+        <p className="mt-1 text-xs text-gray-500">{workflowBehavior.explanation}</p>
+
+        {workflowMode === "handle" ? (
+          <p className="mt-2 rounded-lg border border-gray-100 bg-white px-3 py-2 text-[11px] text-gray-500">
+            Safety note: Handled prepares the response, but never sends anything without your
+            approval.
+          </p>
+        ) : null}
       </div>
 
       {!isPro ? (
@@ -1511,7 +1652,7 @@ Recommended: {recommendedTone}
 </p>
 <p className="mt-2 text-sm font-semibold text-indigo-600">
   {isPro
-    ? "Unlimited replies (Pro)"
+    ? "Unlimited replies"
     : `${Math.max(0, FREE_LIMIT - usageCount)} replies left today`}
 </p>
 {!isPro && usageCount >= FREE_LIMIT - 2 && usageCount < FREE_LIMIT ? (
@@ -1707,13 +1848,10 @@ if (distance < 6) {
   <div className="mb-2">
     <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-[#EEF2FF] border border-[#6366F1]/20">
       <span className="text-[10px] font-semibold text-[#6366F1] uppercase tracking-wide">
-        Recommended
+        {workflowBehavior.recommendationLabel}
         {memoryProfile ? (
           <span className="ml-2 text-[9px] font-normal normal-case text-gray-400">(learned)</span>
         ) : null}
-      </span>
-      <span className="text-[10px] text-gray-500">
-        Fastest + most natural reply
       </span>
     </div>
   </div>
