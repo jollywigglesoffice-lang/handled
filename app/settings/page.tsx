@@ -250,18 +250,22 @@ export default function SettingsPage() {
 
   if (!authUser) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] px-4">
-        <section className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-7 text-center shadow-sm">
-          <h1 className="text-2xl font-semibold text-gray-900">Sign in required</h1>
-          <p className="mt-3 text-sm text-gray-500">
-            Please sign in to view your account settings.
+      <main className="min-h-screen bg-[#F8FAFC] flex items-center justify-center px-4">
+        <section className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-7 shadow-sm text-center">
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Sign in required
+          </h1>
+
+          <p className="mt-3 text-sm leading-relaxed text-gray-500">
+            Please sign in to view your settings, billing, and Pro access.
           </p>
-          <Link
-            href="/emails"
+
+          <a
+            href="/login?next=/settings"
             className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
           >
-            Go to Handled
-          </Link>
+            Sign in
+          </a>
         </section>
       </main>
     );
@@ -433,62 +437,94 @@ export default function SettingsPage() {
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-900">Plan & Billing</h2>
+          <p className="mt-1 text-sm text-gray-500">Choose the plan that fits your workflow.</p>
 
-          <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">
-                  {isPro ? "Handled Pro" : "Handled Free"}
-                </p>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  {isPro
-                    ? "Unlimited replies and premium AI workflow."
-                    : "5 free replies per day. Upgrade anytime for unlimited access."}
-                </p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <article className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">Handled Free</h3>
+                  <p className="mt-1 text-sm text-gray-500">Perfect for trying Handled</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-gray-900">€0</p>
+                  <p className="text-xs text-gray-500">free</p>
+                </div>
               </div>
+              <ul className="mt-4 space-y-2 text-sm text-gray-600">
+                <li>✔ 5 AI replies per day</li>
+                <li>✔ Tone control</li>
+                <li>✔ Saved preferences</li>
+                <li>✔ Basic usage tracking</li>
+              </ul>
+              {!isPro ? (
+                <span className="mt-4 inline-flex rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600">
+                  Current plan
+                </span>
+              ) : (
+                <span className="mt-4 inline-flex rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-500">
+                  Available
+                </span>
+              )}
+            </article>
 
-              <div className="text-right">
-                <p className="text-2xl font-bold text-indigo-600">{isPro ? "€9" : "€0"}</p>
-                <p className="text-xs text-gray-500">{isPro ? "/month" : "free"}</p>
+            <article className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">Handled Pro</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    For people who want unlimited calm
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-indigo-700">€9</p>
+                  <p className="text-xs text-gray-500">/month</p>
+                </div>
               </div>
-            </div>
-
-            <ul className="mt-4 space-y-2 text-sm text-gray-600">
-              <li>✔ AI-generated replies</li>
-              <li>✔ Tone control</li>
-              <li>✔ Saved preferences</li>
-              <li>✔ Usage tracking</li>
-              {isPro ? <li>✔ Unlimited replies</li> : null}
-            </ul>
-
-            {!isPro ? (
-              <>
-                <button
-                  type="button"
-                  onClick={handleUpgrade}
-                  disabled={checkoutLoading}
-                  className="mt-5 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
-                >
-                  {checkoutLoading ? "Opening checkout..." : "Upgrade to Pro — €9/month"}
-                </button>
-                {checkoutError ? (
-                  <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                    {checkoutError}
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => void handleManageBilling()}
-                disabled={billingLoading}
-                className="mt-5 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
-              >
-                {billingLoading ? "Opening billing..." : "Manage Billing"}
-              </button>
-            )}
+              <ul className="mt-4 space-y-2 text-sm text-gray-600">
+                <li>✔ Unlimited AI replies</li>
+                <li>✔ Faster, smarter reply generation</li>
+                <li>✔ Full workflow modes</li>
+                <li>✔ Priority access to new features</li>
+                <li>✔ Early access to multi-email support</li>
+              </ul>
+              {isPro ? (
+                <div className="mt-4 space-y-3">
+                  <span className="inline-flex rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-700">
+                    Current plan
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleManageBilling()}
+                    disabled={billingLoading}
+                    className="w-full rounded-xl border border-indigo-200 bg-white px-4 py-3 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-60"
+                  >
+                    {billingLoading ? "Opening billing..." : "Manage Billing"}
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  <button
+                    type="button"
+                    onClick={handleUpgrade}
+                    disabled={checkoutLoading}
+                    className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                  >
+                    {checkoutLoading ? "Opening checkout..." : "Upgrade to Pro — €9/month"}
+                  </button>
+                  {checkoutError ? (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                      {checkoutError}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </article>
           </div>
+
+          <p className="mt-4 text-xs text-gray-500">
+            Handled never sends emails without your approval.
+          </p>
         </section>
 
         <section className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm">

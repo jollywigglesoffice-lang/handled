@@ -1,124 +1,161 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const next =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("next") || "/emails"
+      : "/emails";
 
-  async function handleSignIn(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
-    if (!url.startsWith("http") || !key) {
-      setError("Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
-      return;
-    }
-    setLoading(true);
-    const { error: signError } = await supabaseBrowser.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    setLoading(false);
-    if (signError) {
-      setError(signError.message);
-      return;
-    }
-    router.push("/emails");
-    router.refresh();
-  }
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [authError, setAuthError] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function handleSignUp() {
-    setError(null);
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
-    if (!url.startsWith("http") || !key) {
-      setError("Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+  async function handleAuthSubmit() {
+    setAuthError("");
+    setAuthNotice("");
+
+    if (!authEmail || !authPassword) {
+      setAuthError("Enter your email and password.");
       return;
     }
-    setLoading(true);
-    const { error: signError } = await supabaseBrowser.auth.signUp({
-      email: email.trim(),
-      password,
-    });
-    setLoading(false);
-    if (signError) {
-      setError(signError.message);
-      return;
+
+    setIsSubmitting(true);
+
+    try {
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        (typeof window !== "undefined" ? window.location.origin : "");
+
+      if (authMode === "signup") {
+        const result = await supabaseBrowser.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: {
+            emailRedirectTo: `${appUrl}/auth/confirmed`,
+          },
+        });
+
+        if (result.error) {
+          console.error("signup error", result.error);
+          setAuthError(result.error.message);
+          return;
+        }
+
+        setAuthPassword("");
+        setAuthNotice(
+          "Account created! Please check your email to confirm your account. After confirming, come back here and sign in."
+        );
+        return;
+      }
+
+      const result = await supabaseBrowser.auth.signInWithPassword({
+        email: authEmail,
+        password: authPassword,
+      });
+
+      if (result.error) {
+        console.error("login error", result.error);
+
+        if (result.error.message.includes("Failed to fetch")) {
+          setAuthError("Could not connect to authentication. Please refresh and try again.");
+        } else {
+          setAuthError(result.error.message);
+        }
+
+        return;
+      }
+
+      window.location.href = next;
+    } catch (error) {
+      console.error("auth failed", error);
+      setAuthError("Could not connect to authentication. Please refresh and try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-    router.push("/emails");
-    router.refresh();
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-[#F8FAFC] px-4 py-16">
-      <div className="w-full max-w-md rounded-2xl border border-[#E2E8F0] bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-semibold text-[#0F172A]">Sign in to Handled</h1>
-        <p className="mt-1 text-sm text-gray-500">Use your email and password.</p>
+    <main className="min-h-screen bg-[#F8FAFC] flex items-center justify-center px-4">
+      <section className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+            Handled
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold text-gray-900">
+            {authMode === "login" ? "Sign in to continue" : "Create your account"}
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-gray-500">
+            Save your replies, preferences, usage, and Pro access across devices.
+          </p>
+        </div>
 
-        <form className="mt-6 space-y-4" onSubmit={handleSignIn}>
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-[#0F172A]">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(ev) => setEmail(ev.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-[#6366F1]"
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-[#0F172A]">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(ev) => setPassword(ev.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-[#6366F1]"
-              required
-              minLength={6}
-            />
-          </div>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 rounded-lg bg-[#6366F1] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#585BE0] disabled:opacity-50"
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => void handleSignUp()}
-              className="flex-1 rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#0F172A] transition hover:bg-[#F8FAFC] disabled:opacity-50"
-            >
-              Create account
-            </button>
-          </div>
-        </form>
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800">
+          🔒 Handled helps draft replies, but never sends emails without your approval.
+        </div>
 
-        <p className="mt-6 text-center text-sm text-gray-500">
-          <Link href="/emails" className="font-medium text-[#6366F1] hover:underline">
-            Back to inbox
-          </Link>
-        </p>
-      </div>
+        {authNotice && (
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold leading-relaxed text-indigo-700">
+            {authNotice}
+          </div>
+        )}
+
+        {authError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-relaxed text-red-700">
+            {authError}
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <input
+            type="email"
+            value={authEmail}
+            onChange={(e) => setAuthEmail(e.target.value)}
+            placeholder="Email"
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+          />
+
+          <input
+            type="password"
+            value={authPassword}
+            onChange={(e) => setAuthPassword(e.target.value)}
+            placeholder="Password"
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+          />
+
+          <button
+            type="button"
+            onClick={handleAuthSubmit}
+            disabled={isSubmitting}
+            className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+          >
+            {isSubmitting
+              ? "Please wait..."
+              : authMode === "login"
+              ? "Sign in"
+              : "Create account"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setAuthError("");
+              setAuthNotice("");
+              setAuthMode(authMode === "login" ? "signup" : "login");
+            }}
+            className="w-full text-xs font-medium text-gray-400 hover:text-gray-600"
+          >
+            {authMode === "login"
+              ? "Need an account? Create one"
+              : "Already have an account? Sign in"}
+          </button>
+        </div>
+      </section>
     </main>
   );
 }

@@ -375,11 +375,6 @@ export function EmailActions({
   const { userName, tone: savedTone, replyLanguage: settingsReplyLanguage } = useUserPreferences();
 
   const [authUser, setAuthUser] = useState<User | null>(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-  const [authError, setAuthError] = useState("");
-  const [authNotice, setAuthNotice] = useState("");
 
   const userId = authUser?.id ?? null;
 
@@ -1378,66 +1373,7 @@ return () => clearTimeout(timeout);
     }, 2700);
   }
 
-  async function handleAuthSubmit() {
-    setAuthError("");
-    setAuthNotice("");
-
-    if (!authEmail || !authPassword) {
-      setAuthError("Enter your email and password.");
-      return;
-    }
-
-    const emailRedirectTo =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/auth/confirmed`
-        : "";
-
-    let result:
-      | Awaited<ReturnType<typeof supabaseBrowser.auth.signUp>>
-      | Awaited<ReturnType<typeof supabaseBrowser.auth.signInWithPassword>>;
-
-    try {
-      result =
-        authMode === "signup"
-          ? await supabaseBrowser.auth.signUp({
-              email: authEmail,
-              password: authPassword,
-              options: {
-                emailRedirectTo,
-              },
-            })
-          : await supabaseBrowser.auth.signInWithPassword({
-              email: authEmail,
-              password: authPassword,
-            });
-    } catch (error) {
-      console.error("email auth submit failed", error);
-      setAuthError("Could not connect to authentication. Please refresh and try again.");
-      return;
-    }
-
-    if (result.error) {
-      setAuthError(result.error.message);
-      return;
-    }
-
-    if (authMode === "signup") {
-      setAuthPassword("");
-      setAuthNotice(
-        "Account created! Please check your email to confirm your account. After confirming, come back here and sign in.",
-      );
-      if (!result.data.session) {
-        setAuthUser(null);
-        return;
-      }
-      setAuthNotice("");
-    }
-
-    setAuthUser(result.data.session?.user ?? result.data.user ?? null);
-  }
-
   async function handleLogout() {
-    setAuthNotice("");
     await supabaseBrowser.auth.signOut();
     setAuthUser(null);
   }
@@ -1447,71 +1383,32 @@ return () => clearTimeout(timeout);
   const visibleReplies = visibleRepliesBase.slice(0, workflowBehavior.replyCount);
 
   if (!authUser) {
+    const nextPath =
+      typeof window !== "undefined"
+        ? window.location.pathname
+        : "/emails";
+
     return (
-      <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Sign in to use Handled</h2>
-          <p className="text-sm text-gray-500">
-            Save your tone preferences, usage, and Pro access across devices.
+          <h2 className="text-lg font-semibold text-gray-900">
+            Sign in to use Handled
+          </h2>
+          <p className="mt-1 text-sm leading-relaxed text-gray-500">
+            Your replies, tone preferences, usage, and Pro access will be saved to your account.
           </p>
         </div>
 
-        <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-500">
-          🔒 Handled helps draft replies, but never sends emails without your approval.
+        <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2 text-xs leading-relaxed text-emerald-800">
+          🔒 Handled never sends emails without your approval.
         </div>
 
-        <div className="space-y-2">
-          <input
-            type="email"
-            value={authEmail}
-            onChange={(e) => setAuthEmail(e.target.value)}
-            placeholder="Email"
-            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-            autoComplete="email"
-          />
-
-          <input
-            type="password"
-            value={authPassword}
-            onChange={(e) => setAuthPassword(e.target.value)}
-            placeholder="Password"
-            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
-            autoComplete={authMode === "login" ? "current-password" : "new-password"}
-          />
-
-          {authError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium leading-relaxed text-red-700">
-              {authError}
-            </div>
-          ) : null}
-          {authNotice ? (
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold leading-relaxed text-indigo-700">
-              {authNotice}
-            </div>
-          ) : null}
-
-          <button
-            type="button"
-            onClick={() => void handleAuthSubmit()}
-            className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
-          >
-            {authMode === "login" ? "Sign in" : "Create account"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMode(authMode === "login" ? "signup" : "login");
-              setAuthNotice("");
-              setAuthError("");
-            }}
-            className="w-full text-xs text-gray-400 hover:text-gray-600"
-          >
-            {authMode === "login"
-              ? "Need an account? Create one"
-              : "Already have an account? Sign in"}
-          </button>
-        </div>
+        <a
+          href={`/login?next=${encodeURIComponent(nextPath)}`}
+          className="inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
+        >
+          Sign in
+        </a>
       </div>
     );
   }
