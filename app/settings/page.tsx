@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const [usageCount, setUsageCount] = useState(0);
   const [billingLoading, setBillingLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
 
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>(() => {
     if (typeof window === "undefined") return "assist";
@@ -116,8 +117,11 @@ export default function SettingsPage() {
   }
 
   async function handleUpgrade() {
+    setCheckoutError("");
+
     if (!authUser?.id || !authUser?.email) {
-      console.error("Missing auth user for checkout");
+      setCheckoutError("You need to be signed in before upgrading.");
+      console.error("Missing auth user for checkout", authUser);
       return;
     }
 
@@ -129,7 +133,6 @@ export default function SettingsPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "same-origin",
         body: JSON.stringify({
           userId: authUser.id,
           email: authUser.email,
@@ -140,19 +143,22 @@ export default function SettingsPage() {
 
       if (!res.ok) {
         console.error("checkout failed", data);
+        setCheckoutError(data?.error || "Checkout failed. Please try again.");
         setCheckoutLoading(false);
         return;
       }
 
-      if (data.url) {
-        window.location.href = data.url;
+      if (!data.url) {
+        console.error("No checkout URL returned", data);
+        setCheckoutError("Checkout did not return a payment link.");
+        setCheckoutLoading(false);
         return;
       }
 
-      console.error("No checkout URL returned", data);
-      setCheckoutLoading(false);
+      window.location.href = data.url;
     } catch (error) {
       console.error("checkout error", error);
+      setCheckoutError("Could not open checkout. Please try again.");
       setCheckoutLoading(false);
     }
   }
@@ -301,14 +307,21 @@ export default function SettingsPage() {
             </ul>
 
             {!isPro ? (
-              <button
-                type="button"
-                onClick={handleUpgrade}
-                disabled={checkoutLoading}
-                className="mt-5 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
-              >
-                {checkoutLoading ? "Opening checkout..." : "Upgrade to Pro — €9/month"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleUpgrade}
+                  disabled={checkoutLoading}
+                  className="mt-5 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  {checkoutLoading ? "Opening checkout..." : "Upgrade to Pro — €9/month"}
+                </button>
+                {checkoutError ? (
+                  <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                    {checkoutError}
+                  </div>
+                ) : null}
+              </>
             ) : (
               <button
                 type="button"
