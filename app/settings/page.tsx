@@ -2,7 +2,7 @@
 
 import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { FREE_LIMIT, readUsageCountWithDailyReset } from "@/lib/daily-usage";
 import { ModeSelector } from "./mode-selector";
@@ -16,42 +16,61 @@ export default function SettingsPage() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
-  const loadUser = useCallback(async () => {
-    const { data } = await supabaseBrowser.auth.getUser();
-    const user = data.user ?? null;
-    setAuthUser(user);
+  useEffect(() => {
+    let mounted = true;
 
-    if (user?.id) {
+    async function syncProfileForUser(user: User | null) {
+      if (!mounted) return;
+      if (!user?.id) {
+        setIsPro(false);
+        setUsageCount(0);
+        return;
+      }
       try {
         const res = await fetch(`/api/get-user?userId=${encodeURIComponent(user.id)}`);
         const profile = (await res.json()) as { isPro?: boolean };
+        if (!mounted) return;
         setIsPro(Boolean(profile.isPro));
         setUsageCount(readUsageCountWithDailyReset(user.id));
       } catch (error) {
+        if (!mounted) return;
         console.error("settings load user error", error);
       }
-    } else {
-      setIsPro(false);
-      setUsageCount(0);
     }
 
-    setIsLoading(false);
-  }, []);
+    async function loadUser() {
+      const { data: userData, error } = await supabaseBrowser.auth.getUser();
+      if (error) {
+        console.error("settings getUser error", error);
+      }
 
-  useEffect(() => {
+      const { data: sessionData } = await supabaseBrowser.auth.getSession();
+
+      if (!mounted) return;
+
+      const user = userData.user ?? sessionData.session?.user ?? null;
+      setAuthUser(user);
+      setIsLoading(false);
+
+      await syncProfileForUser(user);
+    }
+
     void loadUser();
-  }, [loadUser]);
 
-  useEffect(() => {
     const {
       data: { subscription },
-    } = supabaseBrowser.auth.onAuthStateChange(() => {
-      void loadUser();
+    } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setAuthUser(session?.user ?? null);
+      setIsLoading(false);
+      void syncProfileForUser(session?.user ?? null);
     });
+
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
-  }, [loadUser]);
+  }, []);
 
   useEffect(() => {
     const onVisibility = () => {
