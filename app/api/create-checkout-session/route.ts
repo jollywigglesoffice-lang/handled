@@ -92,7 +92,7 @@ export async function POST(req: Request) {
           userId,
         },
       },
-      success_url: `${appUrl}/settings?upgraded=true`,
+      success_url: `${appUrl}/success?upgraded=true`,
       cancel_url: `${appUrl}/settings?canceled=true`,
     });
 
