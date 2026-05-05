@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useHandledEmails } from "@/app/handled-emails-context";
 import { useReplyUsage } from "@/app/reply-usage-context";
@@ -1382,11 +1383,19 @@ return () => clearTimeout(timeout);
         </svg>
         {ui.emailActions.actionsTitle}
       </h2>
-      {userId ? (
-        <p className="text-[9px] text-gray-300" suppressHydrationWarning>
-          ID: {userId}
-        </p>
-      ) : null}
+
+      <div className="mb-1 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+        <span className="text-xs text-gray-500">
+          {isPro ? "Pro plan" : `${Math.max(0, FREE_LIMIT - usageCount)} replies left today`}
+        </span>
+        <Link
+          href="/settings"
+          className="text-xs font-medium text-indigo-600 hover:underline"
+        >
+          Settings & Billing
+        </Link>
+      </div>
+
       <button
         type="button"
         onClick={() => void handleLogout()}
@@ -1661,10 +1670,6 @@ if (distance < 6) {
                 Want unlimited replies? Upgrade anytime.
               </div>
             ) : null}
-            <p className="text-[11px] text-gray-400">
-              Debug: replyOptions={replyOptions.length}, visibleReplies=
-              {visibleReplies.length}, signedIn={authUser?.id ? "yes" : "no"}
-            </p>
             {visibleReplies.map((reply, index) => {
               const isSelected = selectedReplyIndex === index;
               const isRecommended = index === 0;

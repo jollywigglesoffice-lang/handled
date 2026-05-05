@@ -57,53 +57,46 @@ export async function POST(req: Request) {
     let customerId = row?.stripe_customer_id as string | null | undefined;
 
     if (!customerId) {
-      const list = await stripe.customers.list({ email, limit: 1 });
-      customerId = list.data[0]?.id ?? null;
+      const customers = await stripe.customers.list({
+        email,
+        limit: 1,
+      });
+
+      customerId = customers.data[0]?.id;
+
       if (!customerId) {
         const customer = await stripe.customers.create({
           email,
-          metadata: { userId },
+          metadata: {
+            userId,
+          },
         });
         customerId = customer.id;
       }
-      const { error: saveError } = await supabase.from("users").upsert(
-        { id: userId, stripe_customer_id: customerId },
-        { onConflict: "id" },
-      );
+
+      const { error: saveError } = await supabase
+        .from("users")
+        .upsert(
+          { id: userId, stripe_customer_id: customerId },
+          { onConflict: "id" },
+        );
       if (saveError) {
-        console.error("checkout save customer", saveError);
+        console.error("billing portal save customer", saveError);
         return NextResponse.json({ error: saveError.message }, { status: 500 });
       }
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      payment_method_types: ["card"],
+    const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      metadata: {
-        userId,
-      },
-      line_items: [
-        {
-          price_data: {
-            currency: "eur",
-            product_data: {
-              name: "Handled Pro",
-              description: "Unlimited AI email replies",
-            },
-            unit_amount: 900,
-            recurring: { interval: "month" },
-          },
-          quantity: 1,
-        },
-      ],
-      success_url: `${appUrl}/settings?upgraded=true`,
-      cancel_url: `${appUrl}/settings?canceled=true`,
+      return_url: `${appUrl}/settings`,
     });
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
-    console.error("checkout error", error);
-    return NextResponse.json({ error: "Stripe error" }, { status: 500 });
+    console.error("billing portal error", error);
+    return NextResponse.json(
+      { error: "Could not create billing portal session" },
+      { status: 500 },
+    );
   }
 }

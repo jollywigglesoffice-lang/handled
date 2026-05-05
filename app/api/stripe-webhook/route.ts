@@ -31,11 +31,25 @@ export async function POST(req: Request) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const userId = session.metadata?.userId?.trim();
+    const rawCustomer = session.customer;
+    const customerId =
+      typeof rawCustomer === "string"
+        ? rawCustomer
+        : rawCustomer &&
+            typeof rawCustomer === "object" &&
+            "id" in rawCustomer &&
+            !("deleted" in rawCustomer && (rawCustomer as { deleted?: boolean }).deleted)
+          ? (rawCustomer as Stripe.Customer).id
+          : undefined;
+
     if (userId) {
-      const { error } = await supabase
-        .from("users")
-        .update({ is_pro: true })
-        .eq("id", userId);
+      const update: { is_pro: boolean; stripe_customer_id?: string } = {
+        is_pro: true,
+      };
+      if (customerId) {
+        update.stripe_customer_id = customerId;
+      }
+      const { error } = await supabase.from("users").update(update).eq("id", userId);
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });

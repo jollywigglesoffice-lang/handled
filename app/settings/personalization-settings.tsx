@@ -6,7 +6,6 @@ import {
   type ReplyTone,
 } from "@/app/user-preferences-context";
 import { useUiCopy } from "@/app/use-ui-copy";
-import { AccountSettings } from "./account-settings";
 
 const toneOptions: ReplyTone[] = ["casual", "professional", "friendly"];
 
@@ -25,8 +24,6 @@ export function PersonalizationSettings() {
 
   return (
     <section className="space-y-5 rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-7 shadow-sm sm:p-8">
-      <AccountSettings />
-
       <h2 className="text-base font-medium tracking-tight text-[#0F172A] sm:text-lg">
         {ui.personalization.repliesTitle}
       </h2>
