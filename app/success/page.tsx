@@ -5,86 +5,63 @@ import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function SuccessPage() {
+  const [secondsLeft, setSecondsLeft] = useState(7);
   const [referralCopied, setReferralCopied] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(5);
-  const [planStatusMessage, setPlanStatusMessage] = useState(
-    "Syncing your Pro status...",
-  );
-  const [referralCode, setReferralCode] = useState("handled");
+  const [userEmail, setUserEmail] = useState("");
+  const [referralCode, setReferralCode] = useState("handled-pro");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadUser() {
+      try {
+        const { data: sessionData } = await supabaseBrowser.auth.getSession();
+        const user = sessionData.session?.user;
+
+        if (!mounted || !user) return;
+
+        setUserEmail(user.email || "");
+        setReferralCode(user.id.slice(0, 8));
+      } catch (error) {
+        console.error("success page user load error", error);
+      }
+    }
+
+    loadUser();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const referralLink = useMemo(() => {
-    if (typeof window === "undefined") return "https://handled.app/?ref=handled";
+    if (typeof window === "undefined") return "";
     return `${window.location.origin}/?ref=${referralCode}`;
   }, [referralCode]);
 
-  async function refreshPlanStatus(userId: string) {
-    const res = await fetch(`/api/get-user?userId=${encodeURIComponent(userId)}`);
-    const profile = (await res.json()) as { isPro?: boolean };
-    return Boolean(profile.isPro);
-  }
-
-  function copyReferralInvite() {
-    if (typeof window === "undefined") return;
-
-    navigator.clipboard?.writeText(
-      `I’m using Handled to write smarter email replies faster. Try it here: ${referralLink}`
-    );
-
-    setReferralCopied(true);
-    setTimeout(() => setReferralCopied(false), 2000);
-  }
-
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    void supabaseBrowser.auth.getSession().then(async ({ data }) => {
-      const user = data.session?.user;
-      if (!user?.id) {
-        setPlanStatusMessage("Pro activation may take a few seconds.");
-        return;
-      }
-
-      setReferralCode(user.id.slice(0, 8));
-
-      let attempts = 0;
-      while (attempts < 3) {
-        attempts += 1;
-        try {
-          const isPro = await refreshPlanStatus(user.id);
-          if (isPro) {
-            setPlanStatusMessage("Pro is active. Everything is ready.");
-            return;
-          }
-        } catch (error) {
-          console.error("success plan sync error", error);
-        }
-
-        if (attempts < 3) {
-          await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        }
-      }
-
-      setPlanStatusMessage("Pro activation may take a few seconds. Open Settings to confirm.");
-    });
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
     if (secondsLeft <= 0) {
       window.location.href = "/emails";
       return;
     }
 
-    const id = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setSecondsLeft((prev) => prev - 1);
     }, 1000);
 
-    return () => window.clearTimeout(id);
+    return () => window.clearTimeout(timer);
   }, [secondsLeft]);
 
-  function goToInboxNow() {
-    if (typeof window === "undefined") return;
-    window.location.href = "/emails";
+  async function copyReferralInvite() {
+    const inviteText = `I’m using Handled Pro to write smarter email replies faster. Try it here: ${referralLink}`;
+
+    try {
+      await navigator.clipboard.writeText(inviteText);
+      setReferralCopied(true);
+      setTimeout(() => setReferralCopied(false), 2000);
+    } catch (error) {
+      console.error("copy referral failed", error);
+    }
   }
 
   return (
@@ -105,34 +82,62 @@ export default function SuccessPage() {
             </h1>
 
             <p className="mt-2 text-sm leading-relaxed text-gray-600">
-              Enjoy unlimited replies and a more powerful Handled experience.
+              Thank you for upgrading to Handled Pro. You now have unlimited AI reply support and a calmer, faster way to handle email.
             </p>
 
-            <p className="mt-4 rounded-xl border border-indigo-100 bg-white px-4 py-3 text-sm font-medium text-indigo-700">
-              {planStatusMessage}
-            </p>
+            {userEmail && (
+              <p className="mt-3 text-xs text-gray-400">
+                Pro access is linked to {userEmail}.
+              </p>
+            )}
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-indigo-100 bg-white/80 p-4">
-          <h2 className="text-sm font-semibold text-gray-900">What&apos;s included in Pro</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-indigo-100 bg-white p-3">
-              <p className="text-sm font-semibold text-gray-900">Unlimited AI replies</p>
+        <div className="mt-6 rounded-2xl border border-indigo-100 bg-white/80 p-5">
+          <h2 className="text-lg font-semibold text-gray-900">
+            What’s included in Pro
+          </h2>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl bg-indigo-50 p-4">
+              <p className="text-sm font-semibold text-gray-900">
+                Unlimited AI replies
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                No daily reply limit. Generate and refine as much as you need.
+              </p>
             </div>
-            <div className="rounded-xl border border-indigo-100 bg-white p-3">
-              <p className="text-sm font-semibold text-gray-900">Smarter workflow modes</p>
+
+            <div className="rounded-xl bg-indigo-50 p-4">
+              <p className="text-sm font-semibold text-gray-900">
+                Smarter workflow modes
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                Use Assist Me, Clean My Inbox, and Handle It For Me with more freedom.
+              </p>
             </div>
-            <div className="rounded-xl border border-indigo-100 bg-white p-3">
-              <p className="text-sm font-semibold text-gray-900">Faster reply generation</p>
+
+            <div className="rounded-xl bg-indigo-50 p-4">
+              <p className="text-sm font-semibold text-gray-900">
+                Faster email decisions
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                Move from reading to replying with less hesitation.
+              </p>
             </div>
-            <div className="rounded-xl border border-indigo-100 bg-white p-3">
-              <p className="text-sm font-semibold text-gray-900">Early access to new features</p>
+
+            <div className="rounded-xl bg-indigo-50 p-4">
+              <p className="text-sm font-semibold text-gray-900">
+                Early access
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                Pro users get first access to multiple inboxes and upcoming AI features.
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-purple-100 bg-purple-50 p-4">
+        <div className="mt-6 rounded-2xl border border-purple-100 bg-purple-50 p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-purple-800">
@@ -143,8 +148,8 @@ export default function SuccessPage() {
                 Share Handled with a friend. When they upgrade, you’ll get 1 free month of Pro.
               </p>
 
-              <p className="mt-2 break-all rounded-lg border border-purple-100 bg-white px-3 py-2 text-xs leading-relaxed text-purple-700">
-                {referralLink}
+              <p className="mt-2 text-xs leading-relaxed text-purple-500">
+                Referral tracking is coming soon — for now, ask friends to mention your email when they join.
               </p>
             </div>
 
@@ -153,23 +158,30 @@ export default function SuccessPage() {
             </span>
           </div>
 
+          <div className="mt-4 rounded-xl border border-purple-100 bg-white px-3 py-2 text-xs text-purple-700 break-all">
+            {referralLink}
+          </div>
+
           <button
             type="button"
             onClick={copyReferralInvite}
             className="mt-4 w-full rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700"
           >
-            {referralCopied ? "Invite copied!" : "Copy invite"}
+            {referralCopied ? "Invite copied!" : "Copy referral invite"}
           </button>
         </div>
 
+        <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          🔒 Handled still keeps you in control. It helps draft replies, but never sends emails without your approval.
+        </div>
+
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <button
-            type="button"
-            onClick={goToInboxNow}
+          <Link
+            href="/emails"
             className="inline-flex flex-1 items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
           >
-            Go to inbox
-          </button>
+            Go to inbox now
+          </Link>
 
           <Link
             href="/settings"
@@ -179,12 +191,8 @@ export default function SuccessPage() {
           </Link>
         </div>
 
-        <p className="mt-4 text-center text-sm font-medium text-gray-500">
-          Redirecting to your inbox in {secondsLeft} seconds...
-        </p>
-
         <p className="mt-5 text-center text-xs leading-relaxed text-gray-400">
-          Handled never sends emails without your approval.
+          Redirecting to your inbox in {secondsLeft} seconds...
         </p>
       </section>
     </main>
