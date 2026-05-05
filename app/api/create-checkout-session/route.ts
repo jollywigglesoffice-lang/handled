@@ -103,7 +103,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
-    console.error("checkout error", error);
-    return NextResponse.json({ error: "Stripe error" }, { status: 500 });
+    console.error("create checkout session error", error);
+    return NextResponse.json(
+      { error: "Could not create checkout session" },
+      { status: 500 },
+    );
   }
 }

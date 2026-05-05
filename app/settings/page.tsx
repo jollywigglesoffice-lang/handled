@@ -116,15 +116,20 @@ export default function SettingsPage() {
   }
 
   async function handleUpgrade() {
-    if (!authUser?.id || !authUser?.email) return;
+    if (!authUser?.id || !authUser?.email) {
+      console.error("Missing auth user for checkout");
+      return;
+    }
 
     setCheckoutLoading(true);
+
     try {
       const res = await fetch("/api/create-checkout-session", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "same-origin",
         body: JSON.stringify({
           userId: authUser.id,
           email: authUser.email,
@@ -132,13 +137,22 @@ export default function SettingsPage() {
       });
 
       const data = (await res.json()) as { url?: string; error?: string };
+
+      if (!res.ok) {
+        console.error("checkout failed", data);
+        setCheckoutLoading(false);
+        return;
+      }
+
       if (data.url) {
         window.location.href = data.url;
         return;
       }
+
+      console.error("No checkout URL returned", data);
+      setCheckoutLoading(false);
     } catch (error) {
       console.error("checkout error", error);
-    } finally {
       setCheckoutLoading(false);
     }
   }
@@ -153,6 +167,7 @@ export default function SettingsPage() {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "same-origin",
         body: JSON.stringify({
           userId: authUser.id,
           email: authUser.email,
@@ -188,7 +203,7 @@ export default function SettingsPage() {
             Please sign in to view your account settings.
           </p>
           <Link
-            href="/emails/budget-approval-april"
+            href="/emails"
             className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
           >
             Go to Handled
@@ -219,10 +234,10 @@ export default function SettingsPage() {
           </div>
 
           <Link
-            href="/emails/budget-approval-april"
+            href="/emails"
             className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
           >
-            Back to app
+            Back to inbox
           </Link>
         </header>
 
@@ -288,7 +303,7 @@ export default function SettingsPage() {
             {!isPro ? (
               <button
                 type="button"
-                onClick={() => void handleUpgrade()}
+                onClick={handleUpgrade}
                 disabled={checkoutLoading}
                 className="mt-5 w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
               >

@@ -17,7 +17,7 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
         <div>
           <Link
-            href="/"
+            href="/emails"
             className="text-sm font-medium text-[#6366F1] transition-all duration-200 hover:opacity-90 active:scale-95"
           >
             {ui.common.backToInbox}

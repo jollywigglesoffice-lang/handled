@@ -1178,6 +1178,8 @@ return () => clearTimeout(timeout);
       return;
     }
 
+    markEmailHandled(emailId);
+
     setReplyCopied(true);
     if (copyFeedbackTimerRef.current !== null) {
       window.clearTimeout(copyFeedbackTimerRef.current);
@@ -1361,7 +1363,7 @@ return () => clearTimeout(timeout);
     }, 2200);
 
     routeBackTimerRef.current = window.setTimeout(() => {
-      router.push("/");
+      router.push("/emails");
       routeBackTimerRef.current = null;
     }, 2700);
   }

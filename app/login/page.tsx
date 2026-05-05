@@ -31,7 +31,7 @@ export default function LoginPage() {
       setError(signError.message);
       return;
     }
-    router.push("/");
+    router.push("/emails");
     router.refresh();
   }
 
@@ -53,7 +53,7 @@ export default function LoginPage() {
       setError(signError.message);
       return;
     }
-    router.push("/");
+    router.push("/emails");
     router.refresh();
   }
 
@@ -114,7 +114,7 @@ export default function LoginPage() {
         </form>
 
         <p className="mt-6 text-center text-sm text-gray-500">
-          <Link href="/" className="font-medium text-[#6366F1] hover:underline">
+          <Link href="/emails" className="font-medium text-[#6366F1] hover:underline">
             Back to inbox
           </Link>
         </p>

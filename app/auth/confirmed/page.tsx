@@ -21,7 +21,7 @@ export default function AuthConfirmedPage() {
         </p>
 
         <Link
-          href="/emails/budget-approval-april"
+          href="/emails"
           className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
         >
           Go back to Handled
