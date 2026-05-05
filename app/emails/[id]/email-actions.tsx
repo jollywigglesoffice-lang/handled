@@ -16,6 +16,10 @@ import {
   useUserPreferences,
   type ReplyLanguage,
 } from "@/app/user-preferences-context";
+import {
+  FREE_LIMIT,
+  readUsageCountWithDailyReset,
+} from "@/lib/daily-usage";
 import { detectReplyLanguageFromEmail } from "@/lib/detect-reply-language";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -28,8 +32,6 @@ type EmailActionsProps = {
 };
 
 const FETCH_REPLY_TIMEOUT_MS = 14_000;
-
-const FREE_LIMIT = 5;
 
 const PRICING = {
   pro: {
@@ -140,25 +142,6 @@ function readReplyMemoryForUser(userId: string | null): ReplyMemory | null {
   } catch {
     return null;
   }
-}
-
-const USAGE_RESET_PERIOD_MS = 24 * 60 * 60 * 1000;
-
-/** Per-user usage; resets count if more than 24h since `usage_time_${userId}`. */
-function readUsageCountWithDailyReset(userId: string | null): number {
-  if (!userId) {
-    return 0;
-  }
-  const storageKey = `usage_${userId}`;
-  const timeKey = `usage_time_${userId}`;
-  const lastTime = Number(localStorage.getItem(timeKey) || "0");
-  const now = Date.now();
-  if (now - lastTime > USAGE_RESET_PERIOD_MS) {
-    localStorage.setItem(storageKey, "0");
-    localStorage.setItem(timeKey, now.toString());
-    return 0;
-  }
-  return Number(localStorage.getItem(storageKey) || "0");
 }
 
 function trackEvent(name: string, data: Record<string, unknown> = {}) {
@@ -790,18 +773,6 @@ return () => clearTimeout(timeout);
             );
             if (!options?.skipUsageIncrement) {
               incrementGeneratedRepliesCount();
-              if (!isPro) {
-                setUsageCount((prev) => {
-                  const next = prev + 1;
-                  if (typeof window !== "undefined") {
-                    const storageKey = `usage_${userId}`;
-                    const timeKey = `usage_time_${userId}`;
-                    localStorage.setItem(storageKey, next.toString());
-                    localStorage.setItem(timeKey, Date.now().toString());
-                  }
-                  return next;
-                });
-              }
             }
           } catch (e) {
             console.error(e);
@@ -867,18 +838,6 @@ return () => clearTimeout(timeout);
         setStatusMessage(ui.emailActions.statusChooseReply);
         if (!options?.skipUsageIncrement) {
           incrementGeneratedRepliesCount();
-          if (!isPro) {
-            setUsageCount((prev) => {
-              const next = prev + 1;
-              if (typeof window !== "undefined") {
-                const storageKey = `usage_${userId}`;
-                const timeKey = `usage_time_${userId}`;
-                localStorage.setItem(storageKey, next.toString());
-                localStorage.setItem(timeKey, Date.now().toString());
-              }
-              return next;
-            });
-          }
         }
       } catch (error) {
         if (runId !== generateRunIdRef.current) {
@@ -1036,25 +995,67 @@ return () => clearTimeout(timeout);
     editedReplyDraftRef.current = emergencyReplies[0];
   }, [authUser?.id, emailContent, emergencyReplies, selectedReplyIndex]);
 
+  function consumeFreeUse() {
+    if (isPro) return true;
+    if (userId === null) return false;
+
+    const storageKey = `usage_${userId}`;
+    const timeKey = `usage_time_${userId}`;
+    const current = readUsageCountWithDailyReset(userId);
+
+    if (current >= FREE_LIMIT) {
+      setStatusMessage("You're out of free replies for today.");
+      setShowUpgrade(true);
+      trackEvent("limit_reached");
+      setUsageCount(current);
+      return false;
+    }
+
+    const next = current + 1;
+    if (typeof window !== "undefined") {
+      localStorage.setItem(storageKey, next.toString());
+      localStorage.setItem(timeKey, Date.now().toString());
+    }
+    setUsageCount(next);
+    return true;
+  }
+
   async function handleCopyReply() {
     const text = editedReplyDraft.trim();
     if (!text) {
       return;
     }
 
+    if (
+      !isPro &&
+      userId !== null &&
+      readUsageCountWithDailyReset(userId) >= FREE_LIMIT
+    ) {
+      setStatusMessage("You're out of free replies for today.");
+      setShowUpgrade(true);
+      trackEvent("limit_reached");
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(text);
-      setReplyCopied(true);
-      if (copyFeedbackTimerRef.current !== null) {
-        window.clearTimeout(copyFeedbackTimerRef.current);
-      }
-      copyFeedbackTimerRef.current = window.setTimeout(() => {
-        setReplyCopied(false);
-        copyFeedbackTimerRef.current = null;
-      }, 1600);
     } catch {
       setStatusMessage(ui.emailActions.statusCopyFailed);
+      return;
     }
+
+    if (!consumeFreeUse()) {
+      return;
+    }
+
+    setReplyCopied(true);
+    if (copyFeedbackTimerRef.current !== null) {
+      window.clearTimeout(copyFeedbackTimerRef.current);
+    }
+    copyFeedbackTimerRef.current = window.setTimeout(() => {
+      setReplyCopied(false);
+      copyFeedbackTimerRef.current = null;
+    }, 1600);
   }
 
   function handleWorkflowLanguageChange(next: ReplyLanguage) {
@@ -1192,6 +1193,9 @@ return () => clearTimeout(timeout);
     if (!outgoing) {
       return;
     }
+
+    const canUse = consumeFreeUse();
+    if (!canUse) return;
 
     setReplyOptions((previous) =>
       previous.map((reply, index) =>
