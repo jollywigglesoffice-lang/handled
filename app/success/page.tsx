@@ -159,7 +159,7 @@ export default function SuccessPage() {
           </div>
 
           <div className="mt-4 rounded-xl border border-purple-100 bg-white px-3 py-2 text-xs text-purple-700 break-all">
-            {referralLink}
+            {referralLink || "Preparing your invite link..."}
           </div>
 
           <button
