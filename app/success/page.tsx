@@ -78,11 +78,11 @@ export default function SuccessPage() {
             </p>
 
             <h1 className="mt-1 text-3xl font-semibold text-gray-900">
-              You’re Pro 🎉
+              Welcome to Pro Premium 🎉
             </h1>
 
             <p className="mt-2 text-sm leading-relaxed text-gray-600">
-              Thank you for upgrading to Handled Pro. You now have unlimited AI reply support and a calmer, faster way to handle email.
+              Your Pro Premium access is now active. You can draft, refine, and organize faster with advanced AI tools across your inbox workflow.
             </p>
 
             {userEmail && (
@@ -95,43 +95,43 @@ export default function SuccessPage() {
 
         <div className="mt-6 rounded-2xl border border-indigo-100 bg-white/80 p-5">
           <h2 className="text-lg font-semibold text-gray-900">
-            What’s included in Pro
+            Your Pro Premium highlights
           </h2>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl bg-indigo-50 p-4">
               <p className="text-sm font-semibold text-gray-900">
-                Unlimited AI replies
+                Higher AI throughput
               </p>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                No daily reply limit. Generate and refine as much as you need.
+                Process more drafts and rewrites with far fewer interruptions.
               </p>
             </div>
 
             <div className="rounded-xl bg-indigo-50 p-4">
               <p className="text-sm font-semibold text-gray-900">
-                Smarter workflow modes
+                Premium workflow modes
               </p>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                Use Assist Me, Clean My Inbox, and Handle It For Me with more freedom.
+                Use Assist Me, Clean My Inbox, and Handle It For Me with priority access.
               </p>
             </div>
 
             <div className="rounded-xl bg-indigo-50 p-4">
               <p className="text-sm font-semibold text-gray-900">
-                Faster email decisions
+                Faster inbox momentum
               </p>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                Move from reading to replying with less hesitation.
+                Move from reading to action with clearer, stronger suggested replies.
               </p>
             </div>
 
             <div className="rounded-xl bg-indigo-50 p-4">
               <p className="text-sm font-semibold text-gray-900">
-                Early access
+                Product previews
               </p>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                Pro users get first access to multiple inboxes and upcoming AI features.
+                Get first looks at upcoming Pro experiences before general release.
               </p>
             </div>
           </div>
@@ -193,6 +193,9 @@ export default function SuccessPage() {
 
         <p className="mt-5 text-center text-xs leading-relaxed text-gray-400">
           Redirecting to your inbox in {secondsLeft} seconds...
+        </p>
+        <p className="mt-4 text-center text-sm font-semibold tracking-wide text-indigo-700">
+          SUCCESS_PAGE_V2_ACTIVE
         </p>
       </section>
     </main>
