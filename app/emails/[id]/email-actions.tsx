@@ -625,6 +625,14 @@ export function EmailActions({
   }, [userId, refreshProFromServer]);
 
   useEffect(() => {
+    const onProSynced = () => {
+      refreshProFromServer();
+    };
+    window.addEventListener("handled-pro-updated", onProSynced);
+    return () => window.removeEventListener("handled-pro-updated", onProSynced);
+  }, [refreshProFromServer]);
+
+  useEffect(() => {
     if (showUpgrade) {
       trackEvent("upgrade_shown");
     }

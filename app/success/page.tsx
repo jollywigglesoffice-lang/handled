@@ -8,6 +8,7 @@ export default function SuccessPage() {
   const [referralCopied, setReferralCopied] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [referralCode, setReferralCode] = useState("handled-pro");
+  const [checkoutSessionQuery, setCheckoutSessionQuery] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -31,6 +32,36 @@ export default function SuccessPage() {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get("session_id");
+    if (sessionId) {
+      setCheckoutSessionQuery(`&session_id=${encodeURIComponent(sessionId)}`);
+    }
+    if (!sessionId) return;
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/verify-checkout-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ sessionId }),
+        });
+        const data = (await res.json()) as { ok?: boolean; error?: string; reason?: string };
+        if (res.ok && data.ok) {
+          console.log("[success] Pro synced from Checkout Session", data);
+          window.dispatchEvent(new Event("handled-pro-updated"));
+        } else {
+          console.warn("[success] verify-checkout-session:", res.status, data);
+        }
+      } catch (error) {
+        console.error("[success] verify-checkout-session failed", error);
+      }
+    })();
   }, []);
 
   const referralLink = useMemo(() => {
@@ -167,14 +198,14 @@ export default function SuccessPage() {
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Link
-            href="/emails"
+            href={`/emails?upgraded=true${checkoutSessionQuery}`}
             className="inline-flex flex-1 items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
           >
             Return to emails
           </Link>
 
           <Link
-            href="/settings"
+            href={`/settings?upgraded=true${checkoutSessionQuery}`}
             className="inline-flex flex-1 items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
           >
             Open Settings & Billing

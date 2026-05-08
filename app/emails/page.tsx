@@ -208,6 +208,31 @@ export default function EmailsInboxPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get("session_id");
+    if (!sessionId) return;
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/verify-checkout-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ sessionId }),
+        });
+        const data = (await res.json()) as { ok?: boolean };
+        if (res.ok && data.ok) {
+          console.log("[inbox] Pro synced via checkout session verify");
+          window.dispatchEvent(new Event("handled-pro-updated"));
+        }
+      } catch (error) {
+        console.error("[inbox] verify-checkout-session failed", error);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     if (!isLoading) {
       const frameId = window.requestAnimationFrame(() => {
         setShowContent(true);

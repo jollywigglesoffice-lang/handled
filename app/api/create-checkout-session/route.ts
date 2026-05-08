@@ -107,7 +107,7 @@ export async function POST(req: Request) {
           userId,
         },
       },
-      success_url: `${origin}/success?upgraded=true`,
+      success_url: `${origin}/success?upgraded=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/settings?canceled=true`,
     });
 
