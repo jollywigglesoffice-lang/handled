@@ -7,11 +7,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY." }, { status: 500 });
   }
 
-  if (!process.env.NEXT_PUBLIC_APP_URL) {
-    return NextResponse.json({ error: "Missing NEXT_PUBLIC_APP_URL." }, { status: 500 });
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  const origin =
+    req.headers.get("origin") ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000";
 
   let body: { userId?: unknown; email?: unknown };
   try {
@@ -64,6 +63,9 @@ export async function POST(req: Request) {
       });
     }
 
+    console.log("Stripe checkout origin:", origin);
+    console.log("Stripe success_url:", `${origin}/success?upgraded=true`);
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -92,8 +94,8 @@ export async function POST(req: Request) {
           userId,
         },
       },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/success?upgraded=true`,
-      cancel_url: `${appUrl}/settings?canceled=true`,
+      success_url: `${origin}/success?upgraded=true`,
+      cancel_url: `${origin}/settings?canceled=true`,
     });
 
     return NextResponse.json({ url: session.url });

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function SuccessPage() {
-  const [secondsLeft, setSecondsLeft] = useState(7);
   const [referralCopied, setReferralCopied] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [referralCode, setReferralCode] = useState("handled-pro");
@@ -38,19 +37,6 @@ export default function SuccessPage() {
     if (typeof window === "undefined") return "";
     return `${window.location.origin}/?ref=${referralCode}`;
   }, [referralCode]);
-
-  useEffect(() => {
-    if (secondsLeft <= 0) {
-      window.location.href = "/emails";
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setSecondsLeft((prev) => prev - 1);
-    }, 1000);
-
-    return () => window.clearTimeout(timer);
-  }, [secondsLeft]);
 
   async function copyReferralInvite() {
     const inviteText = `I’m using Handled Pro to write smarter email replies faster. Try it here: ${referralLink}`;
@@ -184,19 +170,19 @@ export default function SuccessPage() {
             href="/emails"
             className="inline-flex flex-1 items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
           >
-            Go to inbox now
+            Return to emails
           </Link>
 
           <Link
             href="/settings"
             className="inline-flex flex-1 items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
           >
-            Open settings
+            Open Settings & Billing
           </Link>
         </div>
 
-        <p className="mt-5 text-center text-xs leading-relaxed text-gray-400">
-          Redirecting to your inbox in {secondsLeft} seconds...
+        <p className="mt-4 text-center text-xs text-gray-400">
+          Take your time — your Pro benefits are ready when you are.
         </p>
       </section>
     </main>
