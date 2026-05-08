@@ -67,6 +67,10 @@ export default function SuccessPage() {
   return (
     <main className="min-h-screen bg-[#F8FAFC] px-4 py-10">
       <section className="mx-auto w-full max-w-3xl rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 shadow-sm">
+        <p className="mb-4 rounded-full bg-indigo-600 px-3 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-white">
+          SUCCESS_PAGE_V2_ACTIVE
+        </p>
+
         <div className="flex items-start gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-2xl text-white shadow-md">
             ✨
@@ -78,11 +82,11 @@ export default function SuccessPage() {
             </p>
 
             <h1 className="mt-1 text-3xl font-semibold text-gray-900">
-              Welcome to Pro Premium 🎉
+              You’re Pro 🎉
             </h1>
 
             <p className="mt-2 text-sm leading-relaxed text-gray-600">
-              Your Pro Premium access is now active. You can draft, refine, and organize faster with advanced AI tools across your inbox workflow.
+              Thank you for upgrading to Handled Pro. You now have unlimited AI reply support and a calmer, faster way to handle email.
             </p>
 
             {userEmail && (
@@ -95,43 +99,43 @@ export default function SuccessPage() {
 
         <div className="mt-6 rounded-2xl border border-indigo-100 bg-white/80 p-5">
           <h2 className="text-lg font-semibold text-gray-900">
-            Your Pro Premium highlights
+            What’s included in Pro
           </h2>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl bg-indigo-50 p-4">
               <p className="text-sm font-semibold text-gray-900">
-                Higher AI throughput
+                Unlimited AI replies
               </p>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                Process more drafts and rewrites with far fewer interruptions.
+                No daily reply limit. Generate and refine as much as you need.
               </p>
             </div>
 
             <div className="rounded-xl bg-indigo-50 p-4">
               <p className="text-sm font-semibold text-gray-900">
-                Premium workflow modes
+                Smarter workflow modes
               </p>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                Use Assist Me, Clean My Inbox, and Handle It For Me with priority access.
+                Use Assist Me, Clean My Inbox, and Handle It For Me with more freedom.
               </p>
             </div>
 
             <div className="rounded-xl bg-indigo-50 p-4">
               <p className="text-sm font-semibold text-gray-900">
-                Faster inbox momentum
+                Faster email decisions
               </p>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                Move from reading to action with clearer, stronger suggested replies.
+                Move from reading to replying with less hesitation.
               </p>
             </div>
 
             <div className="rounded-xl bg-indigo-50 p-4">
               <p className="text-sm font-semibold text-gray-900">
-                Product previews
+                Early access
               </p>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
-                Get first looks at upcoming Pro experiences before general release.
+                Pro users get first access to multiple inboxes and upcoming AI features.
               </p>
             </div>
           </div>
@@ -193,9 +197,6 @@ export default function SuccessPage() {
 
         <p className="mt-5 text-center text-xs leading-relaxed text-gray-400">
           Redirecting to your inbox in {secondsLeft} seconds...
-        </p>
-        <p className="mt-4 text-center text-sm font-semibold tracking-wide text-indigo-700">
-          SUCCESS_PAGE_V2_ACTIVE
         </p>
       </section>
     </main>

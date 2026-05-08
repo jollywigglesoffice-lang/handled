@@ -92,7 +92,7 @@ export async function POST(req: Request) {
           userId,
         },
       },
-      success_url: `${appUrl}/success?upgraded=true`,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/success?upgraded=true`,
       cancel_url: `${appUrl}/settings?canceled=true`,
     });
 
