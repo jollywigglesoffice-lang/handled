@@ -1,21 +1,22 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { syncPublicUserFromAuth } from "@/lib/sync-public-user";
 
 export async function POST(req: Request) {
   try {
-    const { userId } = (await req.json()) as { userId?: string };
+    const { userId, email } = (await req.json()) as {
+      userId?: string;
+      email?: string | null;
+    };
 
     if (!userId) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 });
     }
 
-    const { error } = await supabase.from("users").upsert({
-      id: userId,
-    });
+    const { error } = await syncPublicUserFromAuth(userId, email);
 
     if (error) {
       console.error("create-user error", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });

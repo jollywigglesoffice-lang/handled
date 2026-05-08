@@ -2,7 +2,7 @@
 
 import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { FREE_LIMIT, readUsageCountWithDailyReset } from "@/lib/daily-usage";
 import type { WorkflowMode } from "@/lib/workflow-mode";
@@ -45,6 +45,19 @@ export default function SettingsPage() {
     return Boolean(profile.isPro);
   }
 
+  const refreshPlanStatus = useCallback(async () => {
+    if (!authUser?.id) return;
+
+    try {
+      const res = await fetch(`/api/get-user?userId=${encodeURIComponent(authUser.id)}`);
+      const data = (await res.json()) as { isPro?: boolean };
+      setIsPro(Boolean(data.isPro));
+      console.log("Plan refresh:", data);
+    } catch (error) {
+      console.error("refresh plan failed", error);
+    }
+  }, [authUser?.id]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -56,6 +69,14 @@ export default function SettingsPage() {
         return;
       }
       try {
+        await fetch("/api/create-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: user.id,
+            email: user.email ?? "",
+          }),
+        });
         await refreshUserProfile(user.id);
         if (!mounted) return;
         setUsageCount(readUsageCountWithDailyReset(user.id));
@@ -111,6 +132,11 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!authUser?.id) return;
+    void refreshPlanStatus();
+  }, [authUser?.id, refreshPlanStatus]);
+
+  useEffect(() => {
+    if (!authUser?.id) return;
     if (typeof window === "undefined") return;
 
     const params = new URLSearchParams(window.location.search);
@@ -153,11 +179,12 @@ export default function SettingsPage() {
     const onVisibility = () => {
       if (document.visibilityState === "visible" && authUser?.id) {
         setUsageCount(readUsageCountWithDailyReset(authUser.id));
+        void refreshPlanStatus();
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [authUser?.id]);
+  }, [authUser?.id, refreshPlanStatus]);
 
   async function handleLogout() {
     await supabaseBrowser.auth.signOut();
@@ -517,6 +544,13 @@ export default function SettingsPage() {
                       {checkoutError}
                     </div>
                   ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void refreshPlanStatus()}
+                    className="mt-3 text-xs font-medium text-indigo-600 hover:underline"
+                  >
+                    Refresh plan status
+                  </button>
                 </div>
               )}
             </article>

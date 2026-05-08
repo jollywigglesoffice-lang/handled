@@ -47,6 +47,23 @@ export default function LoginPage() {
           return;
         }
 
+        const newUser = result.data.user;
+        const session = result.data.session;
+        if (newUser?.id && session) {
+          try {
+            await fetch("/api/create-user", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: newUser.id,
+                email: newUser.email ?? "",
+              }),
+            });
+          } catch (syncError) {
+            console.error("sync public user after signup failed", syncError);
+          }
+        }
+
         setAuthPassword("");
         setAuthNotice(
           "Account created! Please check your email to confirm your account. After confirming, come back here and sign in."
@@ -69,6 +86,22 @@ export default function LoginPage() {
         }
 
         return;
+      }
+
+      const signedInUser = result.data.user;
+      if (signedInUser?.id) {
+        try {
+          await fetch("/api/create-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: signedInUser.id,
+              email: signedInUser.email ?? "",
+            }),
+          });
+        } catch (syncError) {
+          console.error("sync public user after login failed", syncError);
+        }
       }
 
       window.location.href = next;

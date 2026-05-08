@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabase } from "@/lib/supabase";
+import { syncPublicUserFromAuth } from "@/lib/sync-public-user";
 
 export async function POST(req: Request) {
   const secret = process.env.STRIPE_SECRET_KEY;
@@ -41,6 +42,12 @@ export async function POST(req: Request) {
   }
   if (user.id !== userId || user.email !== email) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { error: syncError } = await syncPublicUserFromAuth(userId, email);
+  if (syncError) {
+    console.error("billing portal: sync public user failed", syncError);
+    return NextResponse.json({ error: syncError }, { status: 500 });
   }
 
   try {

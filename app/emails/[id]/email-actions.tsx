@@ -378,6 +378,24 @@ export function EmailActions({
 
   const userId = authUser?.id ?? null;
 
+  const refreshProFromServer = useCallback(() => {
+    if (!userId) {
+      setIsPro(false);
+      setShowUpgrade(false);
+      return;
+    }
+
+    void fetch(`/api/get-user?userId=${encodeURIComponent(userId)}`)
+      .then((res) => res.json())
+      .then((data: { isPro?: boolean }) => {
+        setIsPro(Boolean(data.isPro));
+      })
+      .catch((error) => {
+        console.error("get-user frontend error", error);
+        setIsPro(false);
+      });
+  }, [userId]);
+
   const [memoryProfile, setMemoryProfile] = useState<ReplyMemory | null>(null);
 
   const [workflowReplyLanguage, setWorkflowReplyLanguage] = useState<ReplyLanguage>(() =>
@@ -568,11 +586,14 @@ export function EmailActions({
     void fetch("/api/create-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({
+        userId,
+        email: authUser?.email ?? "",
+      }),
     }).catch((error) => {
       console.error("create-user frontend error", error);
     });
-  }, [userId]);
+  }, [userId, authUser?.email]);
 
   useEffect(() => {
     if (!userId) {
@@ -581,16 +602,27 @@ export function EmailActions({
       return;
     }
 
-    void fetch(`/api/get-user?userId=${encodeURIComponent(userId)}`)
-      .then((res) => res.json())
-      .then((data: { isPro?: boolean }) => {
-        setIsPro(Boolean(data.isPro));
-      })
-      .catch((error) => {
-        console.error("get-user frontend error", error);
-        setIsPro(false);
-      });
-  }, [userId]);
+    refreshProFromServer();
+  }, [userId, refreshProFromServer]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" && userId) {
+        refreshProFromServer();
+      }
+    };
+    const onFocus = () => {
+      if (userId) {
+        refreshProFromServer();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [userId, refreshProFromServer]);
 
   useEffect(() => {
     if (showUpgrade) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabase } from "@/lib/supabase";
+import { syncPublicUserFromAuth } from "@/lib/sync-public-user";
 
 export async function POST(req: Request) {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -12,21 +13,33 @@ export async function POST(req: Request) {
     process.env.NEXT_PUBLIC_APP_URL ||
     "http://localhost:3000";
 
-  let body: { userId?: unknown; email?: unknown };
+  let userIdRaw: unknown;
+  let emailRaw: unknown;
   try {
-    body = (await req.json()) as { userId?: unknown; email?: unknown };
+    ({ userId: userIdRaw, email: emailRaw } = (await req.json()) as {
+      userId?: unknown;
+      email?: unknown;
+    });
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const userId = typeof body.userId === "string" ? body.userId.trim() : "";
-  const email = typeof body.email === "string" ? body.email.trim() : "";
+  const userId = typeof userIdRaw === "string" ? userIdRaw.trim() : "";
+  const email = typeof emailRaw === "string" ? emailRaw.trim() : "";
 
   if (!userId || !email) {
     return NextResponse.json({ error: "Missing userId or email." }, { status: 400 });
   }
 
   try {
+    const { error: syncError } = await syncPublicUserFromAuth(userId, email);
+    if (syncError) {
+      console.error("checkout: sync public user failed", syncError);
+      return NextResponse.json({ error: syncError }, { status: 500 });
+    }
+
+    console.log("Creating checkout for user:", userId, email);
+
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
       apiVersion: "2026-04-22.dahlia",
     });
@@ -97,6 +110,8 @@ export async function POST(req: Request) {
       success_url: `${origin}/success?upgraded=true`,
       cancel_url: `${origin}/settings?canceled=true`,
     });
+
+    console.log("Checkout session created:", session.id, "userId:", userId);
 
     return NextResponse.json({ url: session.url });
   } catch (error: unknown) {
