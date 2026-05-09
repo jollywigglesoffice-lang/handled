@@ -22,6 +22,7 @@ export type ResolveUserResult = {
   userId: string | null;
   customerId: string | null;
   subscriptionId: string | null;
+  customerEmail: string | null;
   resolution: string;
 };
 
@@ -37,11 +38,15 @@ export async function resolveUserIdFromCheckoutSession(
   let subscriptionId = extractStripeId(session.subscription);
 
   const metaUserId = session.metadata?.userId?.trim() || null;
+  const sessionEmail = normalizeEmail(
+    session.customer_details?.email || session.customer_email || undefined,
+  );
   if (metaUserId) {
     return {
       userId: metaUserId,
       customerId,
       subscriptionId,
+      customerEmail: sessionEmail,
       resolution: "session.metadata.userId",
     };
   }
@@ -58,6 +63,7 @@ export async function resolveUserIdFromCheckoutSession(
         userId: expandedMeta,
         customerId,
         subscriptionId,
+        customerEmail: sessionEmail,
         resolution: "session.retrieve.metadata.userId",
       };
     }
@@ -74,14 +80,13 @@ export async function resolveUserIdFromCheckoutSession(
         userId: byCustomer.id,
         customerId,
         subscriptionId,
+        customerEmail: sessionEmail,
         resolution: "users.stripe_customer_id",
       };
     }
   }
 
-  let email = normalizeEmail(
-    session.customer_details?.email || session.customer_email || undefined,
-  );
+  let email = sessionEmail;
 
   if (!email && customerId) {
     const customer = await stripe.customers.retrieve(customerId);
@@ -93,6 +98,7 @@ export async function resolveUserIdFromCheckoutSession(
           userId: cidMeta,
           customerId,
           subscriptionId,
+          customerEmail: email,
           resolution: "stripe_customer.metadata.userId",
         };
       }
@@ -110,6 +116,7 @@ export async function resolveUserIdFromCheckoutSession(
         userId: byEmail.id,
         customerId,
         subscriptionId,
+        customerEmail: email,
         resolution: "users.email",
       };
     }
@@ -123,6 +130,7 @@ export async function resolveUserIdFromCheckoutSession(
         userId: subMeta,
         customerId: customerId || extractStripeId(sub.customer),
         subscriptionId,
+        customerEmail: email,
         resolution: "subscription.metadata.userId",
       };
     }
@@ -132,6 +140,7 @@ export async function resolveUserIdFromCheckoutSession(
     userId: null,
     customerId,
     subscriptionId,
+    customerEmail: email,
     resolution: "unresolved",
   };
 }

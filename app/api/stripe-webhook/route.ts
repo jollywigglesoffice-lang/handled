@@ -64,14 +64,19 @@ export async function POST(req: Request) {
       const session = await stripe.checkout.sessions.retrieve(thin.id, {
         expand: ["subscription", "customer"],
       });
+      let customerId = extractStripeId(session.customer);
+      let subscriptionId = extractStripeId(session.subscription);
+      const customerEmail =
+        session.customer_details?.email || session.customer_email || null;
 
       console.log("[stripe-webhook] checkout.session.completed", {
         sessionId: session.id,
         mode: session.mode,
         payment_status: session.payment_status,
         metadata: session.metadata,
-        customer: extractStripeId(session.customer),
-        subscription: extractStripeId(session.subscription),
+        customerId,
+        subscriptionId,
+        customerEmail,
       });
 
       if (session.mode !== "subscription") {
@@ -79,13 +84,15 @@ export async function POST(req: Request) {
         return NextResponse.json({ received: true, skipped: "not_subscription" });
       }
 
-      if (session.payment_status !== "paid") {
-        console.warn(
-          "[stripe-webhook] checkout not paid yet",
-          session.id,
-          session.payment_status,
-        );
-        return NextResponse.json({ received: true, skipped: "not_paid" });
+      // Some subscription checkouts can complete before payment_status reaches "paid".
+      // We still resolve the user + persist customer/subscription identifiers here.
+      if (!subscriptionId && customerId) {
+        const subs = await stripe.subscriptions.list({
+          customer: customerId,
+          limit: 1,
+          status: "all",
+        });
+        subscriptionId = subs.data[0]?.id ?? null;
       }
 
       const resolved = await resolveUserIdFromCheckoutSession(stripe, supabase, session);
@@ -96,7 +103,11 @@ export async function POST(req: Request) {
         console.error(
           "[stripe-webhook] FAILED: could not resolve public.users row for checkout",
           session.id,
-          { customerId: resolved.customerId, subscriptionId: resolved.subscriptionId },
+          {
+            customerId: resolved.customerId ?? customerId,
+            subscriptionId: resolved.subscriptionId ?? subscriptionId,
+            customerEmail: resolved.customerEmail ?? customerEmail,
+          },
         );
         return NextResponse.json(
           {
@@ -108,10 +119,19 @@ export async function POST(req: Request) {
         );
       }
 
-      const customerId =
-        resolved.customerId || extractStripeId(session.customer);
-      const subscriptionId =
-        resolved.subscriptionId || extractStripeId(session.subscription);
+      customerId = resolved.customerId || customerId;
+      subscriptionId = resolved.subscriptionId || subscriptionId;
+
+      // Final fallback: if we still don't have subscription id but user is matched,
+      // recover it from Stripe by customer or by user-linked customer record.
+      if (!subscriptionId && customerId) {
+        const subs = await stripe.subscriptions.list({
+          customer: customerId,
+          limit: 1,
+          status: "all",
+        });
+        subscriptionId = subs.data[0]?.id ?? null;
+      }
 
       const { data, error } = await upsertProForUser(supabase, {
         userId: resolved.userId,
@@ -128,10 +148,12 @@ export async function POST(req: Request) {
       }
 
       console.log("[stripe-webhook] SUCCESS: user upgraded to Pro", {
+        eventType: event.type,
         userId: resolved.userId,
         resolution: resolved.resolution,
         customerId,
         subscriptionId,
+        customerEmail: resolved.customerEmail ?? customerEmail,
         rows: data,
       });
     }
