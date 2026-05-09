@@ -66,8 +66,9 @@ export async function POST(req: Request) {
       });
       let customerId = extractStripeId(session.customer);
       let subscriptionId = extractStripeId(session.subscription);
-      const customerEmail =
+      const customerEmailRaw =
         session.customer_details?.email || session.customer_email || null;
+      const customerEmail = customerEmailRaw?.trim().toLowerCase() || null;
 
       console.log("[stripe-webhook] checkout.session.completed", {
         sessionId: session.id,
@@ -95,18 +96,68 @@ export async function POST(req: Request) {
         subscriptionId = subs.data[0]?.id ?? null;
       }
 
-      const resolved = await resolveUserIdFromCheckoutSession(stripe, supabase, session);
+      // Match row by stripe_customer_id first, then by email.
+      let matchedUserId: string | null = null;
+      let matchedBy: "stripe_customer_id" | "email" | "resolver" | null = null;
 
-      console.log("[stripe-webhook] resolved user for checkout", resolved);
+      if (customerId) {
+        const { data: byCustomer, error: byCustomerError } = await supabase
+          .from("users")
+          .select("id")
+          .eq("stripe_customer_id", customerId)
+          .maybeSingle();
 
-      if (!resolved.userId) {
+        if (byCustomerError) {
+          console.error("[stripe-webhook] error matching by stripe_customer_id", byCustomerError);
+        } else if (byCustomer?.id) {
+          matchedUserId = byCustomer.id;
+          matchedBy = "stripe_customer_id";
+        }
+      }
+
+      if (!matchedUserId && customerEmail) {
+        const { data: byEmail, error: byEmailError } = await supabase
+          .from("users")
+          .select("id")
+          .ilike("email", customerEmail)
+          .maybeSingle();
+
+        if (byEmailError) {
+          console.error("[stripe-webhook] error matching by email", byEmailError);
+        } else if (byEmail?.id) {
+          matchedUserId = byEmail.id;
+          matchedBy = "email";
+        }
+      }
+
+      // Final fallback to existing resolver path for metadata-based recovery.
+      if (!matchedUserId) {
+        const resolved = await resolveUserIdFromCheckoutSession(stripe, supabase, session);
+        if (resolved.userId) {
+          matchedUserId = resolved.userId;
+          matchedBy = "resolver";
+          customerId = resolved.customerId || customerId;
+          subscriptionId = resolved.subscriptionId || subscriptionId;
+        }
+      }
+
+      console.log("[stripe-webhook] matched user", {
+        sessionId: session.id,
+        matchedUserId,
+        matchedBy,
+        extractedEmail: customerEmail,
+        extractedSubscriptionId: subscriptionId,
+        extractedCustomerId: customerId,
+      });
+
+      if (!matchedUserId) {
         console.error(
           "[stripe-webhook] FAILED: could not resolve public.users row for checkout",
           session.id,
           {
-            customerId: resolved.customerId ?? customerId,
-            subscriptionId: resolved.subscriptionId ?? subscriptionId,
-            customerEmail: resolved.customerEmail ?? customerEmail,
+            customerId,
+            subscriptionId,
+            customerEmail,
           },
         );
         return NextResponse.json(
@@ -118,9 +169,6 @@ export async function POST(req: Request) {
           { status: 200 },
         );
       }
-
-      customerId = resolved.customerId || customerId;
-      subscriptionId = resolved.subscriptionId || subscriptionId;
 
       // Final fallback: if we still don't have subscription id but user is matched,
       // recover it from Stripe by customer or by user-linked customer record.
@@ -134,13 +182,19 @@ export async function POST(req: Request) {
       }
 
       const { data, error } = await upsertProForUser(supabase, {
-        userId: resolved.userId,
+        userId: matchedUserId,
         stripeCustomerId: customerId,
         stripeSubscriptionId: subscriptionId,
       });
 
       if (error) {
-        console.error("[stripe-webhook] FAILED: Supabase upsert Pro", error);
+        console.error("[stripe-webhook] FAILED: Supabase upsert Pro", {
+          error,
+          matchedUserId,
+          customerId,
+          subscriptionId,
+          customerEmail,
+        });
         return NextResponse.json(
           { error: error.message },
           { status: 500 },
@@ -149,11 +203,11 @@ export async function POST(req: Request) {
 
       console.log("[stripe-webhook] SUCCESS: user upgraded to Pro", {
         eventType: event.type,
-        userId: resolved.userId,
-        resolution: resolved.resolution,
+        userId: matchedUserId,
+        resolution: matchedBy,
         customerId,
         subscriptionId,
-        customerEmail: resolved.customerEmail ?? customerEmail,
+        customerEmail,
         rows: data,
       });
     }
