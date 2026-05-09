@@ -70,6 +70,15 @@ export async function POST(req: Request) {
         session.customer_details?.email || session.customer_email || null;
       const customerEmail = customerEmailRaw?.trim().toLowerCase() || null;
 
+      console.log("[stripe-webhook] STEP 1 incoming checkout payload", {
+        eventType: event.type,
+        eventId: event.id,
+        sessionId: session.id,
+        mode: session.mode,
+        paymentStatus: session.payment_status,
+        payload: session,
+      });
+
       console.log("[stripe-webhook] checkout.session.completed", {
         sessionId: session.id,
         mode: session.mode,
@@ -94,45 +103,66 @@ export async function POST(req: Request) {
           status: "all",
         });
         subscriptionId = subs.data[0]?.id ?? null;
+        console.log("[stripe-webhook] STEP 2 subscription fallback result", {
+          customerId,
+          subscriptionCount: subs.data.length,
+          extractedSubscriptionId: subscriptionId,
+        });
       }
 
-      // Match row by stripe_customer_id first, then by email.
+      // Match row by email first (requested), then by stripe_customer_id.
       let matchedUserId: string | null = null;
       let matchedBy: "stripe_customer_id" | "email" | "resolver" | null = null;
+      let matchedRow: { id: string; email: string | null } | null = null;
 
-      if (customerId) {
-        const { data: byCustomer, error: byCustomerError } = await supabase
-          .from("users")
-          .select("id")
-          .eq("stripe_customer_id", customerId)
-          .maybeSingle();
-
-        if (byCustomerError) {
-          console.error("[stripe-webhook] error matching by stripe_customer_id", byCustomerError);
-        } else if (byCustomer?.id) {
-          matchedUserId = byCustomer.id;
-          matchedBy = "stripe_customer_id";
-        }
-      }
-
-      if (!matchedUserId && customerEmail) {
+      if (customerEmail) {
         const { data: byEmail, error: byEmailError } = await supabase
           .from("users")
-          .select("id")
+          .select("id, email")
           .ilike("email", customerEmail)
           .maybeSingle();
+
+        console.log("[stripe-webhook] STEP 3 Supabase select by email", {
+          email: customerEmail,
+          data: byEmail,
+          error: byEmailError,
+        });
 
         if (byEmailError) {
           console.error("[stripe-webhook] error matching by email", byEmailError);
         } else if (byEmail?.id) {
           matchedUserId = byEmail.id;
           matchedBy = "email";
+          matchedRow = { id: byEmail.id, email: byEmail.email ?? null };
+        }
+      }
+
+      if (!matchedUserId && customerId) {
+        const { data: byCustomer, error: byCustomerError } = await supabase
+          .from("users")
+          .select("id, email")
+          .eq("stripe_customer_id", customerId)
+          .maybeSingle();
+
+        console.log("[stripe-webhook] STEP 4 Supabase select by stripe_customer_id", {
+          customerId,
+          data: byCustomer,
+          error: byCustomerError,
+        });
+
+        if (byCustomerError) {
+          console.error("[stripe-webhook] error matching by stripe_customer_id", byCustomerError);
+        } else if (byCustomer?.id) {
+          matchedUserId = byCustomer.id;
+          matchedBy = "stripe_customer_id";
+          matchedRow = { id: byCustomer.id, email: byCustomer.email ?? null };
         }
       }
 
       // Final fallback to existing resolver path for metadata-based recovery.
       if (!matchedUserId) {
         const resolved = await resolveUserIdFromCheckoutSession(stripe, supabase, session);
+        console.log("[stripe-webhook] STEP 5 resolver fallback result", resolved);
         if (resolved.userId) {
           matchedUserId = resolved.userId;
           matchedBy = "resolver";
@@ -148,6 +178,7 @@ export async function POST(req: Request) {
         extractedEmail: customerEmail,
         extractedSubscriptionId: subscriptionId,
         extractedCustomerId: customerId,
+        matchedRow,
       });
 
       if (!matchedUserId) {
@@ -179,24 +210,74 @@ export async function POST(req: Request) {
           status: "all",
         });
         subscriptionId = subs.data[0]?.id ?? null;
+        console.log("[stripe-webhook] STEP 6 second subscription fallback result", {
+          customerId,
+          subscriptionCount: subs.data.length,
+          extractedSubscriptionId: subscriptionId,
+        });
       }
 
-      const { data, error } = await upsertProForUser(supabase, {
-        userId: matchedUserId,
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: subscriptionId,
-      });
+      let updateData: unknown = null;
+      let updateError: { message: string } | null = null;
 
-      if (error) {
-        console.error("[stripe-webhook] FAILED: Supabase upsert Pro", {
+      // First try explicit update by email as requested.
+      if (customerEmail) {
+        const { data, error } = await supabase
+          .from("users")
+          .update({
+            is_pro: true,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscriptionId,
+          })
+          .ilike("email", customerEmail)
+          .select();
+
+        console.log("[stripe-webhook] STEP 7 Supabase update by email result", {
+          email: customerEmail,
+          data,
           error,
+        });
+
+        if (error) {
+          updateError = { message: error.message };
+        } else if (Array.isArray(data) && data.length > 0) {
+          updateData = data;
+          updateError = null;
+        }
+      }
+
+      // Fallback update by matched user id.
+      if (!updateData) {
+        const { data, error } = await upsertProForUser(supabase, {
+          userId: matchedUserId,
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: subscriptionId,
+        });
+
+        console.log("[stripe-webhook] STEP 8 Supabase update by user result", {
+          userId: matchedUserId,
+          data,
+          error,
+        });
+
+        if (error) {
+          updateError = error;
+        } else {
+          updateData = data;
+          updateError = null;
+        }
+      }
+
+      if (updateError) {
+        console.error("[stripe-webhook] FAILED: Supabase upsert Pro", {
+          error: updateError,
           matchedUserId,
           customerId,
           subscriptionId,
           customerEmail,
         });
         return NextResponse.json(
-          { error: error.message },
+          { error: updateError.message },
           { status: 500 },
         );
       }
@@ -208,7 +289,7 @@ export async function POST(req: Request) {
         customerId,
         subscriptionId,
         customerEmail,
-        rows: data,
+        rows: updateData,
       });
     }
 
