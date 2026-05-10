@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 /** Google OAuth must return to production only (no localhost / preview URLs). */
 const PRODUCTION_AUTH_ORIGIN = "https://handledemails.com";
 
 export default function LoginPage() {
+  const router = useRouter();
   const next =
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("next") || "/emails"
@@ -23,11 +25,31 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const err = new URLSearchParams(window.location.search).get("error");
-    if (err === "oauth") {
-      setAuthError("Google sign-in didn’t complete. Please try again.");
+
+    const hash = window.location.hash;
+    if (hash && hash.includes("access_token")) {
+      // Next.js router can drop the hash; full navigation preserves OAuth tokens.
+      window.location.replace(`${window.location.origin}/auth/callback${hash}`);
+      return;
     }
-  }, []);
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") !== "oauth") return;
+
+    void (async () => {
+      const { data } = await supabaseBrowser.auth.getSession();
+      if (data.session) {
+        setAuthError("");
+        params.delete("error");
+        const qs = params.toString();
+        const path = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+        window.history.replaceState(null, "", path);
+        router.replace("/emails");
+        return;
+      }
+      setAuthError("Google sign-in didn’t complete. Please try again.");
+    })();
+  }, [router]);
 
   async function handleGoogleSignIn() {
     setAuthError("");
