@@ -3,18 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-const PRODUCTION_APP_ORIGIN = "https://handledemails.com";
-
-function getOAuthRedirectOrigin(): string {
-  const env = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-  if (env?.startsWith("http")) {
-    return env;
-  }
-  if (typeof window !== "undefined") {
-    return window.location.origin;
-  }
-  return PRODUCTION_APP_ORIGIN;
-}
+/** Google OAuth must return to production only (no localhost / preview URLs). */
+const PRODUCTION_AUTH_ORIGIN = "https://handledemails.com";
 
 export default function LoginPage() {
   const next =
@@ -45,8 +35,7 @@ export default function LoginPage() {
     setOauthLoading(true);
 
     try {
-      const origin = getOAuthRedirectOrigin();
-      const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/emails")}`;
+      const redirectTo = `${PRODUCTION_AUTH_ORIGIN}/auth/callback?next=${encodeURIComponent("/emails")}`;
 
       const { error } = await supabaseBrowser.auth.signInWithOAuth({
         provider: "google",
