@@ -43,6 +43,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Skip Stripe webhooks: no session cookies; avoids extra auth work. Vercel Deployment
+    // Protection must still allow this path (see Stripe webhook URL / Vercel settings).
+    "/((?!api/stripe-webhook|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
