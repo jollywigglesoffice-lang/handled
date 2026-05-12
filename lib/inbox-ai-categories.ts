@@ -21,11 +21,70 @@ export function isInboxAiCategory(value: string): value is InboxAiCategory {
   return (INBOX_AI_CATEGORY_VALUES as readonly string[]).includes(value);
 }
 
+/** Map common model drift / synonyms to our canonical slugs. */
+function synonymToCategory(t: string): InboxAiCategory | null {
+  if (
+    t === "promotional" ||
+    t === "promotions" ||
+    t === "marketing" ||
+    t === "advertisement" ||
+    t === "advertising" ||
+    t === "ads" ||
+    t === "sale" ||
+    t === "spam" ||
+    t === "deal"
+  ) {
+    return "promotion";
+  }
+  if (
+    t === "newsletters" ||
+    t === "digest" ||
+    t === "subscription" ||
+    t === "substack" ||
+    t === "blog"
+  ) {
+    return "newsletter";
+  }
+  if (
+    t === "fyi" ||
+    t === "informational" ||
+    t === "info" ||
+    t === "no_action" ||
+    t === "noaction" ||
+    t === "automated" ||
+    t === "receipt" ||
+    t === "notification" ||
+    t === "done" ||
+    t === "complete"
+  ) {
+    return "handled";
+  }
+  if (
+    t === "action_required" ||
+    t === "actionrequired" ||
+    t === "important" ||
+    t === "urgent" ||
+    t === "todo"
+  ) {
+    return "needs_attention";
+  }
+  if (t === "simple" || t === "acknowledgment" || t === "acknowledgement" || t === "short_reply") {
+    return "quick_reply";
+  }
+  return null;
+}
+
 export function normalizeInboxAiCategory(raw: string): InboxAiCategory {
-  const t = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const t = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
   if (isInboxAiCategory(t)) return t;
   if (t === "need_attention" || t === "needsattention") return "needs_attention";
   if (t === "quickreply") return "quick_reply";
+  const fromSyn = synonymToCategory(t);
+  if (fromSyn) return fromSyn;
   return "needs_attention";
 }
 
