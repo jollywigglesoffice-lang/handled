@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   fakeEmails,
@@ -8,11 +8,27 @@ import {
   type FakeEmail,
   type InboxSectionTitle,
 } from "@/lib/fake-emails";
-import { getGoogleProviderToken } from "@/lib/google-provider-token";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 import { useHandledEmails } from "@/app/handled-emails-context";
 import { AuthNav } from "@/app/components/auth-nav";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
+
+type GmailInboxMessage = {
+  id: string;
+  sender: string;
+  subject: string;
+  snippet: string;
+  date: string;
+};
+
+type InboxMode =
+  | "loading"
+  | "gmail"
+  | "gmail_empty"
+  | "mock"
+  | "no_google"
+  | "gmail_error";
 
 function SectionIcon({ title }: { title: InboxSectionTitle }) {
   if (title === "Needs Your Attention") {
@@ -83,7 +99,14 @@ function getSectionLabel(title: InboxSectionTitle, ui: ReturnType<typeof useUiCo
   return ui.sections.hiddenInbox;
 }
 
-function EmailCard({
+function formatInboxDate(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function MockEmailCard({
   id,
   sender,
   subject,
@@ -109,6 +132,29 @@ function EmailCard({
         </div>
         <h3 className="text-base font-medium text-[#0F172A]">{subject}</h3>
         <p className="text-sm leading-relaxed text-gray-500">{summary}</p>
+      </article>
+    </Link>
+  );
+}
+
+function GmailInboxCard({ message }: { message: GmailInboxMessage }) {
+  return (
+    <Link
+      href={`/emails/${encodeURIComponent(message.id)}`}
+      className="block rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 shadow-sm transition-all duration-200 hover:scale-[1.01] hover:border-[#6366F1]/40 hover:shadow-md"
+    >
+      <article className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-gray-500">{message.sender}</p>
+          <time
+            className="text-xs text-gray-400"
+            dateTime={message.date}
+          >
+            {formatInboxDate(message.date)}
+          </time>
+        </div>
+        <h3 className="text-base font-medium text-[#0F172A]">{message.subject}</h3>
+        <p className="text-sm leading-relaxed text-gray-500">{message.snippet}</p>
       </article>
     </Link>
   );
@@ -183,6 +229,7 @@ export default function EmailsInboxPage() {
   const { uiLanguage, setUiLanguage } = useUserPreferences();
   const loadingMicroMessages = ui.home.loadingMicroMessages;
   const { handledEmailIds } = useHandledEmails();
+
   const inboxSections = getInboxSections().map((section) => ({
     ...section,
     emails:
@@ -193,21 +240,62 @@ export default function EmailsInboxPage() {
   const handledTodayEmails = fakeEmails.filter((email) =>
     handledEmailIds.includes(email.id),
   );
-  const [isLoading, setIsLoading] = useState(true);
-  const [showContent, setShowContent] = useState(false);
+
+  const [inboxMode, setInboxMode] = useState<InboxMode>("loading");
+  const [gmailMessages, setGmailMessages] = useState<GmailInboxMessage[]>([]);
+  const [gmailError, setGmailError] = useState("");
   const [messageIndex, setMessageIndex] = useState(0);
   const [showMicroMessage, setShowMicroMessage] = useState(true);
-  const [gmailInboxCount, setGmailInboxCount] = useState<number | null>(null);
+
+  const loadInbox = useCallback(async () => {
+    setInboxMode("loading");
+    setGmailError("");
+
+    const {
+      data: { session },
+    } = await supabaseBrowser.auth.getSession();
+
+    if (!session) {
+      setInboxMode("mock");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/gmail/messages", { credentials: "same-origin" });
+      const body = (await res.json()) as {
+        messages?: GmailInboxMessage[];
+        error?: string;
+        message?: string;
+      };
+
+      if (res.status === 403 && body.error === "missing_google_token") {
+        setInboxMode("no_google");
+        return;
+      }
+
+      if (!res.ok) {
+        setGmailError(
+          typeof body.message === "string"
+            ? body.message
+            : body.error || "Could not load Gmail inbox.",
+        );
+        setInboxMode("gmail_error");
+        return;
+      }
+
+      const msgs = body.messages ?? [];
+      setGmailMessages(msgs);
+      setInboxMode(msgs.length ? "gmail" : "gmail_empty");
+    } catch (e) {
+      console.error("[inbox] gmail load", e);
+      setGmailError("Network error while loading Gmail.");
+      setInboxMode("gmail_error");
+    }
+  }, []);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setIsLoading(false);
-    }, 2400);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, []);
+    void loadInbox();
+  }, [loadInbox]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -234,26 +322,16 @@ export default function EmailsInboxPage() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (!isLoading) {
-      const frameId = window.requestAnimationFrame(() => {
-        setShowContent(true);
-      });
-
-      return () => {
-        window.cancelAnimationFrame(frameId);
-      };
-    }
-  }, [isLoading]);
+  const inboxLoading = inboxMode === "loading";
+  const showContent = !inboxLoading;
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!inboxLoading) {
       return;
     }
 
     const intervalId = window.setInterval(() => {
       setShowMicroMessage(false);
-
       window.setTimeout(() => {
         setMessageIndex((currentIndex) =>
           currentIndex === loadingMicroMessages.length - 1 ? 0 : currentIndex + 1,
@@ -265,39 +343,13 @@ export default function EmailsInboxPage() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [isLoading]);
-
-  useEffect(() => {
-    const token = getGoogleProviderToken();
-    if (!token) return;
-
-    void (async () => {
-      try {
-        const res = await fetch(
-          "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=in:inbox",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
-
-        if (!res.ok) {
-          console.error("[gmail] inbox fetch failed", res.status);
-          return;
-        }
-
-        const data = (await res.json()) as { resultSizeEstimate?: number };
-        setGmailInboxCount(typeof data.resultSizeEstimate === "number" ? data.resultSizeEstimate : null);
-      } catch (error) {
-        console.error("[gmail] inbox fetch error", error);
-      }
-    })();
-  }, []);
+  }, [inboxLoading, loadingMicroMessages.length]);
 
   const importantEmailCount =
-    inboxSections.find((section) => section.title === "Needs Your Attention")
-      ?.emails.length ?? 0;
+    inboxMode === "gmail"
+      ? gmailMessages.length
+      : inboxSections.find((section) => section.title === "Needs Your Attention")?.emails
+          .length ?? 0;
   const importantEmailLabel =
     importantEmailCount === 1
       ? `1 ${ui.home.attentionCountSingle}`
@@ -306,7 +358,7 @@ export default function EmailsInboxPage() {
   return (
     <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
-        {isLoading ? (
+        {inboxLoading ? (
           <section className="mb-8 mt-6 flex min-h-48 items-center justify-center rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] px-6 py-12 shadow-sm">
             <div className="space-y-2 text-center">
               <h2 className="text-2xl font-medium text-gray-500">
@@ -353,15 +405,15 @@ export default function EmailsInboxPage() {
               {importantEmailLabel}
             </p>
             <p className="text-sm text-gray-500">{ui.home.everythingHandled}</p>
-            {gmailInboxCount !== null && (
-              <p className="text-xs text-gray-400">Gmail inbox messages: {gmailInboxCount}</p>
+            {inboxMode === "gmail" && (
+              <p className="text-xs text-gray-400">Inbox synced from Gmail (read-only).</p>
             )}
           </section>
         )}
 
         <header
           className={`rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm transition-opacity duration-500 ${
-            !isLoading && showContent ? "opacity-100" : "opacity-0"
+            showContent ? "opacity-100" : "opacity-0"
           }`}
         >
           <div className="space-y-4">
@@ -393,56 +445,118 @@ export default function EmailsInboxPage() {
 
         <section
           className={`space-y-8 transition-opacity duration-500 ${
-            isLoading ? "opacity-100" : showContent ? "opacity-100" : "opacity-0"
+            inboxLoading ? "opacity-100" : showContent ? "opacity-100" : "opacity-0"
           }`}
         >
-          {inboxSections.map((section, index) => (
-            <div
-              key={section.title}
-              className={index > 0 ? "border-t border-gray-200 pt-8" : undefined}
-            >
-              <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm transition-all duration-200">
-                <h2 className="mb-5 flex items-center gap-2 text-lg font-medium text-[#0F172A]">
-                  <SectionIcon title={section.title} />
-                  {getSectionLabel(section.title, ui)}
-                </h2>
-                <div className="space-y-4">
-                  {isLoading ? (
-                    Array.from({ length: 3 }).map((_, skeletonIndex) => (
-                      <EmailCardSkeleton
-                        key={`${section.title}-skeleton-${skeletonIndex}`}
-                      />
-                    ))
-                  ) : section.title === "Needs Your Attention" &&
-                    section.emails.length === 0 ? (
-                    <EmptyNeedsAttentionState show={showContent} />
-                  ) : section.title === "Handled For You" && section.emails.length === 0 ? (
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-                      You&apos;re all caught up. New handled suggestions will appear here when
-                      they&apos;re ready.
-                    </div>
-                  ) : (
-                    section.emails.map((email) => (
-                      <div
-                        key={email.id}
-                        className={`transition-opacity duration-500 ${
-                          showContent ? "opacity-100" : "opacity-0"
-                        }`}
-                      >
-                        <EmailCard
-                          highlighted={section.title === "Needs Your Attention"}
-                          {...email}
-                        />
-                      </div>
-                    ))
-                  )}
-                </div>
+          {inboxMode === "loading" ? (
+            <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm">
+              <h2 className="mb-5 flex items-center gap-2 text-lg font-medium text-[#0F172A]">
+                <SectionIcon title="Needs Your Attention" />
+                Loading inbox…
+              </h2>
+              <div className="space-y-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <EmailCardSkeleton key={`sk-${i}`} />
+                ))}
               </div>
             </div>
-          ))}
+          ) : inboxMode === "no_google" ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 shadow-sm">
+              <h2 className="text-lg font-semibold text-amber-900">Connect Gmail</h2>
+              <p className="mt-2 text-sm leading-relaxed text-amber-800">
+                Sign in with Google (same account) so Handled can load your inbox with read-only
+                access.
+              </p>
+              <Link
+                href="/login"
+                className="mt-4 inline-flex rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
+              >
+                Continue with Google
+              </Link>
+            </div>
+          ) : inboxMode === "gmail_error" ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-8 shadow-sm">
+              <h2 className="text-lg font-semibold text-red-800">Couldn&apos;t load Gmail</h2>
+              <p className="mt-2 text-sm text-red-700">{gmailError}</p>
+              <button
+                type="button"
+                onClick={() => void loadInbox()}
+                className="mt-4 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+              >
+                Try again
+              </button>
+            </div>
+          ) : inboxMode === "gmail_empty" ? (
+            <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm">
+              <h2 className="mb-2 flex items-center gap-2 text-lg font-medium text-[#0F172A]">
+                <SectionIcon title="Needs Your Attention" />
+                Inbox
+              </h2>
+              <p className="text-sm text-gray-500">No messages in your Gmail inbox.</p>
+            </div>
+          ) : inboxMode === "gmail" ? (
+            <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm transition-all duration-200">
+              <h2 className="mb-5 flex items-center gap-2 text-lg font-medium text-[#0F172A]">
+                <SectionIcon title="Needs Your Attention" />
+                Inbox
+              </h2>
+              <div className="space-y-4">
+                {gmailMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`transition-opacity duration-500 ${
+                      showContent ? "opacity-100" : "opacity-0"
+                    }`}
+                  >
+                    <GmailInboxCard message={message} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            inboxSections.map((section, index) => (
+              <div
+                key={section.title}
+                className={index > 0 ? "border-t border-gray-200 pt-8" : undefined}
+              >
+                <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm transition-all duration-200">
+                  <h2 className="mb-5 flex items-center gap-2 text-lg font-medium text-[#0F172A]">
+                    <SectionIcon title={section.title} />
+                    {getSectionLabel(section.title, ui)}
+                  </h2>
+                  <div className="space-y-4">
+                    {section.title === "Needs Your Attention" &&
+                    section.emails.length === 0 ? (
+                      <EmptyNeedsAttentionState show={showContent} />
+                    ) : section.title === "Handled For You" &&
+                      section.emails.length === 0 ? (
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                        You&apos;re all caught up. New handled suggestions will appear here when
+                        they&apos;re ready.
+                      </div>
+                    ) : (
+                      section.emails.map((email) => (
+                        <div
+                          key={email.id}
+                          className={`transition-opacity duration-500 ${
+                            showContent ? "opacity-100" : "opacity-0"
+                          }`}
+                        >
+                          <MockEmailCard
+                            highlighted={section.title === "Needs Your Attention"}
+                            {...email}
+                          />
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </section>
 
-        {!isLoading && handledTodayEmails.length > 0 ? (
+        {inboxMode === "mock" && handledTodayEmails.length > 0 ? (
           <section
             className={`space-y-3 rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 shadow-sm transition-opacity duration-500 ${
               showContent ? "opacity-100" : "opacity-0"
