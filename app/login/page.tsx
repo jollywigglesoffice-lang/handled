@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { saveGoogleProviderToken } from "@/lib/google-provider-token";
 
 /** Google OAuth must return to production only (no localhost / preview URLs). */
 const PRODUCTION_AUTH_ORIGIN = "https://handledemails.com";
@@ -63,6 +64,8 @@ export default function LoginPage() {
         provider: "google",
         options: {
           redirectTo,
+          scopes:
+            "https://www.googleapis.com/auth/gmail.readonly openid email profile",
           queryParams: {
             access_type: "offline",
             prompt: "consent",

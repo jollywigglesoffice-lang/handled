@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { saveGoogleProviderToken } from "@/lib/google-provider-token";
 
 function parseHashTokens(): { access_token: string; refresh_token: string } | null {
   if (typeof window === "undefined") return null;
@@ -73,6 +74,10 @@ function AuthCallbackContent() {
         if (!session?.user) {
           if (!cancelled) router.replace("/login?error=oauth");
           return;
+        }
+
+        if (session.provider_token) {
+          saveGoogleProviderToken(session.provider_token);
         }
 
         await fetch("/api/create-user", {

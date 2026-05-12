@@ -8,6 +8,7 @@ import {
   type FakeEmail,
   type InboxSectionTitle,
 } from "@/lib/fake-emails";
+import { getGoogleProviderToken } from "@/lib/google-provider-token";
 import { useHandledEmails } from "@/app/handled-emails-context";
 import { AuthNav } from "@/app/components/auth-nav";
 import { useUiCopy } from "@/app/use-ui-copy";
@@ -196,6 +197,7 @@ export default function EmailsInboxPage() {
   const [showContent, setShowContent] = useState(false);
   const [messageIndex, setMessageIndex] = useState(0);
   const [showMicroMessage, setShowMicroMessage] = useState(true);
+  const [gmailInboxCount, setGmailInboxCount] = useState<number | null>(null);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -265,6 +267,34 @@ export default function EmailsInboxPage() {
     };
   }, [isLoading]);
 
+  useEffect(() => {
+    const token = getGoogleProviderToken();
+    if (!token) return;
+
+    void (async () => {
+      try {
+        const res = await fetch(
+          "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=in:inbox",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        if (!res.ok) {
+          console.error("[gmail] inbox fetch failed", res.status);
+          return;
+        }
+
+        const data = (await res.json()) as { resultSizeEstimate?: number };
+        setGmailInboxCount(typeof data.resultSizeEstimate === "number" ? data.resultSizeEstimate : null);
+      } catch (error) {
+        console.error("[gmail] inbox fetch error", error);
+      }
+    })();
+  }, []);
+
   const importantEmailCount =
     inboxSections.find((section) => section.title === "Needs Your Attention")
       ?.emails.length ?? 0;
@@ -323,6 +353,9 @@ export default function EmailsInboxPage() {
               {importantEmailLabel}
             </p>
             <p className="text-sm text-gray-500">{ui.home.everythingHandled}</p>
+            {gmailInboxCount !== null && (
+              <p className="text-xs text-gray-400">Gmail inbox messages: {gmailInboxCount}</p>
+            )}
           </section>
         )}
 
