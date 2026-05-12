@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   fakeEmails,
@@ -13,6 +13,13 @@ import { useHandledEmails } from "@/app/handled-emails-context";
 import { AuthNav } from "@/app/components/auth-nav";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
+import {
+  GMAIL_INBOX_SECTION_ORDER,
+  type InboxAiCategory,
+  inboxCategorySectionSubtitle,
+  inboxCategorySectionTitle,
+  normalizeInboxAiCategory,
+} from "@/lib/inbox-ai-categories";
 
 type GmailInboxMessage = {
   id: string;
@@ -20,6 +27,7 @@ type GmailInboxMessage = {
   subject: string;
   snippet: string;
   date: string;
+  category: InboxAiCategory;
 };
 
 type InboxMode =
@@ -106,6 +114,113 @@ function formatInboxDate(iso: string): string {
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+const CATEGORY_CARD_ACCENT: Record<InboxAiCategory, string> = {
+  needs_attention: "border-l-4 border-l-[#6366F1] bg-[#EEF2FF]/25",
+  quick_reply: "border-l-4 border-l-teal-500 bg-teal-50/40",
+  handled: "border-l-4 border-l-emerald-500 bg-emerald-50/30",
+  newsletter: "border-l-4 border-l-slate-400 bg-slate-50/50",
+  promotion: "border-l-4 border-l-amber-500 bg-amber-50/35",
+};
+
+function GmailSectionLeadingIcon({ category }: { category: InboxAiCategory }) {
+  const common = "h-5 w-5 shrink-0 text-[#6366F1]";
+  if (category === "needs_attention") {
+    return (
+      <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
+        <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M10 6.25v4.25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="10" cy="13.6" r="0.9" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (category === "quick_reply") {
+    return (
+      <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
+        <path
+          d="M4.5 12.5V16l3.2-2.1a7 7 0 1 1-1.7-1.4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (category === "handled") {
+    return (
+      <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
+        <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
+        <path
+          d="M6.8 10.2l2.2 2.2 4.3-4.6"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (category === "newsletter") {
+    return (
+      <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
+        <path
+          d="M5.5 6.5h9v8h-9v-8z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <path d="M5.5 8.5h9" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M8 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
+      <path
+        d="M6.5 7.5h7l-1 8h-5l-1-8z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M8 5.5h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function GmailCategorySectionHeader({
+  category,
+  locale,
+  count,
+}: {
+  category: InboxAiCategory;
+  locale: "en" | "it";
+  count: number;
+}) {
+  const subtitle = inboxCategorySectionSubtitle(category, locale);
+  return (
+    <div className="border-b border-[#E2E8F0] pb-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]">
+            <GmailSectionLeadingIcon category={category} />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <h2 className="text-lg font-semibold tracking-tight text-[#0F172A]">
+              {inboxCategorySectionTitle(category, locale)}
+            </h2>
+            {subtitle ? (
+              <p className="text-sm leading-relaxed text-gray-500">{subtitle}</p>
+            ) : null}
+          </div>
+        </div>
+        <span className="rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-xs font-medium tabular-nums text-gray-600">
+          {count}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function MockEmailCard({
   id,
   sender,
@@ -137,21 +252,32 @@ function MockEmailCard({
   );
 }
 
-function GmailInboxCard({ message }: { message: GmailInboxMessage }) {
+function GmailInboxCard({
+  message,
+  locale,
+}: {
+  message: GmailInboxMessage;
+  locale: "en" | "it";
+}) {
+  const accent = CATEGORY_CARD_ACCENT[message.category];
+  const catLabel = inboxCategorySectionTitle(message.category, locale);
+
   return (
     <Link
       href={`/emails/${encodeURIComponent(message.id)}`}
-      className="block rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 shadow-sm transition-all duration-200 hover:scale-[1.01] hover:border-[#6366F1]/40 hover:shadow-md"
+      className={`block rounded-xl border border-[#E2E8F0] p-6 shadow-sm transition-all duration-200 hover:scale-[1.01] hover:border-[#6366F1]/40 hover:shadow-md ${accent}`}
     >
       <article className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-medium text-gray-500">{message.sender}</p>
-          <time
-            className="text-xs text-gray-400"
-            dateTime={message.date}
-          >
-            {formatInboxDate(message.date)}
-          </time>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-[#E2E8F0] bg-[#FFFFFF]/80 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              {catLabel}
+            </span>
+            <time className="text-xs text-gray-400" dateTime={message.date}>
+              {formatInboxDate(message.date)}
+            </time>
+          </div>
         </div>
         <h3 className="text-base font-medium text-[#0F172A]">{message.subject}</h3>
         <p className="text-sm leading-relaxed text-gray-500">{message.snippet}</p>
@@ -283,7 +409,20 @@ export default function EmailsInboxPage() {
         return;
       }
 
-      const msgs = body.messages ?? [];
+      const msgsRaw = body.messages ?? [];
+      const msgs: GmailInboxMessage[] = msgsRaw.map((row) => {
+        const r = row as GmailInboxMessage & { category?: string };
+        return {
+          id: r.id,
+          sender: r.sender,
+          subject: r.subject,
+          snippet: r.snippet,
+          date: r.date,
+          category: normalizeInboxAiCategory(
+            typeof r.category === "string" ? r.category : "needs_attention",
+          ),
+        };
+      });
       setGmailMessages(msgs);
       setInboxMode(msgs.length ? "gmail" : "gmail_empty");
     } catch (e) {
@@ -345,9 +484,22 @@ export default function EmailsInboxPage() {
     };
   }, [inboxLoading, loadingMicroMessages.length]);
 
+  const gmailByCategory = useMemo(() => {
+    const buckets = {} as Record<InboxAiCategory, GmailInboxMessage[]>;
+    for (const key of GMAIL_INBOX_SECTION_ORDER) {
+      buckets[key] = [];
+    }
+    for (const m of gmailMessages) {
+      buckets[m.category].push(m);
+    }
+    return buckets;
+  }, [gmailMessages]);
+
   const importantEmailCount =
     inboxMode === "gmail"
-      ? gmailMessages.length
+      ? gmailMessages.filter(
+          (m) => m.category === "needs_attention" || m.category === "quick_reply",
+        ).length
       : inboxSections.find((section) => section.title === "Needs Your Attention")?.emails
           .length ?? 0;
   const importantEmailLabel =
@@ -406,7 +558,10 @@ export default function EmailsInboxPage() {
             </p>
             <p className="text-sm text-gray-500">{ui.home.everythingHandled}</p>
             {inboxMode === "gmail" && (
-              <p className="text-xs text-gray-400">Inbox synced from Gmail (read-only).</p>
+              <p className="text-xs text-gray-400">
+                Inbox synced from Gmail (read-only). Sections use AI triage (sender, subject, and
+                snippet only).
+              </p>
             )}
           </section>
         )}
@@ -495,23 +650,35 @@ export default function EmailsInboxPage() {
               <p className="text-sm text-gray-500">No messages in your Gmail inbox.</p>
             </div>
           ) : inboxMode === "gmail" ? (
-            <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm transition-all duration-200">
-              <h2 className="mb-5 flex items-center gap-2 text-lg font-medium text-[#0F172A]">
-                <SectionIcon title="Needs Your Attention" />
-                Inbox
-              </h2>
-              <div className="space-y-4">
-                {gmailMessages.map((message) => (
+            <div className="space-y-10">
+              {GMAIL_INBOX_SECTION_ORDER.map((category) => {
+                const list = gmailByCategory[category];
+                if (!list.length) return null;
+                return (
                   <div
-                    key={message.id}
-                    className={`transition-opacity duration-500 ${
-                      showContent ? "opacity-100" : "opacity-0"
-                    }`}
+                    key={category}
+                    className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm transition-all duration-200"
                   >
-                    <GmailInboxCard message={message} />
+                    <GmailCategorySectionHeader
+                      category={category}
+                      locale={uiLanguage}
+                      count={list.length}
+                    />
+                    <div className="mt-6 space-y-4">
+                      {list.map((message) => (
+                        <div
+                          key={message.id}
+                          className={`transition-opacity duration-500 ${
+                            showContent ? "opacity-100" : "opacity-0"
+                          }`}
+                        >
+                          <GmailInboxCard message={message} locale={uiLanguage} />
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           ) : (
             inboxSections.map((section, index) => (

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
 import { gmailGetMessageMetadata, gmailListInboxIds } from "@/lib/gmail-api";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET() {
   const supabase = await createSupabaseServerClient();
@@ -35,7 +36,9 @@ export async function GET() {
     );
     rows.sort((a, b) => b.internalDateMs - a.internalDateMs);
 
-    return NextResponse.json({ messages: rows });
+    const categorized = await categorizeGmailInboxRows(rows);
+
+    return NextResponse.json({ messages: categorized });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Gmail request failed";
     console.error("[api/gmail/messages]", e);
