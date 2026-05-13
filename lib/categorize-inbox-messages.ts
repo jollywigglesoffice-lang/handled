@@ -8,11 +8,8 @@ export type GmailInboxRowCategorized = GmailInboxRow & {
   category: InboxAiCategory;
 };
 
-const DEBUG =
-  typeof process !== "undefined" && process.env.DEBUG_INBOX_CATEGORIZE === "1";
-
-function debugLog(...args: unknown[]) {
-  if (DEBUG) console.log("[categorize-inbox]", ...args);
+function warnFallback(reason: string, extra?: unknown) {
+  console.warn("[categorize-inbox] FALLBACK:", reason, extra ?? "");
 }
 
 function stripJsonFence(text: string): string {
@@ -50,54 +47,139 @@ type RawClassification = {
   category?: string;
 };
 
+/**
+ * 0-based row index, or 1-based (model sends 1 for ##1).
+ */
 function parseClassificationIndex(
   item: RawClassification,
   rowCount: number,
 ): number | null {
-  if (typeof item.index === "number" && Number.isInteger(item.index)) {
-    if (item.index >= 0 && item.index < rowCount) return item.index;
+  if (item.index === undefined || item.index === null) return null;
+
+  let n: number;
+  if (typeof item.index === "number" && Number.isFinite(item.index)) {
+    n = Math.trunc(item.index);
+  } else if (typeof item.index === "string") {
+    n = parseInt(item.index.trim(), 10);
+    if (!Number.isFinite(n)) return null;
+  } else {
     return null;
   }
-  if (typeof item.index === "string") {
-    const n = parseInt(item.index.trim(), 10);
-    if (Number.isFinite(n) && n >= 0 && n < rowCount) return n;
-  }
+
+  if (n >= 0 && n < rowCount) return n;
+  if (n >= 1 && n <= rowCount) return n - 1;
   return null;
 }
 
 function normalizeGmailIdForMatch(id: unknown): string {
   return String(id ?? "")
     .trim()
+    .toLowerCase()
     .replace(/\s+/g, "");
 }
 
 function extractClassificationsArray(parsed: unknown): RawClassification[] {
+  if (typeof parsed === "string") {
+    try {
+      const inner = JSON.parse(parsed) as unknown;
+      return extractClassificationsArray(inner);
+    } catch {
+      return [];
+    }
+  }
   if (Array.isArray(parsed)) return parsed as RawClassification[];
   if (parsed && typeof parsed === "object") {
-    const c = (parsed as { classifications?: unknown }).classifications;
-    if (Array.isArray(c)) return c as RawClassification[];
+    const o = parsed as Record<string, unknown>;
+    for (const key of ["classifications", "items", "results", "categories"]) {
+      const c = o[key];
+      if (Array.isArray(c)) return c as RawClassification[];
+    }
   }
   return [];
 }
 
+/** When the model does not map a row, infer from copy (still one of the five slugs). */
+export function heuristicInboxCategory(row: GmailInboxRow): InboxAiCategory {
+  const hay = `${row.subject} ${row.snippet} ${row.sender}`.toLowerCase();
+
+  if (
+    /\b(unsubscribe|email preferences|view in browser|view this email|read online|newsletter|weekly digest|daily digest|mailing list)\b/i.test(
+      hay,
+    )
+  ) {
+    return "newsletter";
+  }
+  if (
+    /\b(%\s*off|\d+%\s*off|limited time|flash sale|shop now|order now|add to cart|free shipping|promo code|black friday|cyber monday|deal ends)\b/i.test(
+      hay,
+    )
+  ) {
+    return "promotion";
+  }
+  if (
+    /\b(order confirmed|payment received|receipt|automated message|do not reply|no[- ]reply|transaction|invoice attached|your shipment|tracking number)\b/i.test(
+      hay,
+    )
+  ) {
+    return "handled";
+  }
+  if (
+    /\b(please confirm|could you|can you|by eod|by cob|deadline|need your approval|action required|urgent)\b/i.test(
+      hay,
+    )
+  ) {
+    return "needs_attention";
+  }
+  if (/\b(thanks|thank you|sounds good|confirmed|received|\+1|lgtm)\b/i.test(hay) && hay.length < 400) {
+    return "quick_reply";
+  }
+  return "needs_attention";
+}
+
+function applyRowCategory(
+  row: GmailInboxRow,
+  rowIndex: number,
+  category: InboxAiCategory,
+  source: string,
+): GmailInboxRowCategorized {
+  console.log("EMAIL SUBJECT BEING CATEGORIZED:", row.subject);
+  console.log("FINAL ASSIGNED CATEGORY:", category, { rowIndex, source, gmailId: row.id });
+  return { ...row, category };
+}
+
 /**
  * Classifies Gmail inbox rows in one upstream call (sender, subject, snippet only).
- * Uses the same OpenRouter + OPENAI_API_KEY setup as `app/api/reply/route.ts`.
- *
- * Mapping uses **0-based `index` first** (aligned with message order) because models
- * often mangle long Gmail `id` strings; `id` is used as a secondary match when present.
+ * Uses OpenRouter + OPENAI_API_KEY (same as `app/api/reply/route.ts`).
  */
 export async function categorizeGmailInboxRows(
   rows: GmailInboxRow[],
 ): Promise<GmailInboxRowCategorized[]> {
-  const defaultAll = (cat: InboxAiCategory): GmailInboxRowCategorized[] =>
-    rows.map((r) => ({ ...r, category: cat }));
+  console.log(
+    "[inbox-categorize] categorizeGmailInboxRows invoked, row count:",
+    rows.length,
+  );
+
+  const withHeuristic = (reason: string): GmailInboxRowCategorized[] => {
+    warnFallback(reason);
+    return rows.map((r, i) => {
+      const cat = heuristicInboxCategory(r);
+      console.log("PARSED CATEGORY:", cat, "(heuristic fallback, not AI)");
+      return applyRowCategory(r, i, cat, "heuristic:" + reason);
+    });
+  };
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey || rows.length === 0) {
-    debugLog("skip: no API key or empty rows → all needs_attention");
-    return defaultAll("needs_attention");
+  if (!apiKey) {
+    warnFallback("OPENAI_API_KEY missing; using per-message heuristics");
+    return withHeuristic("no_api_key");
   }
+  if (rows.length === 0) {
+    return [];
+  }
+
+  rows.forEach((r, i) => {
+    console.log(`[inbox-categorize] input row ${i} subject:`, r.subject);
+  });
 
   const lines = rows.map((r, i) => {
     const sender = r.sender.slice(0, 200);
@@ -119,9 +201,11 @@ Return a single JSON object (no markdown, no commentary) in this exact shape:
 {"classifications":[{"index":0,"category":"needs_attention"},{"index":1,"category":"promotion"}]}
 
 Rules:
-- There are exactly ${rows.length} messages in order. You MUST output exactly ${rows.length} objects in classifications.
-- "index" is 0-based: the first block (##1) is index 0, second is index 1, etc.
-- "category" must be one of these strings only: needs_attention, quick_reply, newsletter, promotion, handled
+- There are exactly ${rows.length} messages in order. You MUST output exactly ${rows.length} objects in "classifications".
+- "index" is 0-based: the first block (##1) is index 0, second is index 1, etc. (You may also use 1-based indexing where index 1 means the first message; both are accepted.)
+- "category" MUST be exactly one of these five strings, lowercase, with underscores as shown:
+  needs_attention, quick_reply, newsletter, promotion, handled
+- Do not use any other category names or punctuation.
 
 Messages:
 ${lines.join("\n\n")}`;
@@ -141,97 +225,141 @@ ${lines.join("\n\n")}`;
       body: JSON.stringify({
         model: "openai/gpt-4o-mini",
         temperature: 0.2,
-        response_format: { type: "json_object" },
         messages: [{ role: "user", content: prompt }],
       }),
       signal: controller.signal,
     });
 
     let body: {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ message?: { content?: string | null; refusal?: string | null } }>;
       error?: { message?: string };
     };
     try {
       body = (await res.json()) as typeof body;
-    } catch {
-      console.error("[categorize-inbox] invalid JSON from upstream");
-      return defaultAll("needs_attention");
+    } catch (e) {
+      warnFallback("upstream response was not JSON", e);
+      return withHeuristic("upstream_not_json");
     }
+
+    console.log("RAW AI RESPONSE:", body);
 
     if (!res.ok) {
-      console.error("[categorize-inbox] upstream error", res.status, body.error);
-      debugLog("raw upstream body (error)", JSON.stringify(body).slice(0, 2000));
-      return defaultAll("needs_attention");
+      warnFallback(`upstream HTTP ${res.status}`, body.error);
+      console.log("RAW AI RESPONSE (error path, truncated):", JSON.stringify(body).slice(0, 8000));
+      return withHeuristic(`http_${res.status}`);
     }
 
-    const raw = body.choices?.[0]?.message?.content?.trim();
+    const choice = body.choices?.[0]?.message;
+    const raw = (choice?.content ?? "").trim();
+    const refusal = (choice?.refusal ?? "").trim();
+
+    console.log("RAW AI RESPONSE (message.content string):", raw || "(empty)");
+    if (refusal) console.log("RAW AI RESPONSE (message.refusal):", refusal);
+
     if (!raw) {
-      console.error("[categorize-inbox] empty model content");
-      return defaultAll("needs_attention");
+      warnFallback("empty model content; using heuristics", { refusal: refusal || undefined });
+      return withHeuristic("empty_content");
     }
-
-    debugLog("raw OpenAI/OpenRouter message.content (trunc)", raw.slice(0, 2500));
 
     let parsed: unknown;
     const stripped = stripJsonFence(raw);
     try {
       parsed = JSON.parse(stripped);
-    } catch {
+    } catch (firstErr) {
+      console.log("PARSED JSON: (first parse failed)", firstErr);
       const extracted = extractJsonObject(raw) ?? extractJsonObject(stripped);
       if (!extracted) {
-        console.error("[categorize-inbox] JSON parse failed, no object extracted");
-        debugLog("stripJsonFence result (trunc)", stripped.slice(0, 1500));
-        return defaultAll("needs_attention");
+        warnFallback("could not extract JSON object from model text", stripped.slice(0, 500));
+        return withHeuristic("no_json_object");
       }
       try {
         parsed = JSON.parse(extracted);
-      } catch {
-        console.error("[categorize-inbox] JSON parse failed on extracted object");
-        debugLog("extracted (trunc)", extracted.slice(0, 1500));
-        return defaultAll("needs_attention");
+      } catch (secondErr) {
+        warnFallback("JSON.parse on extracted object failed", secondErr);
+        console.log("PARSED JSON: (second parse failed)", secondErr);
+        return withHeuristic("json_parse_failed");
       }
     }
 
+    console.log("PARSED JSON:", parsed);
+
     const list = extractClassificationsArray(parsed);
+
+    console.log(
+      "PARSED JSON (classifications length):",
+      list.length,
+      "expected:",
+      rows.length,
+    );
+
     if (!list.length) {
-      console.error("[categorize-inbox] missing classifications array", {
-        keys: parsed && typeof parsed === "object" ? Object.keys(parsed as object) : [],
-      });
-      return defaultAll("needs_attention");
+      warnFallback("no classifications array in parsed JSON", parsed);
+      return withHeuristic("no_classifications_array");
     }
 
     const byIndex = new Map<number, InboxAiCategory>();
     const byId = new Map<string, InboxAiCategory>();
+    const ordered = list.length === rows.length;
 
-    for (const item of list) {
-      const rawCat = typeof item.category === "string" ? item.category : "";
-      const parsedCat = normalizeInboxAiCategory(rawCat || "needs_attention");
-      debugLog("parsed item", { index: item.index, id: item.id, rawCategory: rawCat, normalized: parsedCat });
+    for (let i = 0; i < list.length; i++) {
+      const item = list[i];
+      const rawCat =
+        typeof item.category === "string" ? item.category.trim().toLowerCase() : "";
+      const extractedCategory = normalizeInboxAiCategory(rawCat);
+
+      const subjectForLog =
+        i < rows.length ? rows[i].subject : "(no matching input row index)";
+      console.log("EMAIL SUBJECT BEING CATEGORIZED:", subjectForLog);
+      console.log("PARSED CATEGORY:", extractedCategory, {
+        listPosition: i,
+        rawIndex: item.index,
+        rawId: item.id,
+        rawCategoryFromModel: item.category,
+      });
 
       const idx = parseClassificationIndex(item, rows.length);
       if (idx !== null) {
-        byIndex.set(idx, parsedCat);
+        byIndex.set(idx, extractedCategory);
       }
 
       const idStr = normalizeGmailIdForMatch(item.id);
       if (idStr) {
-        byId.set(idStr, parsedCat);
+        byId.set(idStr, extractedCategory);
+      }
+    }
+
+    if (ordered) {
+      for (let i = 0; i < rows.length; i++) {
+        if (!byIndex.has(i)) {
+          const item = list[i];
+          const rawCat =
+            typeof item.category === "string" ? item.category.trim().toLowerCase() : "";
+          const extractedCategory = normalizeInboxAiCategory(rawCat);
+          console.log("EMAIL SUBJECT BEING CATEGORIZED:", rows[i].subject);
+          console.log("PARSED CATEGORY (positional fill):", extractedCategory, { rowIndex: i });
+          byIndex.set(i, extractedCategory);
+        }
       }
     }
 
     const rowIds = rows.map((r) => normalizeGmailIdForMatch(r.id));
 
-    return rows.map((r, i) => {
+    let heuristicUnmapped = 0;
+    const out: GmailInboxRowCategorized[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+
       if (byIndex.has(i)) {
         const category = byIndex.get(i)!;
-        debugLog("final row", { rowIndex: i, gmailId: r.id, assigned: category, source: "index" });
-        return { ...r, category };
+        out.push(applyRowCategory(r, i, category, "model_index"));
+        continue;
       }
 
       const idNorm = normalizeGmailIdForMatch(r.id);
-      let category: InboxAiCategory = byId.get(idNorm) ?? "needs_attention";
+      let category: InboxAiCategory | undefined = byId.get(idNorm);
 
-      if (category === "needs_attention") {
+      if (!category) {
         for (const [k, v] of byId) {
           if (!k) continue;
           if (k.length >= 8 && (idNorm.startsWith(k) || k.startsWith(idNorm))) {
@@ -241,7 +369,7 @@ ${lines.join("\n\n")}`;
         }
       }
 
-      if (category === "needs_attention" && rowIds[i]) {
+      if (!category && rowIds[i]) {
         for (const [k, v] of byId) {
           if (k && rowIds[i].endsWith(k)) {
             category = v;
@@ -250,17 +378,27 @@ ${lines.join("\n\n")}`;
         }
       }
 
-      debugLog("final row", {
-        rowIndex: i,
-        gmailId: r.id,
-        assigned: category,
-        source: "id-fallback",
-      });
-      return { ...r, category };
-    });
+      if (category) {
+        out.push(applyRowCategory(r, i, category, "model_id"));
+        continue;
+      }
+
+      heuristicUnmapped++;
+      const h = heuristicInboxCategory(r);
+      console.log("PARSED CATEGORY:", h, "(heuristic, no model mapping)");
+      out.push(applyRowCategory(r, i, h, "heuristic_unmapped"));
+    }
+
+    if (heuristicUnmapped > 0) {
+      warnFallback(
+        `${heuristicUnmapped} / ${rows.length} rows had no model index/id match; heuristics used for those`,
+      );
+    }
+
+    return out;
   } catch (e) {
-    console.error("[categorize-inbox]", e);
-    return defaultAll("needs_attention");
+    warnFallback("unexpected error during categorization", e);
+    return withHeuristic("exception");
   } finally {
     clearTimeout(timeoutId);
   }

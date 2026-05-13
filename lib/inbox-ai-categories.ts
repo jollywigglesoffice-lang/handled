@@ -75,11 +75,8 @@ function synonymToCategory(t: string): InboxAiCategory | null {
 }
 
 export function normalizeInboxAiCategory(raw: string): InboxAiCategory {
-  const t = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
+  const s = String(raw).trim().toLowerCase();
+  const t = s.replace(/[\s-]+/g, "_").replace(/[^a-z0-9_]/g, "");
   if (isInboxAiCategory(t)) return t;
   if (t === "need_attention" || t === "needsattention") return "needs_attention";
   if (t === "quickreply") return "quick_reply";
