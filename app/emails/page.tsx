@@ -15,6 +15,7 @@ import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
 import {
   GMAIL_INBOX_SECTION_ORDER,
+  type CategorySource,
   type InboxAiCategory,
   inboxCategorySectionSubtitle,
   inboxCategorySectionTitle,
@@ -28,6 +29,8 @@ type GmailInboxMessage = {
   snippet: string;
   date: string;
   category: InboxAiCategory;
+  categoryConfidence?: number;
+  categorySource?: CategorySource;
 };
 
 type InboxMode =
@@ -261,10 +264,15 @@ function GmailInboxCard({
 }) {
   const accent = CATEGORY_CARD_ACCENT[message.category];
   const catLabel = inboxCategorySectionTitle(message.category, locale);
+  const confidenceTitle =
+    typeof message.categoryConfidence === "number"
+      ? `${Math.round(message.categoryConfidence * 100)}% · ${message.categorySource ?? "unknown"}`
+      : undefined;
 
   return (
     <Link
       href={`/emails/${encodeURIComponent(message.id)}`}
+      title={confidenceTitle}
       className={`block rounded-xl border border-[#E2E8F0] p-6 shadow-sm transition-all duration-200 hover:scale-[1.01] hover:border-[#6366F1]/40 hover:shadow-md ${accent}`}
     >
       <article className="space-y-3">
@@ -411,7 +419,11 @@ export default function EmailsInboxPage() {
 
       const msgsRaw = body.messages ?? [];
       const msgs: GmailInboxMessage[] = msgsRaw.map((row) => {
-        const r = row as GmailInboxMessage & { category?: string };
+        const r = row as GmailInboxMessage & {
+          category?: string;
+          categoryConfidence?: number;
+          categorySource?: CategorySource;
+        };
         return {
           id: r.id,
           sender: r.sender,
@@ -421,6 +433,15 @@ export default function EmailsInboxPage() {
           category: normalizeInboxAiCategory(
             typeof r.category === "string" ? r.category : "needs_attention",
           ),
+          categoryConfidence:
+            typeof r.categoryConfidence === "number" ? r.categoryConfidence : undefined,
+          categorySource:
+            r.categorySource === "rule" ||
+            r.categorySource === "ai" ||
+            r.categorySource === "heuristic" ||
+            r.categorySource === "ai_coerced"
+              ? r.categorySource
+              : undefined,
         };
       });
       setGmailMessages(msgs);

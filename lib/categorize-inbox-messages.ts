@@ -1,11 +1,18 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import {
+  type CategorySource,
   type InboxAiCategory,
   normalizeInboxAiCategory,
 } from "@/lib/inbox-ai-categories";
+import {
+  commercialLeanCategory,
+  rulePrecClassify,
+} from "@/lib/inbox-rule-classify";
 
 export type GmailInboxRowCategorized = GmailInboxRow & {
   category: InboxAiCategory;
+  categoryConfidence: number;
+  categorySource: CategorySource;
 };
 
 function warnFallback(reason: string, extra?: unknown) {
@@ -18,7 +25,6 @@ function stripJsonFence(text: string): string {
   return fence?.[1]?.trim() ?? t;
 }
 
-/** First top-level `{ ... }` slice when the model adds prose around JSON. */
 function extractJsonObject(text: string): string | null {
   const start = text.indexOf("{");
   if (start === -1) return null;
@@ -45,11 +51,9 @@ type RawClassification = {
   index?: number | string;
   id?: string | number;
   category?: string;
+  confidence?: number | string;
 };
 
-/**
- * 0-based row index, or 1-based (model sends 1 for ##1).
- */
 function parseClassificationIndex(
   item: RawClassification,
   rowCount: number,
@@ -98,12 +102,26 @@ function extractClassificationsArray(parsed: unknown): RawClassification[] {
   return [];
 }
 
+function clamp01(n: unknown): number | undefined {
+  if (typeof n === "number" && Number.isFinite(n)) {
+    return Math.max(0, Math.min(1, n));
+  }
+  if (typeof n === "string") {
+    const x = parseFloat(n.trim());
+    if (Number.isFinite(x)) return Math.max(0, Math.min(1, x));
+  }
+  return undefined;
+}
+
 /** When the model does not map a row, infer from copy (still one of the five slugs). */
 export function heuristicInboxCategory(row: GmailInboxRow): InboxAiCategory {
+  const lean = commercialLeanCategory(row);
+  if (lean) return lean;
+
   const hay = `${row.subject} ${row.snippet} ${row.sender}`.toLowerCase();
 
   if (
-    /\b(unsubscribe|email preferences|view in browser|view this email|read online|newsletter|weekly digest|daily digest|mailing list)\b/i.test(
+    /\b(unsubscribe|email preferences|view in browser|view this email|read online|weekly digest|daily digest|mailing list)\b/i.test(
       hay,
     )
   ) {
@@ -140,72 +158,140 @@ function applyRowCategory(
   row: GmailInboxRow,
   rowIndex: number,
   category: InboxAiCategory,
-  source: string,
+  source: CategorySource,
+  confidence: number,
 ): GmailInboxRowCategorized {
+  const c = Math.round(Math.max(0, Math.min(1, confidence)) * 100) / 100;
   console.log("EMAIL SUBJECT BEING CATEGORIZED:", row.subject);
-  console.log("FINAL ASSIGNED CATEGORY:", category, { rowIndex, source, gmailId: row.id });
-  return { ...row, category };
+  console.log("FINAL ASSIGNED CATEGORY:", category, {
+    rowIndex,
+    source,
+    confidence: c,
+    gmailId: row.id,
+  });
+  return {
+    ...row,
+    category,
+    categoryConfidence: c,
+    categorySource: source,
+  };
+}
+
+/** Never let obvious bulk promo/news read as urgent work. */
+function postCoerceAiCategory(
+  category: InboxAiCategory,
+  row: GmailInboxRow,
+): { category: InboxAiCategory; source: CategorySource; confidenceMul: number } {
+  if (category !== "needs_attention" && category !== "quick_reply") {
+    return { category, source: "ai", confidenceMul: 1 };
+  }
+  const lean = commercialLeanCategory(row);
+  if (!lean) {
+    return { category, source: "ai", confidenceMul: 1 };
+  }
+  return { category: lean, source: "ai_coerced", confidenceMul: 0.92 };
+}
+
+function buildStrictAmbiguousPrompt(batchSize: number): string {
+  return `You are triaging a REAL email inbox. These messages were NOT matched by deterministic rules — they are ambiguous.
+
+Assign exactly ONE category per message (use ONLY these five strings, lowercase, underscores):
+needs_attention, quick_reply, newsletter, promotion, handled
+
+STRICT rules for realistic inboxes:
+- Bulk marketing, retail offers, “act now”, “limited time”, “% off”, “shop now”, loyalty perks, or list mail MUST be "promotion" — NEVER "needs_attention".
+- Editorial digests, Substacks, product updates without a hard sell, “view in browser”, “unsubscribe” footers → prefer "newsletter" over "needs_attention".
+- Fake urgency in marketing (“last chance”, “expires tonight”) is still "promotion", not needs_attention.
+- True needs_attention: a human expects YOU to decide, approve, reply substantively, or miss a real deadline (work, legal, calendar).
+- Newsletters are NOT urgent by default — do not use needs_attention for mailing-list content.
+- quick_reply: a short acknowledgment is enough (confirm receipt, yes/no, “sounds good”).
+- handled: automated FYI (receipt, shipping notice, calendar hold) with nothing to decide.
+
+Return a single JSON object only:
+{"classifications":[{"index":0,"category":"needs_attention","confidence":0.78},...]}
+
+- Exactly ${batchSize} objects, indices 0..${batchSize - 1} in order with the message blocks below.
+- "confidence" is your estimated probability (0 to 1) that the label is correct.`;
 }
 
 /**
- * Classifies Gmail inbox rows in one upstream call (sender, subject, snippet only).
- * Uses OpenRouter + OPENAI_API_KEY (same as `app/api/reply/route.ts`).
+ * Parse OpenRouter response into batch-index → category + confidence.
  */
-export async function categorizeGmailInboxRows(
+function parseAiBatchIntoMap(
+  list: RawClassification[],
+  batchRowCount: number,
+): Map<number, { category: InboxAiCategory; confidence: number }> {
+  const byIndex = new Map<number, { category: InboxAiCategory; confidence: number }>();
+  const byId = new Map<string, { category: InboxAiCategory; confidence: number }>();
+  const ordered = list.length === batchRowCount;
+
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i];
+    const rawCat =
+      typeof item.category === "string" ? item.category.trim().toLowerCase() : "";
+    const cat = normalizeInboxAiCategory(rawCat);
+    const conf = clamp01(item.confidence) ?? 0.72;
+
+    const idx = parseClassificationIndex(item, batchRowCount);
+    if (idx !== null) {
+      byIndex.set(idx, { category: cat, confidence: conf });
+    }
+    const idStr = normalizeGmailIdForMatch(item.id);
+    if (idStr) {
+      byId.set(idStr, { category: cat, confidence: conf });
+    }
+  }
+
+  if (ordered) {
+    for (let i = 0; i < batchRowCount; i++) {
+      if (!byIndex.has(i)) {
+        const item = list[i];
+        const rawCat =
+          typeof item.category === "string" ? item.category.trim().toLowerCase() : "";
+        const cat = normalizeInboxAiCategory(rawCat);
+        const conf = clamp01(item.confidence) ?? 0.72;
+        byIndex.set(i, { category: cat, confidence: conf });
+      }
+    }
+  }
+
+  const out = new Map<number, { category: InboxAiCategory; confidence: number }>();
+  for (let i = 0; i < batchRowCount; i++) {
+    if (byIndex.has(i)) {
+      out.set(i, byIndex.get(i)!);
+      continue;
+    }
+    const idNorm = normalizeGmailIdForMatch(list[i]?.id);
+    let hit = idNorm ? byId.get(idNorm) : undefined;
+    if (!hit) {
+      for (const [k, v] of byId) {
+        if (k.length >= 8 && idNorm && (idNorm.startsWith(k) || k.startsWith(idNorm))) {
+          hit = v;
+          break;
+        }
+      }
+    }
+    if (hit) out.set(i, hit);
+  }
+  return out;
+}
+
+async function openAiClassifyBatch(
   rows: GmailInboxRow[],
-): Promise<GmailInboxRowCategorized[]> {
-  console.log(
-    "[inbox-categorize] categorizeGmailInboxRows invoked, row count:",
-    rows.length,
-  );
-
-  const withHeuristic = (reason: string): GmailInboxRowCategorized[] => {
-    warnFallback(reason);
-    return rows.map((r, i) => {
-      const cat = heuristicInboxCategory(r);
-      console.log("PARSED CATEGORY:", cat, "(heuristic fallback, not AI)");
-      return applyRowCategory(r, i, cat, "heuristic:" + reason);
-    });
-  };
-
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
-    warnFallback("OPENAI_API_KEY missing; using per-message heuristics");
-    return withHeuristic("no_api_key");
-  }
+  apiKey: string,
+): Promise<Map<number, { category: InboxAiCategory; confidence: number }> | null> {
   if (rows.length === 0) {
-    return [];
+    return new Map();
   }
-
-  rows.forEach((r, i) => {
-    console.log(`[inbox-categorize] input row ${i} subject:`, r.subject);
-  });
 
   const lines = rows.map((r, i) => {
     const sender = r.sender.slice(0, 200);
     const subject = r.subject.slice(0, 400);
     const snippet = (r.snippet ?? "").slice(0, 500);
-    return `##${i + 1} (index ${i})\nid:${r.id}\nsender:${sender}\nsubject:${subject}\nsnippet:${snippet}`;
+    return `##${i + 1} (batch index ${i})\nid:${r.id}\nsender:${sender}\nsubject:${subject}\nsnippet:${snippet}`;
   });
 
-  const prompt = `You classify personal inbox emails for triage.
-
-For each message below, assign exactly ONE category:
-- needs_attention — needs a decision, substantive review, or non-trivial action
-- quick_reply — can be handled with a short acknowledgment or a simple yes/no / confirm
-- newsletter — editorial digests, blogs, recurring reads (not pure ads)
-- promotion — marketing, discounts, sales, product promos
-- handled — FYI, automated receipts with nothing to do, or clearly already resolved threads
-
-Return a single JSON object (no markdown, no commentary) in this exact shape:
-{"classifications":[{"index":0,"category":"needs_attention"},{"index":1,"category":"promotion"}]}
-
-Rules:
-- There are exactly ${rows.length} messages in order. You MUST output exactly ${rows.length} objects in "classifications".
-- "index" is 0-based: the first block (##1) is index 0, second is index 1, etc. (You may also use 1-based indexing where index 1 means the first message; both are accepted.)
-- "category" MUST be exactly one of these five strings, lowercase, with underscores as shown:
-  needs_attention, quick_reply, newsletter, promotion, handled
-- Do not use any other category names or punctuation.
+  const prompt = `${buildStrictAmbiguousPrompt(rows.length)}
 
 Messages:
 ${lines.join("\n\n")}`;
@@ -220,11 +306,11 @@ ${lines.join("\n\n")}`;
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
         "HTTP-Referer": openRouterReferer(),
-        "X-Title": "Handled Inbox Categorize",
+        "X-Title": "Handled Inbox Categorize (ambiguous)",
       },
       body: JSON.stringify({
         model: "openai/gpt-4o-mini",
-        temperature: 0.2,
+        temperature: 0.15,
         messages: [{ role: "user", content: prompt }],
       }),
       signal: controller.signal,
@@ -236,170 +322,147 @@ ${lines.join("\n\n")}`;
     };
     try {
       body = (await res.json()) as typeof body;
-    } catch (e) {
-      warnFallback("upstream response was not JSON", e);
-      return withHeuristic("upstream_not_json");
+    } catch {
+      return null;
     }
 
-    console.log("RAW AI RESPONSE:", body);
+    console.log("RAW AI RESPONSE (ambiguous batch):", body);
 
     if (!res.ok) {
-      warnFallback(`upstream HTTP ${res.status}`, body.error);
-      console.log("RAW AI RESPONSE (error path, truncated):", JSON.stringify(body).slice(0, 8000));
-      return withHeuristic(`http_${res.status}`);
+      warnFallback(`ambiguous batch HTTP ${res.status}`, body.error);
+      return null;
     }
 
-    const choice = body.choices?.[0]?.message;
-    const raw = (choice?.content ?? "").trim();
-    const refusal = (choice?.refusal ?? "").trim();
-
-    console.log("RAW AI RESPONSE (message.content string):", raw || "(empty)");
-    if (refusal) console.log("RAW AI RESPONSE (message.refusal):", refusal);
-
-    if (!raw) {
-      warnFallback("empty model content; using heuristics", { refusal: refusal || undefined });
-      return withHeuristic("empty_content");
-    }
+    const raw = (body.choices?.[0]?.message?.content ?? "").trim();
+    console.log("RAW AI RESPONSE (ambiguous content):", raw || "(empty)");
+    if (!raw) return null;
 
     let parsed: unknown;
     const stripped = stripJsonFence(raw);
     try {
       parsed = JSON.parse(stripped);
-    } catch (firstErr) {
-      console.log("PARSED JSON: (first parse failed)", firstErr);
+    } catch {
       const extracted = extractJsonObject(raw) ?? extractJsonObject(stripped);
-      if (!extracted) {
-        warnFallback("could not extract JSON object from model text", stripped.slice(0, 500));
-        return withHeuristic("no_json_object");
-      }
+      if (!extracted) return null;
       try {
         parsed = JSON.parse(extracted);
-      } catch (secondErr) {
-        warnFallback("JSON.parse on extracted object failed", secondErr);
-        console.log("PARSED JSON: (second parse failed)", secondErr);
-        return withHeuristic("json_parse_failed");
+      } catch {
+        return null;
       }
     }
 
-    console.log("PARSED JSON:", parsed);
-
+    console.log("PARSED JSON (ambiguous batch):", parsed);
     const list = extractClassificationsArray(parsed);
-
     console.log(
-      "PARSED JSON (classifications length):",
+      "PARSED JSON (ambiguous classifications length):",
       list.length,
       "expected:",
       rows.length,
     );
+    if (!list.length) return null;
 
-    if (!list.length) {
-      warnFallback("no classifications array in parsed JSON", parsed);
-      return withHeuristic("no_classifications_array");
-    }
-
-    const byIndex = new Map<number, InboxAiCategory>();
-    const byId = new Map<string, InboxAiCategory>();
-    const ordered = list.length === rows.length;
-
-    for (let i = 0; i < list.length; i++) {
-      const item = list[i];
-      const rawCat =
-        typeof item.category === "string" ? item.category.trim().toLowerCase() : "";
-      const extractedCategory = normalizeInboxAiCategory(rawCat);
-
-      const subjectForLog =
-        i < rows.length ? rows[i].subject : "(no matching input row index)";
-      console.log("EMAIL SUBJECT BEING CATEGORIZED:", subjectForLog);
-      console.log("PARSED CATEGORY:", extractedCategory, {
-        listPosition: i,
-        rawIndex: item.index,
-        rawId: item.id,
-        rawCategoryFromModel: item.category,
-      });
-
-      const idx = parseClassificationIndex(item, rows.length);
-      if (idx !== null) {
-        byIndex.set(idx, extractedCategory);
-      }
-
-      const idStr = normalizeGmailIdForMatch(item.id);
-      if (idStr) {
-        byId.set(idStr, extractedCategory);
-      }
-    }
-
-    if (ordered) {
-      for (let i = 0; i < rows.length; i++) {
-        if (!byIndex.has(i)) {
-          const item = list[i];
-          const rawCat =
-            typeof item.category === "string" ? item.category.trim().toLowerCase() : "";
-          const extractedCategory = normalizeInboxAiCategory(rawCat);
-          console.log("EMAIL SUBJECT BEING CATEGORIZED:", rows[i].subject);
-          console.log("PARSED CATEGORY (positional fill):", extractedCategory, { rowIndex: i });
-          byIndex.set(i, extractedCategory);
-        }
-      }
-    }
-
-    const rowIds = rows.map((r) => normalizeGmailIdForMatch(r.id));
-
-    let heuristicUnmapped = 0;
-    const out: GmailInboxRowCategorized[] = [];
-
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-
-      if (byIndex.has(i)) {
-        const category = byIndex.get(i)!;
-        out.push(applyRowCategory(r, i, category, "model_index"));
-        continue;
-      }
-
-      const idNorm = normalizeGmailIdForMatch(r.id);
-      let category: InboxAiCategory | undefined = byId.get(idNorm);
-
-      if (!category) {
-        for (const [k, v] of byId) {
-          if (!k) continue;
-          if (k.length >= 8 && (idNorm.startsWith(k) || k.startsWith(idNorm))) {
-            category = v;
-            break;
-          }
-        }
-      }
-
-      if (!category && rowIds[i]) {
-        for (const [k, v] of byId) {
-          if (k && rowIds[i].endsWith(k)) {
-            category = v;
-            break;
-          }
-        }
-      }
-
-      if (category) {
-        out.push(applyRowCategory(r, i, category, "model_id"));
-        continue;
-      }
-
-      heuristicUnmapped++;
-      const h = heuristicInboxCategory(r);
-      console.log("PARSED CATEGORY:", h, "(heuristic, no model mapping)");
-      out.push(applyRowCategory(r, i, h, "heuristic_unmapped"));
-    }
-
-    if (heuristicUnmapped > 0) {
-      warnFallback(
-        `${heuristicUnmapped} / ${rows.length} rows had no model index/id match; heuristics used for those`,
-      );
-    }
-
-    return out;
+    return parseAiBatchIntoMap(list, rows.length);
   } catch (e) {
-    warnFallback("unexpected error during categorization", e);
-    return withHeuristic("exception");
+    warnFallback("openAiClassifyBatch failed", e);
+    return null;
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * Hybrid: rule preclassification, then OpenAI only for ambiguous rows.
+ */
+export async function categorizeGmailInboxRows(
+  rows: GmailInboxRow[],
+): Promise<GmailInboxRowCategorized[]> {
+  console.log(
+    "[inbox-categorize] hybrid categorize invoked, row count:",
+    rows.length,
+  );
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+
+  const ambiguousOriginalIndices: number[] = [];
+  const out: GmailInboxRowCategorized[] = new Array(
+    rows.length,
+  ) as GmailInboxRowCategorized[];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rule = rulePrecClassify(row);
+    if (rule.category) {
+      console.log("[inbox-categorize] RULE PRECHECK:", row.subject, "→", rule.category, {
+        confidence: rule.confidence,
+        reasons: rule.scores.reasons,
+      });
+      out[i] = applyRowCategory(row, i, rule.category, "rule", rule.confidence);
+    } else {
+      ambiguousOriginalIndices.push(i);
+    }
+  }
+
+  if (ambiguousOriginalIndices.length === 0) {
+    return out;
+  }
+
+  const ambiguousRows = ambiguousOriginalIndices.map((i) => rows[i]);
+  console.log(
+    "[inbox-categorize] ambiguous count (sent to AI if key present):",
+    ambiguousRows.length,
+  );
+
+  if (!apiKey) {
+    warnFallback("OPENAI_API_KEY missing; heuristics for ambiguous rows only");
+    for (let j = 0; j < ambiguousOriginalIndices.length; j++) {
+      const i = ambiguousOriginalIndices[j];
+      const row = rows[i];
+      const h = heuristicInboxCategory(row);
+      out[i] = applyRowCategory(row, i, h, "heuristic", 0.52);
+    }
+    return out;
+  }
+
+  const aiMap = await openAiClassifyBatch(ambiguousRows, apiKey);
+
+  if (!aiMap) {
+    warnFallback("AI batch failed; heuristics for ambiguous rows");
+    for (let j = 0; j < ambiguousOriginalIndices.length; j++) {
+      const i = ambiguousOriginalIndices[j];
+      const row = rows[i];
+      const h = heuristicInboxCategory(row);
+      out[i] = applyRowCategory(row, i, h, "heuristic", 0.5);
+    }
+    return out;
+  }
+
+  for (let j = 0; j < ambiguousOriginalIndices.length; j++) {
+    const i = ambiguousOriginalIndices[j];
+    const row = rows[i];
+    const got = aiMap.get(j);
+    let category = got?.category ?? heuristicInboxCategory(row);
+    let confidence = got?.confidence ?? 0.62;
+    let source: CategorySource = got ? "ai" : "heuristic";
+
+    const coerced = postCoerceAiCategory(category, row);
+    if (coerced.category !== category) {
+      category = coerced.category;
+      source = coerced.source;
+      confidence = Math.min(0.96, confidence * coerced.confidenceMul);
+    }
+
+    console.log("PARSED CATEGORY (ambiguous → final):", category, {
+      batchIndex: j,
+      originalIndex: i,
+      source,
+      confidence,
+    });
+    out[i] = applyRowCategory(row, i, category, source, confidence);
+  }
+
+  return out;
 }
