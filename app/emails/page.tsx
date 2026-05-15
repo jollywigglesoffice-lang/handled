@@ -13,6 +13,7 @@ import { useHandledEmails } from "@/app/handled-emails-context";
 import { AuthNav } from "@/app/components/auth-nav";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
+import { workflowModeHeaders } from "@/lib/workflow-mode";
 import {
   GMAIL_INBOX_SECTION_ORDER,
   type CategorySource,
@@ -395,7 +396,10 @@ export default function EmailsInboxPage() {
     }
 
     try {
-      const res = await fetch("/api/gmail/messages", { credentials: "same-origin" });
+      const res = await fetch("/api/gmail/messages", {
+        credentials: "same-origin",
+        headers: workflowModeHeaders(),
+      });
       const body = (await res.json()) as {
         messages?: GmailInboxMessage[];
         error?: string;
@@ -456,6 +460,14 @@ export default function EmailsInboxPage() {
 
   useEffect(() => {
     void loadInbox();
+  }, [loadInbox]);
+
+  useEffect(() => {
+    const onModeChange = () => {
+      void loadInbox();
+    };
+    window.addEventListener("handled-workflow-mode-changed", onModeChange);
+    return () => window.removeEventListener("handled-workflow-mode-changed", onModeChange);
   }, [loadInbox]);
 
   useEffect(() => {

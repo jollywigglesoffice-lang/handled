@@ -61,35 +61,124 @@ export function dbRowToUserRule(row: InboxRuleRowDb): InboxUserRule | null {
   };
 }
 
-/** Load rules from Supabase; falls back to built-in presets if table empty or unavailable. */
+function userRuleToDbInsert(userId: string, rule: InboxUserRule) {
+  const category =
+    rule.action.type === "force_category"
+      ? rule.action.category
+      : rule.action.type === "demote" || rule.action.type === "boost"
+        ? rule.action.toCategory
+        : null;
+
+  return {
+    id: rule.id,
+    user_id: userId,
+    enabled: rule.enabled,
+    priority: rule.priority,
+    phase: rule.phase,
+    action_type: rule.action.type,
+    category,
+    match_type: rule.match.type,
+    match_value: rule.match.value,
+    label: rule.label ?? null,
+  };
+}
+
+/** Active rules for categorization (DB only — no preset fallback). */
 export async function loadInboxUserRulesForUser(userId: string): Promise<InboxUserRule[]> {
+  const all = await loadAllInboxUserRulesForUser(userId);
+  return all.filter((r) => r.enabled);
+}
+
+/** All rules for settings UI (enabled + disabled). */
+export async function loadAllInboxUserRulesForUser(userId: string): Promise<InboxUserRule[]> {
   try {
     const { supabase } = await import("@/lib/supabase");
     const { data, error } = await supabase
       .from("inbox_rules")
       .select("*")
       .eq("user_id", userId)
-      .eq("enabled", true)
       .order("priority", { ascending: false });
 
     if (error) {
-      console.warn("[inbox-user-rules] DB load failed, using presets:", error.message);
-      return defaultInboxUserRules();
+      console.warn("[inbox-user-rules] DB load failed:", error.message);
+      return [];
     }
 
-    const parsed = (data ?? [])
+    return (data ?? [])
       .map((row) => dbRowToUserRule(row as InboxRuleRowDb))
       .filter((r): r is InboxUserRule => r !== null);
+  } catch (e) {
+    console.warn("[inbox-user-rules] load exception", e);
+    return [];
+  }
+}
 
-    if (parsed.length === 0) {
-      return defaultInboxUserRules();
+/** Replace user's rules in Supabase (full save from settings). */
+export async function saveInboxUserRulesForUser(
+  userId: string,
+  rules: InboxUserRule[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const { supabase } = await import("@/lib/supabase");
+    const { data: existing, error: listError } = await supabase
+      .from("inbox_rules")
+      .select("id")
+      .eq("user_id", userId);
+
+    if (listError) {
+      return { ok: false, error: listError.message };
     }
 
-    return parsed;
+    const keepIds = new Set(rules.map((r) => r.id));
+    const toDelete = (existing ?? [])
+      .map((r) => r.id as string)
+      .filter((id) => !keepIds.has(id));
+
+    if (toDelete.length > 0) {
+      const { error: delError } = await supabase
+        .from("inbox_rules")
+        .delete()
+        .in("id", toDelete);
+      if (delError) {
+        return { ok: false, error: delError.message };
+      }
+    }
+
+    if (rules.length > 0) {
+      const rows = rules.map((r) => userRuleToDbInsert(userId, r));
+      const { error: upsertError } = await supabase.from("inbox_rules").upsert(rows, {
+        onConflict: "id",
+      });
+      if (upsertError) {
+        return { ok: false, error: upsertError.message };
+      }
+    }
+
+    return { ok: true };
   } catch (e) {
-    console.warn("[inbox-user-rules] load exception, using presets", e);
-    return defaultInboxUserRules();
+    const message = e instanceof Error ? e.message : "save failed";
+    return { ok: false, error: message };
   }
+}
+
+/** Insert starter presets when the user has no saved rules yet. */
+export async function seedInboxUserRulesForUser(
+  userId: string,
+): Promise<{ ok: true; rules: InboxUserRule[] } | { ok: false; error: string }> {
+  const existing = await loadAllInboxUserRulesForUser(userId);
+  if (existing.length > 0) {
+    return { ok: true, rules: existing };
+  }
+  const { randomUUID } = await import("node:crypto");
+  const presets = defaultInboxUserRules().map((r) => ({
+    ...r,
+    id: randomUUID(),
+  }));
+  const saved = await saveInboxUserRulesForUser(userId, presets);
+  if (!saved.ok) {
+    return { ok: false, error: saved.error };
+  }
+  return { ok: true, rules: presets };
 }
 
 export function mergeInboxUserRules(

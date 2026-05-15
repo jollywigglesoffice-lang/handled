@@ -1,3 +1,14 @@
+import {
+  buildGenerateReplyPrompt,
+  generateEmailRepliesJson,
+} from "@/lib/generate-email-replies";
+import {
+  callOpenRouterChat,
+  REPLY_MODEL,
+  REPLY_STREAM_SEPARATOR,
+  readOpenRouterChatContent,
+} from "@/lib/openrouter-reply";
+
 type WorkflowBehaviorPayload = {
   label: string;
   replyCount: number;
@@ -234,8 +245,6 @@ function mergeGenerateReplies(
 
 const DEFAULT_REFINE_FALLBACK = "Got it, thanks! I'll get back to you.";
 
-const REPLY_STREAM_SEPARATOR = "---REPLY---";
-
 function createGenerateReplyNdjsonStream(
   email: string,
   userName: string | undefined,
@@ -294,43 +303,47 @@ ${email}`;
   const body = new ReadableStream({
     async start(controller) {
       const controllerRef = controller;
-      const openAiResponse = await fetch(
-        "https://openrouter.ai/api/v1/chat/completions",
+      const openAiResponse = await callOpenRouterChat(
+        apiKey,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            "HTTP-Referer": "http://localhost:3001",
-            "X-Title": "Handled App",
-          },
-          body: JSON.stringify({
-            model: "openai/gpt-4o-mini",
-            temperature: 0.7,
-            stream: true,
-            messages: [
-              {
-                role: "user",
-                content: streamPrompt,
-              },
-            ],
-          }),
-          signal: upstreamSignal,
+          model: REPLY_MODEL,
+          temperature: 0.7,
+          stream: true,
+          messages: [{ role: "user", content: streamPrompt }],
         },
+        upstreamSignal,
       ).catch((err) => {
-        console.error("[api/reply] Stream upstream fetch failed", err);
+        console.log("REPLY GENERATION ERROR:", "stream fetch failed", err);
         return null;
       });
 
-      if (!openAiResponse || !openAiResponse.ok || !openAiResponse.body) {
-        controllerRef.enqueue(
-          encoder.encode(
-            JSON.stringify({
-              error: "stream_unavailable",
-              message: "Upstream stream failed",
-            }) + "\n",
-          ),
+      if (!openAiResponse?.ok || !openAiResponse.body) {
+        const fallbackReplies = await generateEmailRepliesJson(
+          apiKey,
+          buildGenerateReplyPrompt({
+            email,
+            tone,
+            languageLabel,
+            userName,
+            contextBlock,
+            workflowMode,
+          }),
+          upstreamSignal,
         );
+        if (fallbackReplies?.length) {
+          for (let i = 0; i < Math.min(3, fallbackReplies.length); i++) {
+            controllerRef.enqueue(
+              encoder.encode(JSON.stringify({ index: i, text: fallbackReplies[i] }) + "\n"),
+            );
+          }
+        } else {
+          controllerRef.enqueue(
+            encoder.encode(
+              JSON.stringify({ error: "stream_unavailable", message: "Upstream failed" }) +
+                "\n",
+            ),
+          );
+        }
         controllerRef.close();
         return;
       }
@@ -389,8 +402,32 @@ ${email}`;
             }
           }
         }
+        const tail = assistantBuffer.split(REPLY_STREAM_SEPARATOR);
+        const finalSlots = [tail[0] ?? "", tail[1] ?? "", tail[2] ?? ""];
+        const anyContent = finalSlots.some((s) => s.trim().length > 0);
+        if (!anyContent) {
+          const jsonReplies = await generateEmailRepliesJson(
+            apiKey,
+            buildGenerateReplyPrompt({
+              email,
+              tone,
+              languageLabel,
+              userName,
+              contextBlock,
+              workflowMode,
+            }),
+            upstreamSignal,
+          );
+          if (jsonReplies?.length) {
+            for (let i = 0; i < Math.min(3, jsonReplies.length); i++) {
+              controllerRef.enqueue(
+                encoder.encode(JSON.stringify({ index: i, text: jsonReplies[i] }) + "\n"),
+              );
+            }
+          }
+        }
       } catch (error) {
-        console.error("[api/reply] Stream read failed", error);
+        console.log("REPLY GENERATION ERROR:", "stream read failed", error);
         controllerRef.enqueue(
           encoder.encode(
             JSON.stringify({ error: "stream_read", message: String(error) }) + "\n",
@@ -464,9 +501,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
 
   if (!apiKey) {
+    console.log("REPLY GENERATION ERROR:", "OPENAI_API_KEY missing");
     if (mode === "refine") {
       return Response.json({
         reply: cleanReply(currentReply ?? getRefineFallback(tone, language, userName)),
@@ -503,6 +541,18 @@ export async function POST(request: Request) {
     body.toneSlider,
   );
 
+  const generatePrompt =
+    mode === "generate"
+      ? buildGenerateReplyPrompt({
+          email,
+          tone,
+          languageLabel,
+          userName,
+          contextBlock,
+          workflowMode: body.workflowMode,
+        })
+      : "";
+
   const prompt =
     mode === "refine"
       ? `Refine this draft reply so it is clearer, while keeping the same tone and intent.
@@ -533,151 +583,53 @@ ${email}
 
 Current reply:
 ${currentReply}`
-      : `Write 3 different short reply variations to this email.
-
-Rules:
-- Keep each reply under 3 sentences
-- Keep each reply short and quick
-- If the email is simple, keep each reply to one sentence
-- Use natural, human language, like texting a colleague
-- Avoid corporate tone
-- Avoid overly polite language
-- Avoid sounding overly helpful
-- Keep the tone ${tone}
-- Write every reply in ${languageLabel}. (All three variations must be in that language.)
-- The first reply is the recommended default (may be slightly fuller when a greeting fits naturally)
-- Replies 2 and 3 should be alternate phrasings, each meaningfully different from the others
-- Keep it simple and direct
-- If appropriate, include the person's name
-- If appropriate, make the reply sound like it was written by ${userName ?? "the user"}
-
-Style examples:
-- "Got it, thanks."
-- "Sounds good to me."
-- "I’ll take a look and get back to you."
-
-Tone:
-- calm
-- clear
-- direct
-${contextBlock}
-
-Return valid JSON only in this exact shape:
-{"replies":["recommended reply","alternate 1","alternate 2"]}
-
-Do not include markdown. Do not include extra keys.
-
-Email:
-${email}`;
+      : generatePrompt;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 9000);
+  const timeoutId = setTimeout(() => controller.abort(), 28_000);
 
   try {
-    const openAiResponse = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
+    if (mode === "generate") {
+      const parsed = await generateEmailRepliesJson(apiKey, generatePrompt, controller.signal);
+      if (parsed?.length) {
+        const merged = mergeGenerateReplies(
+          parsed.map((r) => cleanReply(r)),
+          tone,
+          language,
+          userName,
+        );
+        return Response.json({ replies: merged, source: "ai" });
+      }
+      console.log("REPLY GENERATION ERROR:", "generate returned no replies — using fallbacks");
+      return Response.json({
+        replies: getFallbackReplies(tone, language, userName),
+        source: "fallback",
+      });
+    }
+
+    const openAiResponse = await callOpenRouterChat(
+      apiKey,
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "HTTP-Referer": "http://localhost:3001",
-          "X-Title": "Handled App",
-        },
-        body: JSON.stringify({
-          model: "openai/gpt-4o-mini",
-          temperature: 0.7,
-          messages: [
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-        }),
-        signal: controller.signal,
+        model: REPLY_MODEL,
+        temperature: 0.7,
+        messages: [{ role: "user", content: prompt }],
       },
+      controller.signal,
     );
 
-    let result: {
-      choices?: Array<{
-        message?: {
-          content?: string;
-        };
-      }>;
-      error?: {
-        message?: string;
-      };
-    };
-
-    try {
-      result = (await openAiResponse.json()) as typeof result;
-    } catch (error) {
-      console.error(
-        "[api/reply] Failed to parse upstream response as JSON",
-        error,
-      );
-      if (mode === "refine") {
-        return Response.json({
-          reply: cleanReply(currentReply ?? getRefineFallback(tone, language, userName)),
-        });
-      }
-      return Response.json({ replies: getFallbackReplies(tone, language, userName) });
-    }
-
-    if (!openAiResponse.ok) {
-      console.error("[api/reply] Upstream error", {
-        status: openAiResponse.status,
-        upstream: result.error,
-      });
-      if (mode === "refine") {
-        return Response.json({
-          reply: cleanReply(currentReply ?? getRefineFallback(tone, language, userName)),
-        });
-      }
-
-      return Response.json({ replies: getFallbackReplies(tone, language, userName) });
-    }
-
-    const content = result.choices?.[0]?.message?.content?.trim();
+    const { content } = await readOpenRouterChatContent(openAiResponse);
 
     if (!content) {
-      console.error("[api/reply] Empty model content", {
-        choices: result.choices?.length ?? 0,
+      console.log("REPLY GENERATION ERROR:", "refine empty content");
+      return Response.json({
+        reply: cleanReply(currentReply ?? getRefineFallback(tone, language, userName)),
+        source: "fallback",
       });
-      if (mode === "refine") {
-        return Response.json({
-          reply: cleanReply(currentReply ?? getRefineFallback(tone, language, userName)),
-        });
-      }
-
-      return Response.json({ replies: getFallbackReplies(tone, language, userName) });
     }
 
-    if (mode === "refine") {
-      return Response.json({ reply: cleanReply(content) });
-    }
-
-    let replies: string[] = [];
-
-    try {
-      const parsed = JSON.parse(content) as { replies?: string[] };
-      replies =
-        parsed.replies
-          ?.map((reply) => cleanReply(reply))
-          .filter((reply) => reply.length > 0)
-          .slice(0, 3) ?? [];
-    } catch {
-      replies = content
-        .split("\n")
-        .map((line) => cleanReply(line))
-        .filter((line) => line.length > 0)
-        .slice(0, 3);
-    }
-
-    const merged = mergeGenerateReplies(replies, tone, language, userName);
-    return Response.json({ replies: merged });
+    return Response.json({ reply: cleanReply(content), source: "ai" });
   } catch (error) {
-    console.error("[api/reply] Request failed or aborted", error);
+    console.log("REPLY GENERATION ERROR:", error);
     if (mode === "refine") {
       return Response.json({
         reply: cleanReply(currentReply ?? getRefineFallback(tone, language, userName)),

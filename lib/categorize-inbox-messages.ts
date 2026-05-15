@@ -16,6 +16,8 @@ import {
   applyUserRulesPre,
   type InboxUserRule,
 } from "@/lib/inbox-user-rules";
+import { applyWorkflowModeToCategory } from "@/lib/workflow-mode-effects";
+import type { WorkflowMode } from "@/lib/workflow-mode";
 
 export type GmailInboxRowCategorized = GmailInboxRow & {
   category: InboxAiCategory;
@@ -405,6 +407,7 @@ ${lines.join("\n\n")}`;
 
 export type CategorizeInboxOptions = {
   userRules?: InboxUserRule[];
+  workflowMode?: WorkflowMode;
 };
 
 function applyUserPostIfNeeded(
@@ -414,12 +417,27 @@ function applyUserPostIfNeeded(
   source: CategorySource,
   confidence: number,
   userRules: InboxUserRule[],
+  workflowMode: WorkflowMode,
 ): GmailInboxRowCategorized {
   const post = applyUserRulesPost(row, category, userRules);
-  if (post) {
-    return finalizeRow(row, rowIndex, post.category, "user_rule", 0.94);
-  }
-  return finalizeRow(row, rowIndex, category, source, confidence);
+  const afterUser = post
+    ? { category: post.category, source: "user_rule" as const, confidence: 0.94 }
+    : { category, source, confidence };
+
+  const modeAdjusted = applyWorkflowModeToCategory(
+    workflowMode,
+    row,
+    afterUser.category,
+    afterUser.source,
+  );
+
+  return finalizeRow(
+    row,
+    rowIndex,
+    modeAdjusted.category,
+    modeAdjusted.source,
+    afterUser.confidence,
+  );
 }
 
 /**
@@ -434,6 +452,7 @@ export async function categorizeGmailInboxRows(
   }
 
   const userRules = options?.userRules ?? [];
+  const workflowMode = options?.workflowMode ?? "assist";
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   const ambiguousIndices: number[] = [];
   const out: GmailInboxRowCategorized[] = new Array(rows.length) as GmailInboxRowCategorized[];
@@ -444,12 +463,28 @@ export async function categorizeGmailInboxRows(
     const userPre = applyUserRulesPre(row, userRules);
     if (userPre?.kind === "force") {
       console.log("RULE MATCH:", userPre.category, { source: "user_pre", label: userPre.label });
-      out[i] = applyUserPostIfNeeded(row, i, userPre.category, "user_rule", 0.96, userRules);
+      out[i] = applyUserPostIfNeeded(
+        row,
+        i,
+        userPre.category,
+        "user_rule",
+        0.96,
+        userRules,
+        workflowMode,
+      );
       continue;
     }
     if (userPre?.kind === "block") {
       console.log("RULE MATCH: block", { label: userPre.label });
-      out[i] = finalizeRow(row, i, "handled", "user_rule", 0.99);
+      out[i] = applyUserPostIfNeeded(
+        row,
+        i,
+        "handled",
+        "user_rule",
+        0.99,
+        userRules,
+        workflowMode,
+      );
       continue;
     }
 
@@ -467,7 +502,15 @@ export async function categorizeGmailInboxRows(
           handled: rule.scores.handled,
         },
       });
-      out[i] = applyUserPostIfNeeded(row, i, rule.category, "rule", rule.confidence, userRules);
+      out[i] = applyUserPostIfNeeded(
+        row,
+        i,
+        rule.category,
+        "rule",
+        rule.confidence,
+        userRules,
+        workflowMode,
+      );
     } else {
       ambiguousIndices.push(i);
     }
@@ -502,7 +545,15 @@ export async function categorizeGmailInboxRows(
         confidence = Math.min(0.96, confidence * corrected.confidenceMul);
       }
 
-      return applyUserPostIfNeeded(row, rowIndex, category, source, confidence, userRules);
+      return applyUserPostIfNeeded(
+        row,
+        rowIndex,
+        category,
+        source,
+        confidence,
+        userRules,
+        workflowMode,
+      );
     }
 
     const fb = intelligentFallbackCategory(row);
@@ -510,7 +561,15 @@ export async function categorizeGmailInboxRows(
       subject: row.subject?.slice(0, 100),
       fallback: fb.category,
     });
-    return applyUserPostIfNeeded(row, rowIndex, fb.category, "heuristic", fb.confidence, userRules);
+    return applyUserPostIfNeeded(
+      row,
+      rowIndex,
+      fb.category,
+      "heuristic",
+      fb.confidence,
+      userRules,
+      workflowMode,
+    );
   };
 
   if (!apiKey) {

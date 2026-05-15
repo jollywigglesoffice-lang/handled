@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { EmailDetailView, type EmailDetailPayload } from "./email-detail-view";
+import { buildReplyEmailContext } from "@/lib/build-reply-email-context";
 import { isLikelyHtml } from "@/lib/sanitize-email-html";
 import { getEmailById } from "@/lib/fake-emails";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -32,6 +33,12 @@ function gmailToDetailEmail(
     body: displayPlain,
     bodyHtml: bodyHtml || undefined,
     suggestedReply: "",
+    replyContext: buildReplyEmailContext({
+      sender: msg.sender,
+      subject: msg.subject,
+      body: displayPlain,
+      snippet: msg.snippet,
+    }),
   };
 }
 

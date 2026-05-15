@@ -8,6 +8,8 @@ import { useUiCopy } from "@/app/use-ui-copy";
 
 export type EmailDetailPayload = FakeEmail & {
   bodyHtml?: string;
+  /** Rich plain-text context for reply generation (From/Subject/Body). */
+  replyContext?: string;
 };
 
 type EmailDetailViewProps = {
@@ -67,7 +69,7 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
 
         <EmailActions
           emailId={email.id}
-          emailContent={email.body}
+          emailContent={email.replyContext ?? email.body}
           senderName={email.sender}
           suggestedReply={email.suggestedReply}
         />

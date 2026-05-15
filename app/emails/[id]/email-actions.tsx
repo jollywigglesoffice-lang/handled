@@ -34,7 +34,7 @@ type EmailActionsProps = {
   suggestedReply: string;
 };
 
-const FETCH_REPLY_TIMEOUT_MS = 14_000;
+const FETCH_REPLY_TIMEOUT_MS = 28_000;
 
 const PRICING = {
   pro: {
@@ -826,7 +826,7 @@ return () => clearTimeout(timeout);
               tone: mapTone(adjustedTone),
               toneSlider: adjustedTone,
               language,
-              stream: true,
+              stream: false,
               intent,
               personality,
               memory: memoryProfile,
@@ -923,12 +923,13 @@ return () => clearTimeout(timeout);
             }
 
             const quickTriple = ensureThreeReplies(replies, fallbackTriple);
+            const usedFallback = quickTriple.every((r, i) => r === fallbackTriple[i]);
             setReplyOptions([...quickTriple]);
             setStreamedReplies([...quickTriple]);
             setSelectedReplyIndex(0);
             setEditedReplyDraft(quickTriple[0] ?? "");
             setStatusMessage(
-              streamHadError
+              streamHadError && usedFallback
                 ? ui.emailActions.statusGenerateFailed
                 : ui.emailActions.statusChooseReply,
             );
@@ -973,6 +974,7 @@ return () => clearTimeout(timeout);
         const rawQuick =
           result.replies?.filter((reply) => reply.trim().length > 0) ?? [];
         const quickTriple = ensureThreeReplies(rawQuick, fallbackTriple);
+        const usedFallback = quickTriple.every((r, i) => r === fallbackTriple[i]);
 
         if (!response.ok) {
           if (runId !== generateRunIdRef.current) {
@@ -996,7 +998,11 @@ return () => clearTimeout(timeout);
         setStreamedReplies([...quickTriple]);
         setIsThinking(false);
         setSelectedReplyIndex(0);
-        setStatusMessage(ui.emailActions.statusChooseReply);
+        setStatusMessage(
+          usedFallback && !(result as { source?: string }).source?.includes("ai")
+            ? ui.emailActions.statusGenerateFailed
+            : ui.emailActions.statusChooseReply,
+        );
         if (!options?.skipUsageIncrement) {
           incrementGeneratedRepliesCount();
         }

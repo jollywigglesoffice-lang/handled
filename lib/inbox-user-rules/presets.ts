@@ -1,8 +1,34 @@
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
 
-/** Starter rules — merge with DB / localStorage; customize per user later. */
+/** Starter rules users can seed into their account from Settings. */
 export function defaultInboxUserRules(): InboxUserRule[] {
   return [
+    {
+      id: "preset-boost-doctor",
+      enabled: true,
+      priority: 220,
+      phase: "post",
+      label: "Doctor / clinic → needs attention",
+      match: { type: "sender_contains", value: "doctor" },
+      action: {
+        type: "boost",
+        toCategory: "needs_attention",
+        whenCategories: ["promotion", "newsletter", "handled"],
+      },
+    },
+    {
+      id: "preset-boost-school",
+      enabled: true,
+      priority: 210,
+      phase: "post",
+      label: "School → needs attention",
+      match: { type: "sender_contains", value: "school" },
+      action: {
+        type: "boost",
+        toCategory: "needs_attention",
+        whenCategories: ["promotion", "newsletter", "handled"],
+      },
+    },
     {
       id: "preset-demote-instagram",
       enabled: true,
