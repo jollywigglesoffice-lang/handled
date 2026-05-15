@@ -42,7 +42,9 @@ export function dbRowToUserRule(row: InboxRuleRowDb): InboxUserRule | null {
         : matchType === "sender_contains"
           ? { type: "sender_contains" as const, value: row.match_value }
           : matchType === "subject_contains"
-            ? { type: "subject_contains" as const, value: row.match_value }
+          ? { type: "subject_contains" as const, value: row.match_value }
+          : matchType === "keywords_contains"
+            ? { type: "keywords_contains" as const, value: row.match_value }
             : null;
 
   if (!match) return null;

@@ -1,0 +1,6 @@
+-- Run if inbox_rules already exists without keywords_contains:
+-- alter table public.inbox_rules drop constraint if exists inbox_rules_match_type_check;
+-- alter table public.inbox_rules add constraint inbox_rules_match_type_check
+--   check (match_type in (
+--     'sender_email', 'sender_domain', 'sender_contains', 'subject_contains', 'keywords_contains'
+--   ));

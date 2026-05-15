@@ -1,5 +1,11 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import {
+  emailHaystack,
+  hasUrgentHumanSignal,
+  isCommercialBulk,
+  isTransactionalFyi,
+} from "@/lib/inbox-triage-signals";
 
 /** Score to hard-lock and skip AI. */
 export const RULE_LOCK_SCORE = 2;
@@ -18,7 +24,7 @@ export type InboxRuleScores = {
 };
 
 const KNOWN_BULK_PLATFORM =
-  /instagram|facebookmail|fb\.com|linkedin|mail\.linkedin|twitter|shopify|mailchimp|sendgrid|amazonses|customer\.io|beehiiv|substack|google\s*alerts|youtube|tiktok|pinterest|snapchat|discord|slack-mail|intercom|hubspot|salesforce|braze|postmark|sparkpost|klaviyo|drip\.com|activecampaign|constant\s*contact|mailjet|sendinblue|brevo/i;
+  /instagram|mail\.instagram|facebookmail|fb\.com|meta\.com|linkedin|mail\.linkedin|twitter|x\.com|shopify|mailchimp|sendgrid|amazonses|customer\.io|beehiiv|substack|google\s*alerts|youtube|tiktok|pinterest|snapchat|discord|slack-mail|intercom|hubspot|salesforce|braze|postmark|sparkpost|klaviyo|drip\.com|activecampaign|constant\s*contact|mailjet|sendinblue|brevo|notifications?@/i;
 
 const BILLING_VENDOR =
   /shopify|stripe|paypal|square|aws\s*billing|google\s*pay|apple\.com|itunes|microsoft\s*billing|adobe|zoom\.us|notion\.so|vercel|netlify|github|gitlab|heroku|digitalocean|linode|cloudflare/i;
@@ -79,6 +85,22 @@ function scoreSender(sender: string, out: InboxRuleScores, row: GmailInboxRow): 
   }
 }
 
+function scoreSubject(subject: string, out: InboxRuleScores): void {
+  const sub = subject.toLowerCase();
+  if (KNOWN_BULK_PLATFORM.test(sub)) {
+    out.promotion += 3;
+    out.reasons.push("subject:bulk_platform");
+  }
+  if (/\bnotification|\bupdate|\bactivity\b|\bmentioned you\b|\bliked your\b/i.test(sub)) {
+    out.promotion += 2.5;
+    out.reasons.push("subject:social_notification");
+  }
+  if (/\bnewsletter\b|\bdigest\b|\bweekly\b|\bdaily\b/i.test(sub)) {
+    out.newsletter += 2.5;
+    out.reasons.push("subject:newsletter_word");
+  }
+}
+
 function scoreHaystack(hay: string, out: InboxRuleScores): void {
   const unsubLike =
     /unsubscribe|opt\s*out|opt-out|list-unsubscribe|email\s+preferences|manage\s+(your\s+)?preferences|update\s+subscription/i;
@@ -134,6 +156,7 @@ function scoreHaystack(hay: string, out: InboxRuleScores): void {
 export function computeInboxRuleScores(row: GmailInboxRow): InboxRuleScores {
   const out: InboxRuleScores = { promotion: 0, newsletter: 0, handled: 0, reasons: [] };
   scoreSender(row.sender, out, row);
+  scoreSubject(row.subject ?? "", out);
   scoreHaystack(`${row.subject} ${row.snippet ?? ""}`, out);
   return out;
 }
@@ -186,6 +209,23 @@ export type RuleClassifyResult = {
  */
 export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
   const scores = computeInboxRuleScores(row);
+
+  if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row)) {
+    return { category: "handled", confidence: 0.9, scores, matchType: "hard" };
+  }
+
+  if (isCommercialBulk(row) && !hasUrgentHumanSignal(row)) {
+    const cat =
+      scores.newsletter > scores.promotion && scores.newsletter >= RULE_SOFT_SCORE
+        ? "newsletter"
+        : "promotion";
+    return {
+      category: cat,
+      confidence: scoreToConfidence(Math.max(scores.promotion, scores.newsletter)),
+      scores,
+      matchType: "hard",
+    };
+  }
 
   if (isBillingLikely(row)) {
     return { category: "handled", confidence: 0.93, scores, matchType: "hard" };
@@ -271,10 +311,15 @@ export function commercialLeanCategory(row: GmailInboxRow): InboxAiCategory | nu
 }
 
 export function hardPostAiCategory(row: GmailInboxRow): InboxAiCategory | null {
+  if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row)) return "handled";
+  if (isCommercialBulk(row) && !hasUrgentHumanSignal(row)) {
+    const scores = computeInboxRuleScores(row);
+    return scores.newsletter > scores.promotion ? "newsletter" : "promotion";
+  }
   if (isBillingLikely(row)) return "handled";
 
   const scores = computeInboxRuleScores(row);
-  const hay = `${row.subject} ${row.snippet ?? ""} ${row.sender}`.toLowerCase();
+  const hay = emailHaystack(row);
 
   if (BILLING_VENDOR.test(row.sender) && /invoice|receipt|billing|charged|payment|subscription|renewed|amount due|summary/i.test(hay)) {
     return "handled";
@@ -289,40 +334,24 @@ export function hardPostAiCategory(row: GmailInboxRow): InboxAiCategory | null {
 
 /** True when copy/sender suggests a real person expecting a substantive reply. */
 export function looksLikeHumanConversation(row: GmailInboxRow): boolean {
-  const hay = `${row.subject} ${row.snippet ?? ""}`.toLowerCase();
-  const sender = row.sender.toLowerCase();
+  return hasUrgentHumanSignal(row);
+}
 
-  if (KNOWN_BULK_PLATFORM.test(sender)) return false;
-  if (/unsubscribe|view in browser|manage preferences|promo code|%\s*off/i.test(hay)) {
-    return false;
+/** Demote misfiled needs_attention when no real urgency. */
+export function coerceNeedsAttentionCategory(
+  row: GmailInboxRow,
+  category: InboxAiCategory,
+): InboxAiCategory {
+  if (category !== "needs_attention" && category !== "quick_reply") {
+    return category;
   }
-  if (BILLING_VENDOR.test(sender) && /invoice|receipt|billing|charged/i.test(hay)) {
-    return false;
+  if (hasUrgentHumanSignal(row)) {
+    return category;
   }
-
-  if (
-    /\b(please confirm|could you|can you|would you|need your approval|action required|by eod|by cob|deadline|urgent|follow up|following up|let me know|waiting for your)\b/i.test(
-      hay,
-    )
-  ) {
-    return true;
-  }
-  if (/^re:\s/i.test(row.subject) && !/noreply|no-reply|donotreply/i.test(sender)) {
-    return true;
-  }
-  if (
-    /\b(thanks|thank you|sounds good|confirmed|received)\b/i.test(hay) &&
-    hay.length < 450 &&
-    !/unsubscribe/i.test(hay)
-  ) {
-    return true;
-  }
-
-  const personalName = /^[A-Za-z][\w.-]*\s+[A-Za-z]/.test(row.sender.trim());
-  const hasQuestion = /\?/.test(hay);
-  if (personalName && hasQuestion && !/@(mail|newsletter|marketing|notify)/i.test(sender)) {
-    return true;
-  }
-
-  return false;
+  const hard = hardPostAiCategory(row);
+  if (hard) return hard;
+  const lean = commercialLeanCategory(row);
+  if (lean) return lean;
+  if (isCommercialBulk(row)) return "promotion";
+  return "handled";
 }

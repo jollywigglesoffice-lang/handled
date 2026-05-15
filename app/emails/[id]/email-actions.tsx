@@ -955,7 +955,13 @@ return () => clearTimeout(timeout);
           return;
         }
 
-        let result: { replies?: string[]; error?: string } = {};
+        let result: {
+          replies?: string[];
+          error?: string;
+          source?: string;
+          errorCode?: string;
+          fallbackActivated?: boolean;
+        } = {};
         try {
           result = (await response.json()) as typeof result;
         } catch (error) {
@@ -998,11 +1004,15 @@ return () => clearTimeout(timeout);
         setStreamedReplies([...quickTriple]);
         setIsThinking(false);
         setSelectedReplyIndex(0);
-        setStatusMessage(
-          usedFallback && !(result as { source?: string }).source?.includes("ai")
-            ? ui.emailActions.statusGenerateFailed
-            : ui.emailActions.statusChooseReply,
-        );
+        if (result.errorCode === "missing_api_key") {
+          setStatusMessage(
+            "AI replies need an API key — add OPENAI_API_KEY or OPENROUTER_API_KEY to .env.local",
+          );
+        } else if (result.fallbackActivated || (usedFallback && result.source !== "ai")) {
+          setStatusMessage(ui.emailActions.statusGenerateFailed);
+        } else {
+          setStatusMessage(ui.emailActions.statusChooseReply);
+        }
         if (!options?.skipUsageIncrement) {
           incrementGeneratedRepliesCount();
         }

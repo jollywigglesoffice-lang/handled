@@ -27,7 +27,8 @@ create table if not exists public.inbox_rules (
         'sender_email',
         'sender_domain',
         'sender_contains',
-        'subject_contains'
+        'subject_contains',
+        'keywords_contains'
       )
     ),
   match_value text not null,

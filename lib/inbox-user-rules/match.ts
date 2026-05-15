@@ -1,4 +1,5 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
+import { haystackMatchesAnyKeyword } from "@/lib/inbox-user-rules/keyword-match";
 import type { InboxRuleMatch, InboxUserRule } from "@/lib/inbox-user-rules/types";
 
 function normalizePattern(value: string): string {
@@ -25,15 +26,14 @@ export function ruleMatchesRow(row: GmailInboxRow, match: InboxRuleMatch): boole
   const email = parseSenderEmail(sender);
   const domain = parseSenderDomain(sender);
   const subject = (row.subject ?? "").toLowerCase();
-  const pattern = normalizePattern(
-    match.type === "sender_email" ||
-      match.type === "sender_domain" ||
-      match.type === "sender_contains" ||
-      match.type === "subject_contains"
-      ? match.value
-      : "",
-  );
+  const snippet = (row.snippet ?? "").toLowerCase();
+  const fullHaystack = `${senderLower} ${subject} ${snippet}`;
 
+  if (match.type === "keywords_contains") {
+    return haystackMatchesAnyKeyword(fullHaystack, match.value);
+  }
+
+  const pattern = normalizePattern(match.value);
   if (!pattern) return false;
 
   switch (match.type) {

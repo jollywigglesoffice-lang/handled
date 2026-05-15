@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { InboxUserRule } from "@/lib/inbox-user-rules";
+import { INBOX_RULE_TEMPLATES, templateToRules } from "@/lib/inbox-rule-templates";
 import { defaultInboxUserRules } from "@/lib/inbox-user-rules/presets";
 import {
   loadAllInboxUserRulesForUser,
@@ -39,6 +40,12 @@ export async function GET() {
       source: rules.length ? "database" : "empty",
       dbAvailable: true,
       examplePresets: defaultInboxUserRules(),
+      templates: INBOX_RULE_TEMPLATES.map((t) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        emoji: t.emoji,
+      })),
     });
   } catch (e) {
     console.error("[api/inbox-rules] GET failed", e);
@@ -83,11 +90,27 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error;
 
   let action = "seed";
+  let templateId: string | undefined;
   try {
-    const body = (await request.json()) as { action?: string };
+    const body = (await request.json()) as { action?: string; templateId?: string };
     action = body.action ?? "seed";
+    templateId = body.templateId;
   } catch {
     // empty body → seed
+  }
+
+  if (action === "add-template" && templateId) {
+    const newRules = templateToRules(templateId);
+    if (!newRules.length) {
+      return NextResponse.json({ error: "Unknown template" }, { status: 400 });
+    }
+    const existing = await loadAllInboxUserRulesForUser(auth.userId);
+    const merged = [...existing, ...newRules];
+    const saved = await saveInboxUserRulesForUser(auth.userId, merged);
+    if (!saved.ok) {
+      return NextResponse.json({ error: saved.error }, { status: 502 });
+    }
+    return NextResponse.json({ ok: true, rules: merged });
   }
 
   if (action !== "seed") {

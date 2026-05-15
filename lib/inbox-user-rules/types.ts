@@ -13,7 +13,9 @@ export type InboxRuleMatchType =
   | "sender_email"
   | "sender_domain"
   | "sender_contains"
-  | "subject_contains";
+  | "subject_contains"
+  /** Comma-separated keywords; matches if ANY appear in sender, subject, or snippet (case-insensitive). */
+  | "keywords_contains";
 
 export type InboxRuleActionType = "force_category" | "block" | "demote" | "boost";
 
@@ -33,7 +35,8 @@ export type InboxRuleMatch =
   | { type: "sender_email"; value: string }
   | { type: "sender_domain"; value: string }
   | { type: "sender_contains"; value: string }
-  | { type: "subject_contains"; value: string };
+  | { type: "subject_contains"; value: string }
+  | { type: "keywords_contains"; value: string };
 
 export type InboxRuleAction =
   | { type: "force_category"; category: InboxAiCategory }

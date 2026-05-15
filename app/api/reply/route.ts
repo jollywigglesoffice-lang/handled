@@ -1,3 +1,4 @@
+import { getAiApiKey, logAiKeyStatus } from "@/lib/ai-api-key";
 import {
   buildGenerateReplyPrompt,
   generateEmailRepliesJson,
@@ -501,17 +502,26 @@ export async function POST(request: Request) {
     );
   }
 
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  logAiKeyStatus("api/reply");
+  const apiKey = getAiApiKey();
 
   if (!apiKey) {
-    console.log("REPLY GENERATION ERROR:", "OPENAI_API_KEY missing");
+    console.log("REPLY GENERATION ERROR:", "OPENAI_API_KEY and OPENROUTER_API_KEY missing");
     if (mode === "refine") {
       return Response.json({
         reply: cleanReply(currentReply ?? getRefineFallback(tone, language, userName)),
+        source: "fallback",
+        errorCode: "missing_api_key",
+        error: "Add OPENAI_API_KEY or OPENROUTER_API_KEY to .env.local",
       });
     }
 
-    return Response.json({ replies: getFallbackReplies(tone, language, userName) });
+    return Response.json({
+      replies: getFallbackReplies(tone, language, userName),
+      source: "fallback",
+      errorCode: "missing_api_key",
+      error: "Add OPENAI_API_KEY or OPENROUTER_API_KEY to .env.local",
+    });
   }
 
   if (body.stream === true && mode === "generate") {
@@ -604,6 +614,8 @@ ${currentReply}`
       return Response.json({
         replies: getFallbackReplies(tone, language, userName),
         source: "fallback",
+        errorCode: "generation_failed",
+        fallbackActivated: true,
       });
     }
 
@@ -636,7 +648,12 @@ ${currentReply}`
       });
     }
 
-    return Response.json({ replies: getFallbackReplies(tone, language, userName) });
+    return Response.json({
+      replies: getFallbackReplies(tone, language, userName),
+      source: "fallback",
+      errorCode: "request_failed",
+      fallbackActivated: true,
+    });
   } finally {
     clearTimeout(timeoutId);
   }

@@ -5,12 +5,15 @@ import {
   parseInboxAiCategory,
 } from "@/lib/inbox-ai-categories";
 import {
+  coerceNeedsAttentionCategory,
   commercialLeanCategory,
   computeInboxRuleScores,
   hardPostAiCategory,
   looksLikeHumanConversation,
   ruleClassify,
 } from "@/lib/inbox-rule-classify";
+import { getAiApiKey, logAiKeyStatus } from "@/lib/ai-api-key";
+import { isCommercialBulk } from "@/lib/inbox-triage-signals";
 import {
   applyUserRulesPost,
   applyUserRulesPre,
@@ -189,6 +192,10 @@ export function intelligentFallbackCategory(row: GmailInboxRow): {
     return { category: "needs_attention", confidence: 0.55 };
   }
 
+  if (isCommercialBulk(row)) {
+    return { category: "promotion", confidence: 0.5 };
+  }
+
   return { category: "handled", confidence: 0.45 };
 }
 
@@ -207,11 +214,13 @@ function finalizeRow(
     confidence: c,
     gmailId: row.id,
   });
+  const coerced = coerceNeedsAttentionCategory(row, category);
+
   return {
     ...row,
-    category,
+    category: coerced,
     categoryConfidence: c,
-    categorySource: source,
+    categorySource: coerced !== category ? "heuristic" : source,
   };
 }
 
@@ -453,7 +462,8 @@ export async function categorizeGmailInboxRows(
 
   const userRules = options?.userRules ?? [];
   const workflowMode = options?.workflowMode ?? "assist";
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const apiKey = getAiApiKey();
+  logAiKeyStatus("categorize-inbox");
   const ambiguousIndices: number[] = [];
   const out: GmailInboxRowCategorized[] = new Array(rows.length) as GmailInboxRowCategorized[];
 

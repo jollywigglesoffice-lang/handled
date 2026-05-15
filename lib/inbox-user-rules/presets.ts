@@ -9,7 +9,10 @@ export function defaultInboxUserRules(): InboxUserRule[] {
       priority: 220,
       phase: "post",
       label: "Doctor / clinic → needs attention",
-      match: { type: "sender_contains", value: "doctor" },
+      match: {
+        type: "keywords_contains",
+        value: "doctor, dr., clinic, hospital, ospedale, medico",
+      },
       action: {
         type: "boost",
         toCategory: "needs_attention",
@@ -22,7 +25,10 @@ export function defaultInboxUserRules(): InboxUserRule[] {
       priority: 210,
       phase: "post",
       label: "School → needs attention",
-      match: { type: "sender_contains", value: "school" },
+      match: {
+        type: "keywords_contains",
+        value: "school, scuola, teacher, professore, class",
+      },
       action: {
         type: "boost",
         toCategory: "needs_attention",
@@ -35,7 +41,7 @@ export function defaultInboxUserRules(): InboxUserRule[] {
       priority: 200,
       phase: "pre",
       label: "Instagram updates → promotion",
-      match: { type: "sender_contains", value: "instagram" },
+      match: { type: "keywords_contains", value: "instagram, mail.instagram" },
       action: { type: "force_category", category: "promotion" },
     },
     {
@@ -44,7 +50,7 @@ export function defaultInboxUserRules(): InboxUserRule[] {
       priority: 190,
       phase: "pre",
       label: "TikTok → promotion",
-      match: { type: "sender_contains", value: "tiktok" },
+      match: { type: "keywords_contains", value: "tiktok" },
       action: { type: "force_category", category: "promotion" },
     },
     {
@@ -53,7 +59,10 @@ export function defaultInboxUserRules(): InboxUserRule[] {
       priority: 180,
       phase: "pre",
       label: "Shopify billing → handled",
-      match: { type: "sender_domain", value: "shopify.com" },
+      match: {
+        type: "keywords_contains",
+        value: "shopify, billing@shopify, shopify billing",
+      },
       action: { type: "force_category", category: "handled" },
     },
     {
