@@ -439,7 +439,8 @@ export default function EmailsInboxPage() {
             r.categorySource === "rule" ||
             r.categorySource === "ai" ||
             r.categorySource === "heuristic" ||
-            r.categorySource === "ai_coerced"
+            r.categorySource === "ai_coerced" ||
+            r.categorySource === "user_rule"
               ? r.categorySource
               : undefined,
         };

@@ -7,6 +7,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { FREE_LIMIT, readUsageCountWithDailyReset } from "@/lib/daily-usage";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 import { WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
+import { InboxPrioritySettings } from "./inbox-priority-settings";
 import { PersonalizationSettings } from "./personalization-settings";
 import { useUiCopy } from "@/app/use-ui-copy";
 
@@ -712,6 +713,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        <InboxPrioritySettings />
         <PersonalizationSettings />
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

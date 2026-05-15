@@ -2,11 +2,16 @@
 
 import Link from "next/link";
 import { EmailActions } from "./email-actions";
+import { EmailBody } from "./email-body";
 import type { FakeEmail } from "@/lib/fake-emails";
 import { useUiCopy } from "@/app/use-ui-copy";
 
+export type EmailDetailPayload = FakeEmail & {
+  bodyHtml?: string;
+};
+
 type EmailDetailViewProps = {
-  email: FakeEmail;
+  email: EmailDetailPayload;
 };
 
 export function EmailDetailView({ email }: EmailDetailViewProps) {
@@ -56,9 +61,7 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#6366F1]" />
               {ui.emailDetail.fullEmailBody}
             </p>
-            <p className="whitespace-pre-line rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-7 text-sm leading-8 text-gray-500">
-              {email.body}
-            </p>
+            <EmailBody bodyHtml={email.bodyHtml} bodyPlain={email.body} />
           </div>
         </section>
 

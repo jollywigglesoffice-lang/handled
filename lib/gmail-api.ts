@@ -1,5 +1,11 @@
 /** Gmail REST helpers (server-side only — pass OAuth access token from Supabase session). */
 
+import {
+  extractEmailBodyFromPayload,
+  htmlToPlainText,
+  type GmailMimePart,
+} from "@/lib/gmail-extract-body";
+
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
 export type GmailListItem = {
@@ -117,6 +123,7 @@ export async function gmailGetMessageFull(
   subject: string;
   snippet: string;
   bodyText: string;
+  bodyHtml: string;
   internalDateMs: number;
 }> {
   const url = `${GMAIL_BASE}/messages/${encodeURIComponent(messageId)}?format=full`;
@@ -131,20 +138,12 @@ export async function gmailGetMessageFull(
     throw new Error(`Gmail get full failed: ${res.status} ${text}`);
   }
 
-  type GmailPart = {
-    mimeType?: string;
-    body?: { data?: string };
-    parts?: GmailPart[];
-  };
-
   const msg = (await res.json()) as {
     id: string;
     snippet?: string;
     internalDate?: string;
-    payload?: {
+    payload?: GmailMimePart & {
       headers?: Array<{ name?: string; value?: string }>;
-      body?: { data?: string };
-      parts?: GmailPart[];
     };
   };
 
@@ -153,25 +152,11 @@ export async function gmailGetMessageFull(
   const subject = headerValue(headers, "Subject") || "(No subject)";
   const internalMs = msg.internalDate ? Number(msg.internalDate) : 0;
 
-  function extractPlain(parts: GmailPart[] | undefined): string {
-    if (!parts) return "";
-    for (const p of parts) {
-      if (p.mimeType === "text/plain" && p.body?.data) {
-        return decodeBase64Url(p.body.data);
-      }
-      if (p.parts) {
-        const nested = extractPlain(p.parts);
-        if (nested) return nested;
-      }
-    }
-    return "";
-  }
+  const { bodyHtml, bodyPlain } = extractEmailBodyFromPayload(msg.payload);
 
-  let bodyText = "";
-  if (msg.payload?.body?.data) {
-    bodyText = decodeBase64Url(msg.payload.body.data);
-  } else {
-    bodyText = extractPlain(msg.payload?.parts);
+  let bodyText = bodyPlain.trim();
+  if (!bodyText && bodyHtml.trim()) {
+    bodyText = htmlToPlainText(bodyHtml);
   }
   if (!bodyText.trim()) {
     bodyText = msg.snippet ?? "";
@@ -183,6 +168,7 @@ export async function gmailGetMessageFull(
     subject,
     snippet: msg.snippet ?? "",
     bodyText,
+    bodyHtml: bodyHtml.trim(),
     internalDateMs: internalMs,
   };
 }

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
-import { EmailDetailView } from "./email-detail-view";
-import { getEmailById, type FakeEmail } from "@/lib/fake-emails";
+import { EmailDetailView, type EmailDetailPayload } from "./email-detail-view";
+import { isLikelyHtml } from "@/lib/sanitize-email-html";
+import { getEmailById } from "@/lib/fake-emails";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { gmailGetMessageFull } from "@/lib/gmail-api";
 
@@ -12,9 +13,14 @@ type EmailDetailPageProps = {
   }>;
 };
 
-function gmailToFakeEmail(
+function gmailToDetailEmail(
   msg: Awaited<ReturnType<typeof gmailGetMessageFull>>,
-): FakeEmail {
+): EmailDetailPayload {
+  const bodyHtml = msg.bodyHtml?.trim() ?? "";
+  const bodyPlain = msg.bodyText?.trim() ?? "";
+  const displayPlain =
+    bodyPlain && !isLikelyHtml(bodyPlain) ? bodyPlain : msg.snippet || "";
+
   return {
     id: msg.id,
     section: "Needs Your Attention",
@@ -23,7 +29,8 @@ function gmailToFakeEmail(
     summary: msg.snippet,
     category: "Gmail",
     aiSummary: msg.snippet || "Open the message below for the full content.",
-    body: msg.bodyText,
+    body: displayPlain,
+    bodyHtml: bodyHtml || undefined,
     suggestedReply: "",
   };
 }
@@ -53,7 +60,7 @@ export default async function EmailDetailPage({ params }: EmailDetailPageProps) 
 
   try {
     const msg = await gmailGetMessageFull(accessToken, id);
-    return <EmailDetailView email={gmailToFakeEmail(msg)} />;
+    return <EmailDetailView email={gmailToDetailEmail(msg)} />;
   } catch {
     notFound();
   }

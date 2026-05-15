@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
 import { gmailGetMessageMetadata, gmailListInboxIds } from "@/lib/gmail-api";
+import { loadInboxUserRulesForUser } from "@/lib/inbox-user-rules";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -36,7 +37,9 @@ export async function GET() {
     );
     rows.sort((a, b) => b.internalDateMs - a.internalDateMs);
 
-    const categorized = await categorizeGmailInboxRows(rows);
+    const userId = session.user.id;
+    const userRules = userId ? await loadInboxUserRulesForUser(userId) : [];
+    const categorized = await categorizeGmailInboxRows(rows, { userRules });
 
     if (process.env.NODE_ENV === "development") {
       console.log(

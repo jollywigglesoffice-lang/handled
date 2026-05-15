@@ -11,6 +11,11 @@ import {
   looksLikeHumanConversation,
   ruleClassify,
 } from "@/lib/inbox-rule-classify";
+import {
+  applyUserRulesPost,
+  applyUserRulesPre,
+  type InboxUserRule,
+} from "@/lib/inbox-user-rules";
 
 export type GmailInboxRowCategorized = GmailInboxRow & {
   category: InboxAiCategory;
@@ -398,23 +403,56 @@ ${lines.join("\n\n")}`;
   }
 }
 
+export type CategorizeInboxOptions = {
+  userRules?: InboxUserRule[];
+};
+
+function applyUserPostIfNeeded(
+  row: GmailInboxRow,
+  rowIndex: number,
+  category: InboxAiCategory,
+  source: CategorySource,
+  confidence: number,
+  userRules: InboxUserRule[],
+): GmailInboxRowCategorized {
+  const post = applyUserRulesPost(row, category, userRules);
+  if (post) {
+    return finalizeRow(row, rowIndex, post.category, "user_rule", 0.94);
+  }
+  return finalizeRow(row, rowIndex, category, source, confidence);
+}
+
 /**
- * Priority: (1) rules → (2) AI for unmatched → (3) intelligent fallback.
- * needs_attention is never used as a blind default.
+ * Pipeline: user pre-rules → system rules → AI → fallback → user post-rules.
  */
 export async function categorizeGmailInboxRows(
   rows: GmailInboxRow[],
+  options?: CategorizeInboxOptions,
 ): Promise<GmailInboxRowCategorized[]> {
   if (rows.length === 0) {
     return [];
   }
 
+  const userRules = options?.userRules ?? [];
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   const ambiguousIndices: number[] = [];
   const out: GmailInboxRowCategorized[] = new Array(rows.length) as GmailInboxRowCategorized[];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
+
+    const userPre = applyUserRulesPre(row, userRules);
+    if (userPre?.kind === "force") {
+      console.log("RULE MATCH:", userPre.category, { source: "user_pre", label: userPre.label });
+      out[i] = applyUserPostIfNeeded(row, i, userPre.category, "user_rule", 0.96, userRules);
+      continue;
+    }
+    if (userPre?.kind === "block") {
+      console.log("RULE MATCH: block", { label: userPre.label });
+      out[i] = finalizeRow(row, i, "handled", "user_rule", 0.99);
+      continue;
+    }
+
     const rule = ruleClassify(row);
 
     if (rule) {
@@ -429,7 +467,7 @@ export async function categorizeGmailInboxRows(
           handled: rule.scores.handled,
         },
       });
-      out[i] = finalizeRow(row, i, rule.category, "rule", rule.confidence);
+      out[i] = applyUserPostIfNeeded(row, i, rule.category, "rule", rule.confidence, userRules);
     } else {
       ambiguousIndices.push(i);
     }
@@ -464,7 +502,7 @@ export async function categorizeGmailInboxRows(
         confidence = Math.min(0.96, confidence * corrected.confidenceMul);
       }
 
-      return finalizeRow(row, rowIndex, category, source, confidence);
+      return applyUserPostIfNeeded(row, rowIndex, category, source, confidence, userRules);
     }
 
     const fb = intelligentFallbackCategory(row);
@@ -472,7 +510,7 @@ export async function categorizeGmailInboxRows(
       subject: row.subject?.slice(0, 100),
       fallback: fb.category,
     });
-    return finalizeRow(row, rowIndex, fb.category, "heuristic", fb.confidence);
+    return applyUserPostIfNeeded(row, rowIndex, fb.category, "heuristic", fb.confidence, userRules);
   };
 
   if (!apiKey) {

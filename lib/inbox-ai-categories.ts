@@ -9,7 +9,7 @@ export const INBOX_AI_CATEGORY_VALUES = [
 export type InboxAiCategory = (typeof INBOX_AI_CATEGORY_VALUES)[number];
 
 /** How inbox `category` was assigned (API / server). */
-export type CategorySource = "rule" | "ai" | "heuristic" | "ai_coerced";
+export type CategorySource = "rule" | "ai" | "heuristic" | "ai_coerced" | "user_rule";
 
 /** Section order in the Gmail inbox (most actionable first). */
 export const GMAIL_INBOX_SECTION_ORDER: InboxAiCategory[] = [
