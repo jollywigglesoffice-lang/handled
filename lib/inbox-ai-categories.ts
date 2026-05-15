@@ -77,15 +77,20 @@ function synonymToCategory(t: string): InboxAiCategory | null {
   return null;
 }
 
-export function normalizeInboxAiCategory(raw: string): InboxAiCategory {
+/** Parse model output — never defaults to needs_attention (returns null if unknown). */
+export function parseInboxAiCategory(raw: string): InboxAiCategory | null {
   const s = String(raw).trim().toLowerCase();
+  if (!s) return null;
   const t = s.replace(/[\s-]+/g, "_").replace(/[^a-z0-9_]/g, "");
   if (isInboxAiCategory(t)) return t;
   if (t === "need_attention" || t === "needsattention") return "needs_attention";
   if (t === "quickreply") return "quick_reply";
-  const fromSyn = synonymToCategory(t);
-  if (fromSyn) return fromSyn;
-  return "needs_attention";
+  return synonymToCategory(t);
+}
+
+/** Legacy helper — prefer parseInboxAiCategory in the categorization pipeline. */
+export function normalizeInboxAiCategory(raw: string): InboxAiCategory {
+  return parseInboxAiCategory(raw) ?? "handled";
 }
 
 const TITLES_EN: Record<InboxAiCategory, string> = {

@@ -38,6 +38,18 @@ export async function GET() {
 
     const categorized = await categorizeGmailInboxRows(rows);
 
+    if (process.env.NODE_ENV === "development") {
+      console.log(
+        "[api/gmail/messages] sample final categories for UI:",
+        categorized.slice(0, 8).map((m) => ({
+          subject: m.subject?.slice(0, 50),
+          category: m.category,
+          source: m.categorySource,
+          confidence: m.categoryConfidence,
+        })),
+      );
+    }
+
     return NextResponse.json({ messages: categorized });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Gmail request failed";

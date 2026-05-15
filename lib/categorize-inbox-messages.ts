@@ -2,11 +2,14 @@ import type { GmailInboxRow } from "@/lib/gmail-api";
 import {
   type CategorySource,
   type InboxAiCategory,
-  normalizeInboxAiCategory,
+  parseInboxAiCategory,
 } from "@/lib/inbox-ai-categories";
 import {
   commercialLeanCategory,
-  rulePrecClassify,
+  computeInboxRuleScores,
+  hardPostAiCategory,
+  looksLikeHumanConversation,
+  ruleClassify,
 } from "@/lib/inbox-rule-classify";
 
 export type GmailInboxRowCategorized = GmailInboxRow & {
@@ -113,48 +116,76 @@ function clamp01(n: unknown): number | undefined {
   return undefined;
 }
 
-/** When the model does not map a row, infer from copy (still one of the five slugs). */
-export function heuristicInboxCategory(row: GmailInboxRow): InboxAiCategory {
+/**
+ * Last-resort deterministic triage — needs_attention ONLY when human conversation is likely.
+ * Never returns needs_attention as a blind default.
+ */
+export function intelligentFallbackCategory(row: GmailInboxRow): {
+  category: InboxAiCategory;
+  confidence: number;
+} {
+  const hard = hardPostAiCategory(row);
+  if (hard) {
+    return { category: hard, confidence: 0.72 };
+  }
+
   const lean = commercialLeanCategory(row);
-  if (lean) return lean;
+  if (lean) {
+    return { category: lean, confidence: 0.68 };
+  }
 
-  const hay = `${row.subject} ${row.snippet} ${row.sender}`.toLowerCase();
+  const hay = `${row.subject} ${row.snippet ?? ""} ${row.sender}`.toLowerCase();
 
   if (
-    /\b(unsubscribe|email preferences|view in browser|view this email|read online|weekly digest|daily digest|mailing list)\b/i.test(
+    /unsubscribe|email preferences|view in browser|view this email|read online|weekly digest|daily digest|mailing list|manage preferences/i.test(
       hay,
     )
   ) {
-    return "newsletter";
+    return { category: "newsletter", confidence: 0.65 };
   }
   if (
-    /\b(%\s*off|\d+%\s*off|limited time|flash sale|shop now|order now|add to cart|free shipping|promo code|black friday|cyber monday|deal ends)\b/i.test(
+    /%\s*off|\d+%\s*off|limited time|flash sale|shop now|order now|add to cart|free shipping|promo code|black friday|sponsored|act now/i.test(
       hay,
     )
   ) {
-    return "promotion";
+    return { category: "promotion", confidence: 0.65 };
   }
   if (
-    /\b(order confirmed|payment received|receipt|automated message|do not reply|no[- ]reply|transaction|invoice attached|your shipment|tracking number)\b/i.test(
+    /order confirmed|payment received|receipt|tracking number|your shipment|has shipped|invoice|charged|subscription renewed|amount due/i.test(
       hay,
     )
   ) {
-    return "handled";
+    return { category: "handled", confidence: 0.7 };
   }
   if (
-    /\b(please confirm|could you|can you|by eod|by cob|deadline|need your approval|action required|urgent)\b/i.test(
-      hay,
-    )
+    /\b(thanks|thank you|sounds good|confirmed|received|\+1|lgtm)\b/i.test(hay) &&
+    hay.length < 400
   ) {
-    return "needs_attention";
+    return { category: "quick_reply", confidence: 0.6 };
   }
-  if (/\b(thanks|thank you|sounds good|confirmed|received|\+1|lgtm)\b/i.test(hay) && hay.length < 400) {
-    return "quick_reply";
+
+  const scores = computeInboxRuleScores(row);
+  const max = Math.max(scores.promotion, scores.newsletter, scores.handled);
+  if (max > 0) {
+    if (scores.handled >= max) return { category: "handled", confidence: 0.55 };
+    if (scores.promotion >= max) return { category: "promotion", confidence: 0.55 };
+    if (scores.newsletter >= max) return { category: "newsletter", confidence: 0.55 };
   }
-  return "needs_attention";
+
+  if (looksLikeHumanConversation(row)) {
+    if (
+      /\b(thanks|thank you|sounds good|got it|confirmed)\b/i.test(hay) &&
+      hay.length < 500
+    ) {
+      return { category: "quick_reply", confidence: 0.58 };
+    }
+    return { category: "needs_attention", confidence: 0.55 };
+  }
+
+  return { category: "handled", confidence: 0.45 };
 }
 
-function applyRowCategory(
+function finalizeRow(
   row: GmailInboxRow,
   rowIndex: number,
   category: InboxAiCategory,
@@ -162,8 +193,8 @@ function applyRowCategory(
   confidence: number,
 ): GmailInboxRowCategorized {
   const c = Math.round(Math.max(0, Math.min(1, confidence)) * 100) / 100;
-  console.log("EMAIL SUBJECT BEING CATEGORIZED:", row.subject);
-  console.log("FINAL ASSIGNED CATEGORY:", category, {
+  console.log("FINAL CATEGORY:", category, {
+    subject: row.subject?.slice(0, 100),
     rowIndex,
     source,
     confidence: c,
@@ -177,46 +208,53 @@ function applyRowCategory(
   };
 }
 
-/** Never let obvious bulk promo/news read as urgent work. */
-function postCoerceAiCategory(
+/** Correct AI labels that wrongly mark bulk/billing as urgent. */
+function correctUrgentAiLabel(
   category: InboxAiCategory,
   row: GmailInboxRow,
 ): { category: InboxAiCategory; source: CategorySource; confidenceMul: number } {
   if (category !== "needs_attention" && category !== "quick_reply") {
     return { category, source: "ai", confidenceMul: 1 };
   }
-  const lean = commercialLeanCategory(row);
-  if (!lean) {
-    return { category, source: "ai", confidenceMul: 1 };
+
+  const hard = hardPostAiCategory(row);
+  if (hard) {
+    return { category: hard, source: "ai_coerced", confidenceMul: 0.9 };
   }
-  return { category: lean, source: "ai_coerced", confidenceMul: 0.92 };
+
+  const lean = commercialLeanCategory(row);
+  if (lean) {
+    return { category: lean, source: "ai_coerced", confidenceMul: 0.92 };
+  }
+
+  if (category === "needs_attention" && !looksLikeHumanConversation(row)) {
+    const fb = intelligentFallbackCategory(row);
+    return { category: fb.category, source: "ai_coerced", confidenceMul: 0.85 };
+  }
+
+  return { category, source: "ai", confidenceMul: 1 };
 }
 
-function buildStrictAmbiguousPrompt(batchSize: number): string {
-  return `You are triaging a REAL email inbox. These messages were NOT matched by deterministic rules — they are ambiguous.
+function buildAmbiguousAiPrompt(batchSize: number): string {
+  return `You triage a real inbox. These messages did NOT match deterministic rules.
 
-Assign exactly ONE category per message (use ONLY these five strings, lowercase, underscores):
-needs_attention, quick_reply, newsletter, promotion, handled
+Use ONLY: needs_attention, quick_reply, newsletter, promotion, handled
 
-STRICT rules for realistic inboxes:
-- Bulk marketing, retail offers, “act now”, “limited time”, “% off”, “shop now”, loyalty perks, or list mail MUST be "promotion" — NEVER "needs_attention".
-- Editorial digests, Substacks, product updates without a hard sell, “view in browser”, “unsubscribe” footers → prefer "newsletter" over "needs_attention".
-- Fake urgency in marketing (“last chance”, “expires tonight”) is still "promotion", not needs_attention.
-- True needs_attention: a human expects YOU to decide, approve, reply substantively, or miss a real deadline (work, legal, calendar).
-- Newsletters are NOT urgent by default — do not use needs_attention for mailing-list content.
-- quick_reply: a short acknowledgment is enough (confirm receipt, yes/no, “sounds good”).
-- handled: automated FYI (receipt, shipping notice, calendar hold) with nothing to decide.
+PRIORITY (strict):
+1. promotion — marketing, sales, discounts, social app updates (Instagram, etc.), fake urgency in ads
+2. newsletter — digests, list mail, unsubscribe footers, editorial recurring content
+3. handled — receipts, billing, shipping, automated FYI, no decision needed
+4. quick_reply — short acknowledgment suffices
+5. needs_attention — LAST RESORT: a real person expects your decision, approval, or substantive reply
 
-Return a single JSON object only:
-{"classifications":[{"index":0,"category":"needs_attention","confidence":0.78},...]}
+NEVER use needs_attention for: newsletters, promotions, billing, receipts, noreply marketing, social notifications.
 
-- Exactly ${batchSize} objects, indices 0..${batchSize - 1} in order with the message blocks below.
-- "confidence" is your estimated probability (0 to 1) that the label is correct.`;
+Return JSON only:
+{"classifications":[{"index":0,"category":"promotion","confidence":0.85},...]}
+
+Exactly ${batchSize} items, indices 0..${batchSize - 1}.`;
 }
 
-/**
- * Parse OpenRouter response into batch-index → category + confidence.
- */
 function parseAiBatchIntoMap(
   list: RawClassification[],
   batchRowCount: number,
@@ -227,9 +265,9 @@ function parseAiBatchIntoMap(
 
   for (let i = 0; i < list.length; i++) {
     const item = list[i];
-    const rawCat =
-      typeof item.category === "string" ? item.category.trim().toLowerCase() : "";
-    const cat = normalizeInboxAiCategory(rawCat);
+    const rawCat = typeof item.category === "string" ? item.category : "";
+    const cat = parseInboxAiCategory(rawCat);
+    if (!cat) continue;
     const conf = clamp01(item.confidence) ?? 0.72;
 
     const idx = parseClassificationIndex(item, batchRowCount);
@@ -244,13 +282,13 @@ function parseAiBatchIntoMap(
 
   if (ordered) {
     for (let i = 0; i < batchRowCount; i++) {
-      if (!byIndex.has(i)) {
-        const item = list[i];
-        const rawCat =
-          typeof item.category === "string" ? item.category.trim().toLowerCase() : "";
-        const cat = normalizeInboxAiCategory(rawCat);
-        const conf = clamp01(item.confidence) ?? 0.72;
-        byIndex.set(i, { category: cat, confidence: conf });
+      if (!byIndex.has(i) && list[i]) {
+        const rawCat = typeof list[i].category === "string" ? list[i].category! : "";
+        const cat = parseInboxAiCategory(rawCat);
+        if (cat) {
+          const conf = clamp01(list[i].confidence) ?? 0.72;
+          byIndex.set(i, { category: cat, confidence: conf });
+        }
       }
     }
   }
@@ -288,10 +326,10 @@ async function openAiClassifyBatch(
     const sender = r.sender.slice(0, 200);
     const subject = r.subject.slice(0, 400);
     const snippet = (r.snippet ?? "").slice(0, 500);
-    return `##${i + 1} (batch index ${i})\nid:${r.id}\nsender:${sender}\nsubject:${subject}\nsnippet:${snippet}`;
+    return `##${i + 1} (index ${i})\nid:${r.id}\nsender:${sender}\nsubject:${subject}\nsnippet:${snippet}`;
   });
 
-  const prompt = `${buildStrictAmbiguousPrompt(rows.length)}
+  const prompt = `${buildAmbiguousAiPrompt(rows.length)}
 
 Messages:
 ${lines.join("\n\n")}`;
@@ -306,7 +344,7 @@ ${lines.join("\n\n")}`;
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
         "HTTP-Referer": openRouterReferer(),
-        "X-Title": "Handled Inbox Categorize (ambiguous)",
+        "X-Title": "Handled Inbox Categorize",
       },
       body: JSON.stringify({
         model: "openai/gpt-4o-mini",
@@ -317,7 +355,7 @@ ${lines.join("\n\n")}`;
     });
 
     let body: {
-      choices?: Array<{ message?: { content?: string | null; refusal?: string | null } }>;
+      choices?: Array<{ message?: { content?: string | null } }>;
       error?: { message?: string };
     };
     try {
@@ -326,15 +364,12 @@ ${lines.join("\n\n")}`;
       return null;
     }
 
-    console.log("RAW AI RESPONSE (ambiguous batch):", body);
-
     if (!res.ok) {
-      warnFallback(`ambiguous batch HTTP ${res.status}`, body.error);
+      warnFallback(`AI HTTP ${res.status}`, body.error);
       return null;
     }
 
     const raw = (body.choices?.[0]?.message?.content ?? "").trim();
-    console.log("RAW AI RESPONSE (ambiguous content):", raw || "(empty)");
     if (!raw) return null;
 
     let parsed: unknown;
@@ -351,19 +386,12 @@ ${lines.join("\n\n")}`;
       }
     }
 
-    console.log("PARSED JSON (ambiguous batch):", parsed);
     const list = extractClassificationsArray(parsed);
-    console.log(
-      "PARSED JSON (ambiguous classifications length):",
-      list.length,
-      "expected:",
-      rows.length,
-    );
     if (!list.length) return null;
 
     return parseAiBatchIntoMap(list, rows.length);
   } catch (e) {
-    warnFallback("openAiClassifyBatch failed", e);
+    warnFallback("openAiClassifyBatch exception", e);
     return null;
   } finally {
     clearTimeout(timeoutId);
@@ -371,58 +399,87 @@ ${lines.join("\n\n")}`;
 }
 
 /**
- * Hybrid: rule preclassification, then OpenAI only for ambiguous rows.
+ * Priority: (1) rules → (2) AI for unmatched → (3) intelligent fallback.
+ * needs_attention is never used as a blind default.
  */
 export async function categorizeGmailInboxRows(
   rows: GmailInboxRow[],
 ): Promise<GmailInboxRowCategorized[]> {
-  console.log(
-    "[inbox-categorize] hybrid categorize invoked, row count:",
-    rows.length,
-  );
-
   if (rows.length === 0) {
     return [];
   }
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
-
-  const ambiguousOriginalIndices: number[] = [];
-  const out: GmailInboxRowCategorized[] = new Array(
-    rows.length,
-  ) as GmailInboxRowCategorized[];
+  const ambiguousIndices: number[] = [];
+  const out: GmailInboxRowCategorized[] = new Array(rows.length) as GmailInboxRowCategorized[];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const rule = rulePrecClassify(row);
-    if (rule.category) {
-      console.log("[inbox-categorize] RULE PRECHECK:", row.subject, "→", rule.category, {
+    const rule = ruleClassify(row);
+
+    if (rule) {
+      console.log("RULE MATCH:", rule.category, {
+        subject: row.subject?.slice(0, 100),
+        matchType: rule.matchType,
         confidence: rule.confidence,
         reasons: rule.scores.reasons,
+        scores: {
+          promotion: rule.scores.promotion,
+          newsletter: rule.scores.newsletter,
+          handled: rule.scores.handled,
+        },
       });
-      out[i] = applyRowCategory(row, i, rule.category, "rule", rule.confidence);
+      out[i] = finalizeRow(row, i, rule.category, "rule", rule.confidence);
     } else {
-      ambiguousOriginalIndices.push(i);
+      ambiguousIndices.push(i);
     }
   }
 
-  if (ambiguousOriginalIndices.length === 0) {
+  if (ambiguousIndices.length === 0) {
     return out;
   }
 
-  const ambiguousRows = ambiguousOriginalIndices.map((i) => rows[i]);
-  console.log(
-    "[inbox-categorize] ambiguous count (sent to AI if key present):",
-    ambiguousRows.length,
-  );
+  const ambiguousRows = ambiguousIndices.map((i) => rows[i]);
+
+  const classifyAmbiguousRow = (
+    row: GmailInboxRow,
+    rowIndex: number,
+    aiResult: { category: InboxAiCategory; confidence: number } | undefined,
+  ): GmailInboxRowCategorized => {
+    if (aiResult) {
+      console.log("AI CATEGORY:", aiResult.category, {
+        subject: row.subject?.slice(0, 100),
+        confidence: aiResult.confidence,
+        rowIndex,
+      });
+
+      let category = aiResult.category;
+      let confidence = aiResult.confidence;
+      let source: CategorySource = "ai";
+
+      const corrected = correctUrgentAiLabel(category, row);
+      if (corrected.category !== category) {
+        category = corrected.category;
+        source = corrected.source;
+        confidence = Math.min(0.96, confidence * corrected.confidenceMul);
+      }
+
+      return finalizeRow(row, rowIndex, category, source, confidence);
+    }
+
+    const fb = intelligentFallbackCategory(row);
+    console.log("AI CATEGORY:", "(none — intelligent fallback)", {
+      subject: row.subject?.slice(0, 100),
+      fallback: fb.category,
+    });
+    return finalizeRow(row, rowIndex, fb.category, "heuristic", fb.confidence);
+  };
 
   if (!apiKey) {
-    warnFallback("OPENAI_API_KEY missing; heuristics for ambiguous rows only");
-    for (let j = 0; j < ambiguousOriginalIndices.length; j++) {
-      const i = ambiguousOriginalIndices[j];
-      const row = rows[i];
-      const h = heuristicInboxCategory(row);
-      out[i] = applyRowCategory(row, i, h, "heuristic", 0.52);
+    warnFallback("OPENAI_API_KEY missing");
+    for (let j = 0; j < ambiguousIndices.length; j++) {
+      const i = ambiguousIndices[j];
+      out[i] = classifyAmbiguousRow(rows[i], i, undefined);
     }
     return out;
   }
@@ -430,39 +487,24 @@ export async function categorizeGmailInboxRows(
   const aiMap = await openAiClassifyBatch(ambiguousRows, apiKey);
 
   if (!aiMap) {
-    warnFallback("AI batch failed; heuristics for ambiguous rows");
-    for (let j = 0; j < ambiguousOriginalIndices.length; j++) {
-      const i = ambiguousOriginalIndices[j];
-      const row = rows[i];
-      const h = heuristicInboxCategory(row);
-      out[i] = applyRowCategory(row, i, h, "heuristic", 0.5);
+    warnFallback("AI batch failed");
+    for (let j = 0; j < ambiguousIndices.length; j++) {
+      const i = ambiguousIndices[j];
+      out[i] = classifyAmbiguousRow(rows[i], i, undefined);
     }
     return out;
   }
 
-  for (let j = 0; j < ambiguousOriginalIndices.length; j++) {
-    const i = ambiguousOriginalIndices[j];
-    const row = rows[i];
+  for (let j = 0; j < ambiguousIndices.length; j++) {
+    const i = ambiguousIndices[j];
     const got = aiMap.get(j);
-    let category = got?.category ?? heuristicInboxCategory(row);
-    let confidence = got?.confidence ?? 0.62;
-    let source: CategorySource = got ? "ai" : "heuristic";
-
-    const coerced = postCoerceAiCategory(category, row);
-    if (coerced.category !== category) {
-      category = coerced.category;
-      source = coerced.source;
-      confidence = Math.min(0.96, confidence * coerced.confidenceMul);
-    }
-
-    console.log("PARSED CATEGORY (ambiguous → final):", category, {
-      batchIndex: j,
-      originalIndex: i,
-      source,
-      confidence,
-    });
-    out[i] = applyRowCategory(row, i, category, source, confidence);
+    out[i] = classifyAmbiguousRow(rows[i], i, got);
   }
 
   return out;
+}
+
+/** @deprecated Use intelligentFallbackCategory */
+export function heuristicInboxCategory(row: GmailInboxRow): InboxAiCategory {
+  return intelligentFallbackCategory(row).category;
 }
