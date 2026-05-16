@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { FREE_LIMIT, readUsageCountWithDailyReset } from "@/lib/daily-usage";
 import type { WorkflowMode } from "@/lib/workflow-mode";
-import { WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
+import { persistWorkflowModeToBrowser, WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
 import { InboxPrioritySettings } from "./inbox-priority-settings";
 import { PersonalizationSettings } from "./personalization-settings";
 import { useUiCopy } from "@/app/use-ui-copy";
@@ -33,10 +33,8 @@ export default function SettingsPage() {
 
   function updateWorkflowMode(mode: WorkflowMode) {
     setWorkflowMode(mode);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(WORKFLOW_MODE_KEY, mode);
-      window.dispatchEvent(new Event("handled-workflow-mode-changed"));
-    }
+    persistWorkflowModeToBrowser(mode);
+    window.dispatchEvent(new Event("handled-workflow-mode-changed"));
   }
 
   async function refreshUserProfile(userId: string) {

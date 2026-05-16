@@ -1,0 +1,130 @@
+import type { GmailInboxRow } from "@/lib/gmail-api";
+import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import {
+  hasUrgentHumanSignal,
+  isCommercialBulk,
+  isTransactionalFyi,
+} from "@/lib/inbox-triage-signals";
+import type { WorkflowMode } from "@/lib/workflow-mode";
+
+export type ReplyNeedAssessment = {
+  recommended: boolean;
+  reason: string;
+  suggestedAction: string;
+  confidence: number;
+};
+
+function modeSuppressesReplies(mode: WorkflowMode, category: InboxAiCategory): boolean {
+  if (mode === "clean" && category !== "needs_attention") {
+    return true;
+  }
+  if (mode === "handle" && (category === "promotion" || category === "newsletter")) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Should Handled offer reply drafts for this message?
+ * Promotional / FYI mail should not get "Got it, thanks!" suggestions.
+ */
+export function assessReplyNeed(input: {
+  row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">;
+  category: InboxAiCategory;
+  workflowMode?: WorkflowMode;
+}): ReplyNeedAssessment {
+  const { row, category, workflowMode = "assist" } = input;
+  const subject = (row.subject ?? "").trim();
+
+  if (category === "promotion") {
+    return {
+      recommended: false,
+      reason: "Likely promotional or marketing email.",
+      suggestedAction: "Safe to archive — no reply needed.",
+      confidence: 0.92,
+    };
+  }
+
+  if (category === "newsletter") {
+    return {
+      recommended: false,
+      reason: "Newsletter or bulk update.",
+      suggestedAction: "Read later or archive — no reply needed.",
+      confidence: 0.9,
+    };
+  }
+
+  const rowForSignals = row as GmailInboxRow;
+
+  if (category === "handled") {
+    if (isTransactionalFyi(rowForSignals) && !hasUrgentHumanSignal(rowForSignals)) {
+      return {
+        recommended: false,
+        reason: "Receipt, notification, or automated update.",
+        suggestedAction: "File or archive — no reply needed.",
+        confidence: 0.88,
+      };
+    }
+  }
+
+  if (isCommercialBulk(rowForSignals) && !hasUrgentHumanSignal(rowForSignals)) {
+    const social =
+      /instagram|facebook|linkedin|tiktok|twitter|notification/i.test(
+        `${row.sender} ${subject} ${row.snippet ?? ""}`,
+      );
+    return {
+      recommended: false,
+      reason: social
+        ? "Social notification — not a conversation."
+        : "Automated or promotional content.",
+      suggestedAction: "Safe to archive.",
+      confidence: 0.85,
+    };
+  }
+
+  if (modeSuppressesReplies(workflowMode, category)) {
+    return {
+      recommended: false,
+      reason:
+        workflowMode === "clean"
+          ? "Clean mode hides replies for low-priority mail."
+          : "Handle mode focuses on important threads only.",
+      suggestedAction: "Archive or skim — reply optional.",
+      confidence: 0.75,
+    };
+  }
+
+  if (category === "quick_reply" && hasUrgentHumanSignal(rowForSignals)) {
+    return {
+      recommended: true,
+      reason: "Short message that may need a quick acknowledgment.",
+      suggestedAction: "A brief reply may help.",
+      confidence: 0.7,
+    };
+  }
+
+  if (category === "needs_attention" || hasUrgentHumanSignal(rowForSignals)) {
+    return {
+      recommended: true,
+      reason: "Looks like a real person expects a response or decision.",
+      suggestedAction: "Review and reply when ready.",
+      confidence: 0.8,
+    };
+  }
+
+  if (category === "quick_reply") {
+    return {
+      recommended: true,
+      reason: "May benefit from a short reply.",
+      suggestedAction: "Optional quick response.",
+      confidence: 0.55,
+    };
+  }
+
+  return {
+    recommended: false,
+    reason: "No clear need to respond.",
+    suggestedAction: "No action required.",
+    confidence: 0.6,
+  };
+}

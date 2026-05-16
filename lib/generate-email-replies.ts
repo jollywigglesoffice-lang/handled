@@ -4,6 +4,7 @@ import {
   REPLY_MODEL,
   readOpenRouterChatContent,
 } from "@/lib/openrouter-reply";
+import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { workflowModeReplyDirective } from "@/lib/workflow-mode-effects";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
@@ -14,34 +15,32 @@ export function buildGenerateReplyPrompt(input: {
   userName?: string;
   contextBlock: string;
   workflowMode?: WorkflowMode;
+  category?: InboxAiCategory;
 }): string {
   const modeLine = input.workflowMode
     ? workflowModeReplyDirective(input.workflowMode)
     : "";
+  const categoryLine = input.category
+    ? `Email category: ${input.category.replace(/_/g, " ")}.`
+    : "";
 
-  return `Write 3 different short reply variations to this email.
+  return `Write 3 different short reply variations ONLY if a human sender realistically expects a response.
+
+If this is promotional, newsletter, receipt, or automated — you should NOT have been asked; still return 3 brief neutral lines only if forced.
 
 Rules:
-- Keep each reply under 3 sentences
-- Keep each reply short and quick
-- If the email is simple, keep each reply to one sentence
-- Use natural, human language, like texting a colleague
-- Avoid corporate tone
-- Avoid overly polite language
-- Avoid sounding overly helpful
-- Keep the tone ${input.tone}
-- Write every reply in ${input.languageLabel}. (All three variations must be in that language.)
-- Reference specific details from the email (names, dates, requests) when present
-- The first reply is the recommended default
-- Replies 2 and 3 must be meaningfully different phrasings
-- If appropriate, make the reply sound like it was written by ${input.userName ?? "the user"}
+- Reference specific details from the email (names, dates, requests)
+- Natural, like texting a colleague — not corporate or marketing tone
+- Each reply under 3 sentences; one sentence if the email is simple
+- Tone: ${input.tone}
+- Language: ${input.languageLabel} for all three
+- Replies must be meaningfully different
+${categoryLine}
 ${modeLine ? `\n${modeLine}` : ""}
 ${input.contextBlock}
 
-Return valid JSON only in this exact shape:
+Return valid JSON only:
 {"replies":["recommended reply","alternate 1","alternate 2"]}
-
-Do not include markdown. Do not include extra keys.
 
 Email:
 ${input.email}`;
@@ -58,7 +57,7 @@ export async function generateEmailRepliesJson(
       apiKey,
       {
         model: REPLY_MODEL,
-        temperature: 0.7,
+        temperature: 0.65,
         response_format: { type: "json_object" },
         messages: [{ role: "user", content: prompt }],
       },

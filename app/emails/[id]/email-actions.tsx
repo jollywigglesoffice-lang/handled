@@ -24,14 +24,22 @@ import {
 import { detectReplyLanguageFromEmail } from "@/lib/detect-reply-language";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import type { WorkflowMode } from "@/lib/workflow-mode";
-import { WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
+import { persistWorkflowModeToBrowser, WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
+import { getWorkflowModeBehavior } from "@/lib/workflow-mode-config";
 
 type EmailActionsProps = {
   emailId: string;
   emailContent: string;
   senderName: string;
+  subject?: string;
+  snippet?: string;
   suggestedReply: string;
+  inboxCategory?: InboxAiCategory;
+  replyRecommended?: boolean;
+  replySuppressedReason?: string;
+  suggestedTriageAction?: string;
 };
 
 const FETCH_REPLY_TIMEOUT_MS = 28_000;
@@ -300,39 +308,6 @@ function getFallbackReplies(currentTone: number, mode: WorkflowMode) {
   ];
 }
 
-function getWorkflowBehavior(mode: WorkflowMode) {
-  if (mode === "clean") {
-    return {
-      label: "Clean My Inbox",
-      replyCount: 2,
-      toneBias: -15,
-      recommendationLabel: "Fastest clear-out reply",
-      status: "Prioritizing the fastest way to clear this email...",
-      explanation: "Optimized to resolve this quickly and reduce inbox clutter.",
-    };
-  }
-
-  if (mode === "handle") {
-    return {
-      label: "Handle It For Me",
-      replyCount: 3,
-      toneBias: 10,
-      recommendationLabel: "Best action",
-      status: "Preparing the strongest recommended action...",
-      explanation: "Optimized for a confident, ready-to-use response.",
-    };
-  }
-
-  return {
-    label: "Assist Me",
-    replyCount: 3,
-    toneBias: 0,
-    recommendationLabel: "Recommended",
-    status: "Writing helpful reply options...",
-    explanation: "You stay in control and choose the best response.",
-  };
-}
-
 function getContextHint(
   emailContent: string,
   labels: { quickApproval: string; lowPriority: string; needsResponse: string },
@@ -366,7 +341,13 @@ export function EmailActions({
   emailId,
   emailContent,
   senderName: _senderName,
+  subject = "",
+  snippet = "",
   suggestedReply: _suggestedReply,
+  inboxCategory = "needs_attention",
+  replyRecommended: replyRecommendedProp = true,
+  replySuppressedReason,
+  suggestedTriageAction,
 }: EmailActionsProps) {
   const ui = useUiCopy();
   const router = useRouter();
@@ -461,7 +442,9 @@ export function EmailActions({
     [liveTone, workflowMode],
   );
 
-  const workflowBehavior = getWorkflowBehavior(workflowMode);
+  const workflowBehavior = getWorkflowModeBehavior(workflowMode);
+  const shouldOfferReplies =
+    replyRecommendedProp && workflowBehavior.showReplySection;
 
   const contextHint = getContextHint(emailContent, {
     quickApproval: ui.emailActions.contextQuickApproval,
@@ -539,7 +522,7 @@ export function EmailActions({
     const syncWorkflowMode = () => {
       const saved =
         (localStorage.getItem(WORKFLOW_MODE_KEY) as WorkflowMode | null) || "assist";
-
+      persistWorkflowModeToBrowser(saved);
       setWorkflowMode(saved);
     };
 
@@ -758,30 +741,22 @@ return () => clearTimeout(timeout);
         usageCount,
       });
 
-      const wfBehavior = getWorkflowBehavior(workflowMode);
+      if (!shouldOfferReplies) {
+        setIsThinking(false);
+        setIsGeneratingReplies(false);
+        setReplyOptions([]);
+        setStatusMessage(replySuppressedReason ?? "No reply recommended.");
+        return;
+      }
+
+      const wfBehavior = getWorkflowModeBehavior(workflowMode);
       const adjustedTone = Math.min(
         100,
         Math.max(0, liveTone + wfBehavior.toneBias),
       );
 
-      const fallbackReplies = getFallbackReplies(liveTone, workflowMode);
-      setReplyOptions((current) => {
-        if (current.length > 0) return current;
-        return fallbackReplies;
-      });
-
-      let primeFirstReply: string | null = null;
-      setSelectedReplyIndex((prev) => {
-        if (prev === null) {
-          primeFirstReply = fallbackReplies[0];
-          return 0;
-        }
-        return prev;
-      });
-      if (primeFirstReply !== null) {
-        setEditedReplyDraft(primeFirstReply);
-        editedReplyDraftRef.current = primeFirstReply;
-      }
+      setReplyOptions([]);
+      setSelectedReplyIndex(null);
 
       setIsThinking(true);
       const language = workflowReplyLanguageRef.current;
@@ -798,14 +773,9 @@ return () => clearTimeout(timeout);
       try {
         setLanguageChangeHint("");
         setIsGeneratingReplies(true);
-        const previewReplies = Array.from(
-          { length: wfBehavior.replyCount },
-          (_, i) =>
-            generatePreviewReply(adjustedTone, i, emailContent, memoryProfile),
-        );
-        setReplyOptions(previewReplies);
-        setEditedReplyDraft(previewReplies[0] ?? "");
-        editedReplyDraftRef.current = previewReplies[0] ?? "";
+        setReplyOptions([]);
+        setEditedReplyDraft("");
+        editedReplyDraftRef.current = "";
         setStatusMessage(wfBehavior.status);
         setStreamedReplies([]);
 
@@ -832,6 +802,11 @@ return () => clearTimeout(timeout);
               memory: memoryProfile,
               workflowMode,
               workflowBehavior: wfBehavior,
+              category: inboxCategory,
+              sender: _senderName,
+              subject,
+              snippet,
+              replyRecommended: shouldOfferReplies,
             }),
           });
         } catch (error) {
@@ -961,6 +936,9 @@ return () => clearTimeout(timeout);
           source?: string;
           errorCode?: string;
           fallbackActivated?: boolean;
+          replyRecommended?: boolean;
+          reason?: string;
+          suggestedAction?: string;
         } = {};
         try {
           result = (await response.json()) as typeof result;
@@ -974,6 +952,16 @@ return () => clearTimeout(timeout);
           setReplyOptions([...triple]);
           setStreamedReplies([...triple]);
           setSelectedReplyIndex(0);
+          return;
+        }
+
+        if (result.replyRecommended === false) {
+          if (runId !== generateRunIdRef.current) {
+            return;
+          }
+          setReplyOptions([]);
+          setStatusMessage(result.reason ?? "No reply recommended.");
+          setIsThinking(false);
           return;
         }
 
@@ -1021,10 +1009,11 @@ return () => clearTimeout(timeout);
           return;
         }
         console.error("generateReplyOptions failed", error);
-        setReplyOptions((current) => (current.length > 0 ? current : fallbackReplies));
+        const triple = ensureThreeReplies([], fallbackTriple);
+        setReplyOptions((current) => (current.length > 0 ? current : triple));
         setSelectedReplyIndex((current) => current ?? 0);
         setEditedReplyDraft((draft) => {
-          const next = draft.trim() ? draft : fallbackReplies[0];
+          const next = draft.trim() ? draft : triple[0];
           editedReplyDraftRef.current = next;
           return next;
         });
@@ -1039,9 +1028,14 @@ return () => clearTimeout(timeout);
     [
       emailContent,
       incrementGeneratedRepliesCount,
+      inboxCategory,
       isPro,
       liveTone,
       memoryProfile,
+      replySuppressedReason,
+      shouldOfferReplies,
+      snippet,
+      subject,
       tone,
       ui.emailActions,
       usageCount,
@@ -1054,27 +1048,21 @@ return () => clearTimeout(timeout);
   useEffect(() => {
     if (!authUser?.id) return;
     if (!emailContent) return;
+    if (!shouldOfferReplies) {
+      setReplyOptions([]);
+      setStatusMessage(replySuppressedReason ?? "No reply recommended.");
+      return;
+    }
     if (replyOptions.length > 0) return;
-
-    const fallbackReplies = getFallbackReplies(liveTone, workflowMode);
-    setReplyOptions(fallbackReplies);
-    setSelectedReplyIndex(0);
-    setEditedReplyDraft(fallbackReplies[0]);
-    editedReplyDraftRef.current = fallbackReplies[0];
-  }, [authUser?.id, emailContent, liveTone, replyOptions.length, workflowMode]);
-
-  useEffect(() => {
-    if (!authUser?.id) return;
-    if (!emailContent) return;
-
-    const fallbackReplies = getFallbackReplies(liveTone, workflowMode);
-    setReplyOptions(fallbackReplies);
-    setSelectedReplyIndex(0);
-    setEditedReplyDraft(fallbackReplies[0]);
-    editedReplyDraftRef.current = fallbackReplies[0];
-
-    setStatusMessage(getWorkflowBehavior(workflowMode).status);
-  }, [workflowMode, authUser?.id, emailContent]);
+    setStatusMessage(workflowBehavior.status);
+  }, [
+    authUser?.id,
+    emailContent,
+    replyOptions.length,
+    shouldOfferReplies,
+    replySuppressedReason,
+    workflowBehavior.status,
+  ]);
 
   useEffect(() => {
     if (!authUser?.id) {
@@ -1082,6 +1070,7 @@ return () => clearTimeout(timeout);
       return;
     }
     if (!emailContent) return;
+    if (!shouldOfferReplies || !workflowBehavior.autoGenerateReplies) return;
     if (isGeneratingReplies || isThinking || isStreaming) return;
 
     const key = `${authUser.id}:${emailId}`;
@@ -1097,6 +1086,8 @@ return () => clearTimeout(timeout);
     isThinking,
     isStreaming,
     generateReplyOptions,
+    shouldOfferReplies,
+    workflowBehavior.autoGenerateReplies,
   ]);
 
   const generateReplyOptionsRef = useRef(generateReplyOptions);
@@ -1597,6 +1588,25 @@ return () => clearTimeout(timeout);
         </button>
       </div>
 
+      {!shouldOfferReplies ? (
+        <div className="space-y-4 border-t border-gray-200 pt-5 rounded-xl border border-slate-200 bg-slate-50 p-5">
+          <p className="text-sm font-semibold text-[#0F172A]">No reply recommended</p>
+          <p className="mt-2 text-sm leading-relaxed text-gray-600">
+            {replySuppressedReason ??
+              "This looks like promotional or automated mail — you probably don't need to respond."}
+          </p>
+          {suggestedTriageAction ? (
+            <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              {suggestedTriageAction}
+            </p>
+          ) : null}
+          {workflowBehavior.showArchiveHint ? (
+            <p className="mt-2 text-xs text-gray-500">
+              Tip: Mark as handled or archive in Gmail when you&apos;re done skimming.
+            </p>
+          ) : null}
+        </div>
+      ) : (
       <div className="space-y-4 border-t border-gray-200 pt-5">
           <div className="max-w-md space-y-2">
             <label
@@ -2008,6 +2018,7 @@ if (distance < 6) {
           ) : null}
             </div>
         </div>
+      )}
 
       {statusMessage ? (
         <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-sm leading-relaxed text-gray-500">

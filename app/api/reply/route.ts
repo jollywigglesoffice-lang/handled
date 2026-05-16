@@ -1,4 +1,6 @@
 import { getAiApiKey, logAiKeyStatus } from "@/lib/ai-api-key";
+import { assessReplyNeed } from "@/lib/reply-necessity";
+import { normalizeInboxAiCategory } from "@/lib/inbox-ai-categories";
 import {
   buildGenerateReplyPrompt,
   generateEmailRepliesJson,
@@ -37,6 +39,12 @@ type ReplyRequestBody = {
   } | null;
   workflowMode?: "assist" | "clean" | "handle";
   workflowBehavior?: WorkflowBehaviorPayload;
+  category?: string;
+  sender?: string;
+  subject?: string;
+  snippet?: string;
+  /** Client pre-check; server re-validates */
+  replyRecommended?: boolean;
 };
 
 function replyContextAppendix(
@@ -502,6 +510,29 @@ export async function POST(request: Request) {
     );
   }
 
+  if (mode === "generate") {
+    const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
+    const assessment = assessReplyNeed({
+      row: {
+        sender: body.sender ?? "",
+        subject: body.subject ?? "",
+        snippet: body.snippet ?? email.slice(0, 500),
+      },
+      category,
+      workflowMode: body.workflowMode ?? "assist",
+    });
+
+    if (!assessment.recommended) {
+      console.log("REPLY SUPPRESSED:", assessment.reason, { category });
+      return Response.json({
+        replyRecommended: false,
+        reason: assessment.reason,
+        suggestedAction: assessment.suggestedAction,
+        source: "suppressed",
+      });
+    }
+  }
+
   logAiKeyStatus("api/reply");
   const apiKey = getAiApiKey();
 
@@ -560,6 +591,7 @@ export async function POST(request: Request) {
           userName,
           contextBlock,
           workflowMode: body.workflowMode,
+          category: normalizeInboxAiCategory(body.category ?? "needs_attention"),
         })
       : "";
 

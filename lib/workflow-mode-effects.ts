@@ -6,16 +6,13 @@ import {
   computeInboxRuleScores,
   looksLikeHumanConversation,
 } from "@/lib/inbox-rule-classify";
+import { hasUrgentHumanSignal, isCommercialBulk } from "@/lib/inbox-triage-signals";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
 
 export { WORKFLOW_MODE_HEADER };
 
-export function parseWorkflowModeHeader(value: string | null | undefined): WorkflowMode {
-  const v = value?.trim().toLowerCase();
-  if (v === "clean" || v === "handle") return v;
-  return "assist";
-}
+export { parseWorkflowMode as parseWorkflowModeHeader } from "@/lib/workflow-mode";
 
 /**
  * Mode-specific triage after rules/AI. Never auto-sends or archives — only category labels.
@@ -36,19 +33,21 @@ export function applyWorkflowModeToCategory(
   const combined = `${subject} ${snippet}`;
 
   if (mode === "clean") {
-    if (category === "needs_attention") {
-      if (scores.promotion >= 1 || scores.newsletter >= 1) {
+    if (category === "needs_attention" || category === "quick_reply") {
+      if (scores.promotion >= 0.5 || scores.newsletter >= 0.5 || isCommercialBulk(row)) {
         const lean = commercialLeanCategory(row);
         if (lean) {
           return { category: lean, source: "heuristic" };
         }
+        return { category: "promotion", source: "heuristic" };
       }
       if (
         combined.includes("unsubscribe") ||
         combined.includes("newsletter") ||
         combined.includes("digest") ||
         combined.includes("promo") ||
-        combined.includes("% off")
+        combined.includes("% off") ||
+        combined.includes("sale")
       ) {
         return {
           category: scores.newsletter >= scores.promotion ? "newsletter" : "promotion",
@@ -58,27 +57,35 @@ export function applyWorkflowModeToCategory(
     }
     if (category === "quick_reply" && !looksLikeHumanConversation(row)) {
       const lean = commercialLeanCategory(row);
-      if (lean && (scores.promotion >= 1 || scores.newsletter >= 1)) {
+      if (lean) {
         return { category: lean, source: "heuristic" };
       }
     }
     return { category, source };
   }
 
-  // handle — favor fast triage: human threads → quick_reply when not urgent
   if (mode === "handle") {
+    if (
+      category === "needs_attention" &&
+      (scores.promotion >= 1 || scores.newsletter >= 1 || isCommercialBulk(row)) &&
+      !hasUrgentHumanSignal(row)
+    ) {
+      const lean = commercialLeanCategory(row);
+      return {
+        category: lean ?? "promotion",
+        source: "heuristic",
+      };
+    }
     if (
       category === "needs_attention" &&
       looksLikeHumanConversation(row) &&
       scores.promotion < 1 &&
       scores.newsletter < 1
     ) {
-      const short =
-        (row.snippet?.length ?? 0) < 280 ||
-        /\?|please|asap|urgent|deadline|today|tomorrow/i.test(combined);
-      if (short) {
-        return { category: "quick_reply", source: source === "ai" ? "ai" : "heuristic" };
-      }
+      return { category: "needs_attention", source };
+    }
+    if (category === "promotion" || category === "newsletter") {
+      return { category, source };
     }
   }
 
@@ -87,10 +94,10 @@ export function applyWorkflowModeToCategory(
 
 export function workflowModeReplyDirective(mode: WorkflowMode): string {
   if (mode === "clean") {
-    return "User mode: Clean My Inbox. Prefer the shortest reply that clears this thread. Do not suggest follow-ups unless required.";
+    return "User mode: Clean My Inbox. Only draft replies if a human clearly expects a response.";
   }
   if (mode === "handle") {
-    return "User mode: Handle It For Me. First reply should be a complete, send-ready draft with a clear next step. User still approves before sending.";
+    return "User mode: Handle It For Me. Draft a complete, send-ready reply only when appropriate. Be decisive.";
   }
-  return "User mode: Assist Me. Offer helpful reply options only; do not assume the user wants to close the thread.";
+  return "User mode: Assist Me. Helpful reply options when a human expects a response.";
 }
