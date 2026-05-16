@@ -1,5 +1,4 @@
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
-import { defaultInboxUserRules } from "@/lib/inbox-user-rules/presets";
 import type {
   InboxRuleAction,
   InboxRuleActionType,
@@ -10,6 +9,11 @@ import type {
 
 export type { InboxRuleRowDb } from "@/lib/inbox-user-rules/types";
 import type { InboxRuleRowDb } from "@/lib/inbox-user-rules/types";
+import {
+  isInboxRulesTableMissingError,
+  parseRulesJson,
+  type InboxRulesStorageMode,
+} from "@/lib/inbox-user-rules/storage";
 
 function rowToAction(
   actionType: InboxRuleActionType,
@@ -42,10 +46,10 @@ export function dbRowToUserRule(row: InboxRuleRowDb): InboxUserRule | null {
         : matchType === "sender_contains"
           ? { type: "sender_contains" as const, value: row.match_value }
           : matchType === "subject_contains"
-          ? { type: "subject_contains" as const, value: row.match_value }
-          : matchType === "keywords_contains"
-            ? { type: "keywords_contains" as const, value: row.match_value }
-            : null;
+            ? { type: "subject_contains" as const, value: row.match_value }
+            : matchType === "keywords_contains"
+              ? { type: "keywords_contains" as const, value: row.match_value }
+              : null;
 
   if (!match) return null;
 
@@ -85,117 +89,203 @@ function userRuleToDbInsert(userId: string, rule: InboxUserRule) {
   };
 }
 
-/** Active rules for categorization (DB only — no preset fallback). */
-export async function loadInboxUserRulesForUser(userId: string): Promise<InboxUserRule[]> {
-  const all = await loadAllInboxUserRulesForUser(userId);
-  return all.filter((r) => r.enabled);
+async function getSupabaseAdmin() {
+  const { supabase } = await import("@/lib/supabase");
+  return supabase;
 }
 
-/** All rules for settings UI (enabled + disabled). */
-export async function loadAllInboxUserRulesForUser(userId: string): Promise<InboxUserRule[]> {
-  try {
-    const { supabase } = await import("@/lib/supabase");
-    const { data, error } = await supabase
-      .from("inbox_rules")
-      .select("*")
-      .eq("user_id", userId)
-      .order("priority", { ascending: false });
+async function loadFromUsersJson(userId: string): Promise<InboxUserRule[]> {
+  const supabase = await getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("users")
+    .select("inbox_rules_json")
+    .eq("id", userId)
+    .maybeSingle();
 
-    if (error) {
-      console.warn("[inbox-user-rules] DB load failed:", error.message);
-      return [];
-    }
-
-    return (data ?? [])
-      .map((row) => dbRowToUserRule(row as InboxRuleRowDb))
-      .filter((r): r is InboxUserRule => r !== null);
-  } catch (e) {
-    console.warn("[inbox-user-rules] load exception", e);
+  if (error) {
+    console.warn("[inbox-user-rules] users.inbox_rules_json load failed:", error.message);
     return [];
   }
+
+  return parseRulesJson(data?.inbox_rules_json);
 }
 
-/** Replace user's rules in Supabase (full save from settings). */
-export async function saveInboxUserRulesForUser(
+async function saveToUsersJson(
   userId: string,
   rules: InboxUserRule[],
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  try {
-    const { supabase } = await import("@/lib/supabase");
-    const { data: existing, error: listError } = await supabase
-      .from("inbox_rules")
-      .select("id")
-      .eq("user_id", userId);
-
-    if (listError) {
-      return { ok: false, error: listError.message };
-    }
-
-    const keepIds = new Set(rules.map((r) => r.id));
-    const toDelete = (existing ?? [])
-      .map((r) => r.id as string)
-      .filter((id) => !keepIds.has(id));
-
-    if (toDelete.length > 0) {
-      const { error: delError } = await supabase
-        .from("inbox_rules")
-        .delete()
-        .in("id", toDelete);
-      if (delError) {
-        return { ok: false, error: delError.message };
-      }
-    }
-
-    if (rules.length > 0) {
-      const rows = rules.map((r) => userRuleToDbInsert(userId, r));
-      const { error: upsertError } = await supabase.from("inbox_rules").upsert(rows, {
-        onConflict: "id",
-      });
-      if (upsertError) {
-        return { ok: false, error: upsertError.message };
-      }
-    }
-
-    return { ok: true };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "save failed";
-    return { ok: false, error: message };
+  const { syncPublicUserFromAuth } = await import("@/lib/sync-public-user");
+  const sync = await syncPublicUserFromAuth(userId);
+  if (sync.error) {
+    return { ok: false, error: sync.error };
   }
+
+  const supabase = await getSupabaseAdmin();
+  const { error } = await supabase.from("users").upsert({
+    id: userId,
+    inbox_rules_json: rules,
+  });
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
 }
 
-/** Insert starter presets when the user has no saved rules yet. */
+async function loadFromInboxRulesTable(userId: string): Promise<{
+  rules: InboxUserRule[];
+  error: string | null;
+}> {
+  const supabase = await getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("inbox_rules")
+    .select("*")
+    .eq("user_id", userId)
+    .order("priority", { ascending: false });
+
+  if (error) {
+    return { rules: [], error: error.message };
+  }
+
+  const rules = (data ?? [])
+    .map((row) => dbRowToUserRule(row as InboxRuleRowDb))
+    .filter((r): r is InboxUserRule => r !== null);
+
+  return { rules, error: null };
+}
+
+async function saveToInboxRulesTable(
+  userId: string,
+  rules: InboxUserRule[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await getSupabaseAdmin();
+
+  const { data: existing, error: listError } = await supabase
+    .from("inbox_rules")
+    .select("id")
+    .eq("user_id", userId);
+
+  if (listError) {
+    return { ok: false, error: listError.message };
+  }
+
+  const keepIds = new Set(rules.map((r) => r.id));
+  const toDelete = (existing ?? [])
+    .map((r) => r.id as string)
+    .filter((id) => !keepIds.has(id));
+
+  if (toDelete.length > 0) {
+    const { error: delError } = await supabase.from("inbox_rules").delete().in("id", toDelete);
+    if (delError) {
+      return { ok: false, error: delError.message };
+    }
+  }
+
+  if (rules.length > 0) {
+    const rows = rules.map((r) => userRuleToDbInsert(userId, r));
+    const { error: upsertError } = await supabase.from("inbox_rules").upsert(rows, {
+      onConflict: "id",
+    });
+    if (upsertError) {
+      return { ok: false, error: upsertError.message };
+    }
+  }
+
+  return { ok: true };
+}
+
+export type LoadRulesResult = {
+  rules: InboxUserRule[];
+  storageMode: InboxRulesStorageMode;
+  dbError?: string;
+};
+
+/** Load all rules for settings (table preferred, JSON column fallback). */
+export async function loadAllInboxUserRulesForUser(userId: string): Promise<LoadRulesResult> {
+  const table = await loadFromInboxRulesTable(userId);
+
+  if (!table.error) {
+    return { rules: table.rules, storageMode: "inbox_rules_table" };
+  }
+
+  if (isInboxRulesTableMissingError(table.error)) {
+    const jsonRules = await loadFromUsersJson(userId);
+    return {
+      rules: jsonRules,
+      storageMode: jsonRules.length ? "users_json_column" : "none",
+      dbError: table.error,
+    };
+  }
+
+  console.warn("[inbox-user-rules] table load error:", table.error);
+  const jsonRules = await loadFromUsersJson(userId);
+  return {
+    rules: jsonRules,
+    storageMode: jsonRules.length ? "users_json_column" : "none",
+    dbError: table.error,
+  };
+}
+
+/** Active rules for categorization. */
+export async function loadInboxUserRulesForUser(userId: string): Promise<InboxUserRule[]> {
+  const { rules } = await loadAllInboxUserRulesForUser(userId);
+  return rules.filter((r) => r.enabled);
+}
+
+export type SaveRulesResult =
+  | { ok: true; storageMode: InboxRulesStorageMode }
+  | { ok: false; error: string; hint?: string };
+
+/** Persist rules (table + JSON mirror for resilience). */
+export async function saveInboxUserRulesForUser(
+  userId: string,
+  rules: InboxUserRule[],
+): Promise<SaveRulesResult> {
+  const tableResult = await saveToInboxRulesTable(userId, rules);
+
+  if (tableResult.ok) {
+    await saveToUsersJson(userId, rules).catch(() => undefined);
+    return { ok: true, storageMode: "inbox_rules_table" };
+  }
+
+  if (isInboxRulesTableMissingError(tableResult.error)) {
+    const jsonResult = await saveToUsersJson(userId, rules);
+    if (jsonResult.ok) {
+      return {
+        ok: true,
+        storageMode: "users_json_column",
+      };
+    }
+    return {
+      ok: false,
+      error: jsonResult.error,
+      hint: "Run supabase/sql/inbox_rules_setup.sql in the Supabase SQL Editor, then save again.",
+    };
+  }
+
+  const jsonResult = await saveToUsersJson(userId, rules);
+  if (jsonResult.ok) {
+    return { ok: true, storageMode: "users_json_column" };
+  }
+
+  return { ok: false, error: tableResult.error, hint: tableResult.error };
+}
+
 export async function seedInboxUserRulesForUser(
   userId: string,
 ): Promise<{ ok: true; rules: InboxUserRule[] } | { ok: false; error: string }> {
-  const existing = await loadAllInboxUserRulesForUser(userId);
+  const { rules: existing } = await loadAllInboxUserRulesForUser(userId);
   if (existing.length > 0) {
     return { ok: true, rules: existing };
   }
-  const { randomUUID } = await import("node:crypto");
-  const presets = defaultInboxUserRules().map((r) => ({
+  const { defaultInboxUserRules } = await import("@/lib/inbox-user-rules/presets");
+  const presets = defaultInboxUserRules().map((r, i) => ({
     ...r,
-    id: randomUUID(),
+    id: `preset-seed-${i}-${Date.now()}`,
   }));
   const saved = await saveInboxUserRulesForUser(userId, presets);
   if (!saved.ok) {
     return { ok: false, error: saved.error };
   }
   return { ok: true, rules: presets };
-}
-
-export function mergeInboxUserRules(
-  dbRules: InboxUserRule[],
-  localRules: InboxUserRule[],
-): InboxUserRule[] {
-  const byId = new Map<string, InboxUserRule>();
-  for (const r of defaultInboxUserRules()) {
-    byId.set(r.id, r);
-  }
-  for (const r of dbRules) {
-    byId.set(r.id, r);
-  }
-  for (const r of localRules) {
-    byId.set(r.id, r);
-  }
-  return [...byId.values()];
 }

@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
-import { INBOX_RULE_TEMPLATES } from "@/lib/inbox-rule-templates";
-import { ruleMatchesRow } from "@/lib/inbox-user-rules/match";
-import type { InboxRulePhase, InboxUserRule } from "@/lib/inbox-user-rules";
+import { previewInboxTriage } from "@/lib/preview-inbox-triage";
+import { INBOX_RULE_TEMPLATES, templateToRules } from "@/lib/inbox-rule-templates";
+import type { InboxUserRule } from "@/lib/inbox-user-rules";
 
 const DESTINATION_LABELS: Record<InboxAiCategory, string> = {
   needs_attention: "Needs your attention",
@@ -14,19 +14,17 @@ const DESTINATION_LABELS: Record<InboxAiCategory, string> = {
   handled: "Handled (receipts & FYI)",
 };
 
+const LOCAL_RULES_KEY = "handled_inbox_rules_draft";
+
 function newKeywordRule(): InboxUserRule {
   return {
     id: crypto.randomUUID(),
     enabled: true,
     priority: 150,
-    phase: "post",
+    phase: "pre",
     label: "My priority keywords",
     match: { type: "keywords_contains", value: "" },
-    action: {
-      type: "boost",
-      toCategory: "needs_attention",
-      whenCategories: ["promotion", "newsletter", "handled", "quick_reply"],
-    },
+    action: { type: "force_category", category: "needs_attention" },
   };
 }
 
@@ -39,55 +37,11 @@ function ruleDestination(rule: InboxUserRule): InboxAiCategory {
 }
 
 function setRuleDestination(rule: InboxUserRule, category: InboxAiCategory): InboxUserRule {
-  if (rule.phase === "pre" && category !== "handled") {
-    return { ...rule, action: { type: "force_category", category } };
-  }
   return {
     ...rule,
-    phase: "post",
-    action: {
-      type: "boost",
-      toCategory: category,
-      whenCategories: ["promotion", "newsletter", "handled", "quick_reply"],
-    },
+    phase: "pre",
+    action: { type: "force_category", category },
   };
-}
-
-function RuleEditorHeader({
-  rule,
-  onChange,
-  onRemove,
-}: {
-  rule: InboxUserRule;
-  onChange: (rule: InboxUserRule) => void;
-  onRemove: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <input
-        type="text"
-        value={rule.label ?? ""}
-        placeholder="Rule name (e.g. Family names)"
-        onChange={(e) => onChange({ ...rule, label: e.target.value })}
-        className="min-w-[12rem] flex-1 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-sm font-medium text-[#0F172A]"
-      />
-      <label className="flex items-center gap-2 text-xs text-gray-500">
-        <input
-          type="checkbox"
-          checked={rule.enabled}
-          onChange={(e) => onChange({ ...rule, enabled: e.target.checked })}
-        />
-        On
-      </label>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="text-xs font-medium text-red-600 hover:underline"
-      >
-        Remove
-      </button>
-    </div>
-  );
 }
 
 function RuleEditor({
@@ -100,37 +54,56 @@ function RuleEditor({
   onRemove: () => void;
 }) {
   const destination = ruleDestination(rule);
-  const isKeywords = rule.match.type === "keywords_contains";
 
   return (
     <li className="space-y-4 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-5">
-      <RuleEditorHeader rule={rule} onChange={onChange} onRemove={onRemove} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <input
+          type="text"
+          value={rule.label ?? ""}
+          placeholder="Rule name (e.g. Family names)"
+          onChange={(e) => onChange({ ...rule, label: e.target.value })}
+          className="min-w-[12rem] flex-1 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-sm font-medium text-[#0F172A]"
+        />
+        <label className="flex items-center gap-2 text-xs text-gray-500">
+          <input
+            type="checkbox"
+            checked={rule.enabled}
+            onChange={(e) => onChange({ ...rule, enabled: e.target.checked })}
+          />
+          On
+        </label>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-xs font-medium text-red-600 hover:underline"
+        >
+          Remove
+        </button>
+      </div>
 
       <div className="space-y-2">
-        <p className="text-xs font-medium text-[#0F172A]">When the email contains…</p>
+        <p className="text-xs font-medium text-[#0F172A]">Keywords in email</p>
         <textarea
           value={rule.match.value}
-          rows={isKeywords ? 3 : 2}
-          placeholder={
-            isKeywords
-              ? "Seba, Sebastiano, Fabio, Alexandria, Sommo, Rolandi, ospedale"
-              : "e.g. instagram or doctor@clinic.com"
-          }
+          rows={3}
+          placeholder="Seba, Fabio, Alexandria, Sommo, Rolandi, ospedale"
           onChange={(e) =>
-            onChange({ ...rule, match: { ...rule.match, value: e.target.value } })
+            onChange({
+              ...rule,
+              match: { type: "keywords_contains", value: e.target.value },
+            })
           }
           className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-sm leading-relaxed"
         />
         <p className="text-xs leading-relaxed text-gray-500">
-          {isKeywords ? (
-            <>
-              Separate keywords with <strong className="font-medium text-gray-700">commas</strong>.
-              Not case-sensitive. If <em>any</em> keyword appears in the sender, subject, or
-              preview — this rule applies.
-            </>
-          ) : (
-            <>Matches sender or subject (not case-sensitive).</>
-          )}
+          Separate multiple keywords with <strong className="text-gray-700">commas</strong>.
+          Matching is <strong className="text-gray-700">not case-sensitive</strong>. You do{" "}
+          <strong className="text-gray-700">not</strong> need one rule per name.
+        </p>
+        <p className="text-xs text-gray-400">
+          Example: <code className="rounded bg-white px-1">Seba, Sebastiano, ospedale</code> →
+          Needs your attention
         </p>
       </div>
 
@@ -150,41 +123,6 @@ function RuleEditor({
           ))}
         </select>
       </div>
-
-      <details className="text-xs text-gray-500">
-        <summary className="cursor-pointer font-medium text-gray-600">Advanced options</summary>
-        <div className="mt-3 space-y-2">
-          <label className="block">
-            Match style
-            <select
-              value={rule.match.type}
-              onChange={(e) => {
-                const type = e.target.value as InboxUserRule["match"]["type"];
-                onChange({ ...rule, match: { type, value: rule.match.value } });
-              }}
-              className="mt-1 w-full rounded-lg border border-[#E2E8F0] bg-white px-2 py-1.5"
-            >
-              <option value="keywords_contains">Keywords (recommended)</option>
-              <option value="sender_contains">Sender contains</option>
-              <option value="sender_domain">Sender domain</option>
-              <option value="subject_contains">Subject contains</option>
-            </select>
-          </label>
-          <label className="block">
-            When to run
-            <select
-              value={rule.phase}
-              onChange={(e) =>
-                onChange({ ...rule, phase: e.target.value as InboxRulePhase })
-              }
-              className="mt-1 w-full rounded-lg border border-[#E2E8F0] bg-white px-2 py-1.5"
-            >
-              <option value="post">After automatic sorting (usual)</option>
-              <option value="pre">Before automatic sorting (force immediately)</option>
-            </select>
-          </label>
-        </div>
-      </details>
     </li>
   );
 }
@@ -206,14 +144,17 @@ function RuleTesterPanel({ rules }: { rules: InboxUserRule[] }) {
     [sampleSender, sampleSubject, sampleSnippet],
   );
 
-  const matches = rules.filter((r) => r.enabled && ruleMatchesRow(sample, r.match));
+  const preview = useMemo(() => previewInboxTriage(sample, rules), [sample, rules]);
 
   return (
-    <div className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 p-4 space-y-3">
-      <p className="text-sm font-medium text-indigo-900">Try a sample email</p>
-      <p className="text-xs text-indigo-800/80">
-        Paste sender, subject, or preview text to see which rules would match.
-      </p>
+    <div className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 p-4 space-y-4">
+      <div>
+        <p className="text-sm font-medium text-indigo-900">Try a sample email</p>
+        <p className="text-xs text-indigo-800/80 mt-1">
+          Shows your rules <em>and</em> Handled&apos;s built-in sorting (Instagram → Promotions,
+          etc.).
+        </p>
+      </div>
       <input
         className="w-full rounded-lg border border-indigo-100 bg-white px-3 py-2 text-sm"
         value={sampleSender}
@@ -233,17 +174,42 @@ function RuleTesterPanel({ rules }: { rules: InboxUserRule[] }) {
         placeholder="Preview text"
         rows={2}
       />
-      {matches.length > 0 ? (
-        <ul className="text-xs text-indigo-900 space-y-1">
-          {matches.map((r) => (
-            <li key={r.id}>
-              ✓ <strong>{r.label ?? "Rule"}</strong> → {DESTINATION_LABELS[ruleDestination(r)]}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-xs text-indigo-700">No rules matched this sample.</p>
-      )}
+
+      <div className="rounded-lg border border-indigo-100 bg-white p-3 space-y-2 text-sm">
+        <p className="font-semibold text-indigo-950">
+          Final result: {preview.finalLabel}
+        </p>
+        {preview.userRuleMatches.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-gray-600">Matched your rules:</p>
+            <ul className="text-xs text-gray-800 space-y-1">
+              {preview.userRuleMatches.map((m, i) => (
+                <li key={i}>
+                  ✓ <strong>{m.label}</strong> → {DESTINATION_LABELS[m.destination]}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {preview.builtInLabel ? (
+          <p className="text-xs text-gray-600">
+            Built-in: <strong>{preview.builtInLabel}</strong>
+          </p>
+        ) : null}
+        <p className="text-[11px] text-gray-500">{preview.pipelineNote}</p>
+      </div>
+
+      <button
+        type="button"
+        className="text-xs font-medium text-indigo-700 underline"
+        onClick={() => {
+          setSampleSender("Instagram <notification@mail.instagram.com>");
+          setSampleSubject("You have 3 new notifications");
+          setSampleSnippet("See who liked your photo. Unsubscribe");
+        }}
+      >
+        Reset to Instagram example
+      </button>
     </div>
   );
 }
@@ -253,27 +219,80 @@ export function InboxPrioritySettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [dbHint, setDbHint] = useState("");
+  const [storageMode, setStorageMode] = useState<string>("");
+
+  const persistDraftLocally = useCallback((next: InboxUserRule[]) => {
+    try {
+      localStorage.setItem(LOCAL_RULES_KEY, JSON.stringify(next));
+    } catch {
+      // ignore quota errors
+    }
+  }, []);
 
   const loadRules = useCallback(async () => {
     setLoading(true);
+    setDbHint("");
     try {
       const res = await fetch("/api/inbox-rules", { credentials: "same-origin" });
-      const data = (await res.json()) as { rules?: InboxUserRule[] };
-      if (res.ok && data.rules) setRules(data.rules);
+      const data = (await res.json()) as {
+        rules?: InboxUserRule[];
+        storageMode?: string;
+        dbError?: string;
+        hint?: string;
+        setupSqlPath?: string;
+      };
+
+      if (res.ok && data.rules) {
+        setRules(data.rules);
+        setStorageMode(data.storageMode ?? "");
+        if (data.dbError && data.storageMode === "users_json_column") {
+          setDbHint(
+            `Rules saved on your profile. For full storage, run ${data.setupSqlPath ?? "supabase/sql/inbox_rules_setup.sql"} in Supabase SQL Editor.`,
+          );
+        }
+        persistDraftLocally(data.rules);
+        return;
+      }
+
+      const draft = localStorage.getItem(LOCAL_RULES_KEY);
+      if (draft) {
+        setRules(JSON.parse(draft) as InboxUserRule[]);
+        setDbHint(data.hint ?? data.dbError ?? "Using local draft — tap Save after fixing database.");
+      }
     } catch {
-      setRules([]);
+      const draft = localStorage.getItem(LOCAL_RULES_KEY);
+      if (draft) setRules(JSON.parse(draft) as InboxUserRule[]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [persistDraftLocally]);
 
   useEffect(() => {
     void loadRules();
   }, [loadRules]);
 
+  function addTemplateLocal(templateId: string) {
+    const template = INBOX_RULE_TEMPLATES.find((t) => t.id === templateId);
+    if (!template) return;
+
+    const newRules = templateToRules(templateId);
+    setRules((prev) => {
+      const next = [...prev, ...newRules];
+      persistDraftLocally(next);
+      return next;
+    });
+    setMessage(
+      `Added "${template.title}" — edit keywords below, then tap Save rules.`,
+    );
+  }
+
   async function handleSave() {
     setSaving(true);
     setMessage("");
+    setDbHint("");
+    persistDraftLocally(rules);
+
     try {
       const res = await fetch("/api/inbox-rules", {
         method: "PUT",
@@ -281,40 +300,27 @@ export function InboxPrioritySettings() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rules }),
       });
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as {
+        error?: string;
+        hint?: string;
+        message?: string;
+        storageMode?: string;
+        setupSqlPath?: string;
+      };
+
       if (!res.ok) {
         setMessage(data.error ?? "Could not save rules.");
+        if (data.hint) {
+          setDbHint(`${data.hint} File: ${data.setupSqlPath ?? "supabase/sql/inbox_rules_setup.sql"}`);
+        }
         return;
       }
-      setMessage("Saved! Refresh your inbox to apply these rules.");
-    } catch {
-      setMessage("Network error while saving.");
-    } finally {
-      setSaving(false);
-    }
-  }
 
-  async function addTemplate(templateId: string) {
-    setSaving(true);
-    setMessage("");
-    try {
-      const res = await fetch("/api/inbox-rules", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add-template", templateId }),
-      });
-      const data = (await res.json()) as { rules?: InboxUserRule[]; error?: string };
-      if (!res.ok) {
-        setMessage(data.error ?? "Could not add example.");
-        return;
-      }
-      if (data.rules) {
-        setRules(data.rules);
-        setMessage("Example added — edit keywords if you like, then Save.");
-      }
+      setStorageMode(data.storageMode ?? "");
+      setMessage(data.message ?? "Saved! Refresh your inbox to apply these rules.");
+      window.dispatchEvent(new Event("handled-inbox-rules-changed"));
     } catch {
-      setMessage("Network error.");
+      setMessage("Network error while saving. Your draft is kept in this browser.");
     } finally {
       setSaving(false);
     }
@@ -327,35 +333,43 @@ export function InboxPrioritySettings() {
           Inbox priority rules
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-gray-500">
-          Tell Handled who and what matters. Use commas for multiple names in one rule — you
-          don&apos;t need a separate rule per keyword.
+          Tell Handled who and what matters. Separate names with commas — one rule can include many
+          keywords. Matching is not case-sensitive.
         </p>
       </div>
 
-      <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4 text-sm text-gray-600">
-        <p className="font-medium text-[#0F172A]">Example</p>
-        <p className="mt-1">
-          Keywords:{" "}
-          <code className="rounded bg-white px-1 py-0.5 text-xs">
-            Seba, Sebastiano, ospedale
-          </code>
-        </p>
-        <p className="mt-1">
-          → <strong>Needs your attention</strong>
-        </p>
+      <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="font-medium">How keywords work</p>
+        <ul className="mt-2 list-inside list-disc space-y-1 text-xs leading-relaxed">
+          <li>Use commas: <code className="rounded bg-white/80 px-1">Seba, Fabio, ospedale</code></li>
+          <li>Not case-sensitive — &quot;SEBA&quot; and &quot;seba&quot; both match</li>
+          <li>One rule can list many names — no need for separate rules</li>
+          <li>Your rules run <strong>before</strong> AI sorting and override it when they match</li>
+        </ul>
       </div>
+
+      {dbHint ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-900">
+          {dbHint}
+        </div>
+      ) : null}
+      {storageMode ? (
+        <p className="text-xs text-gray-400">Storage: {storageMode.replace(/_/g, " ")}</p>
+      ) : null}
 
       <div>
-        <h3 className="text-sm font-medium text-[#0F172A]">Example rules (one tap)</h3>
-        <p className="mt-1 text-xs text-gray-500">Adds ready-made rules you can customize.</p>
+        <h3 className="text-sm font-medium text-[#0F172A]">One-tap templates</h3>
+        <p className="mt-1 text-xs text-gray-500">
+          Instantly adds editable rules below. Customize, then Save.
+        </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {INBOX_RULE_TEMPLATES.map((t) => (
             <button
               key={t.id}
               type="button"
               disabled={saving}
-              onClick={() => void addTemplate(t.id)}
-              className="rounded-xl border border-[#E2E8F0] bg-white p-4 text-left transition hover:border-[#6366F1]/40 hover:shadow-sm disabled:opacity-50"
+              onClick={() => addTemplateLocal(t.id)}
+              className="rounded-xl border border-[#E2E8F0] bg-white p-4 text-left transition hover:border-[#6366F1]/40 hover:shadow-sm active:scale-[0.99] disabled:opacity-50"
             >
               <span className="text-xl">{t.emoji}</span>
               <p className="mt-2 text-sm font-medium text-[#0F172A]">{t.title}</p>
@@ -373,17 +387,27 @@ export function InboxPrioritySettings() {
         <ul className="space-y-4">
           {rules.length === 0 ? (
             <li className="rounded-xl border border-dashed border-[#E2E8F0] px-4 py-8 text-center text-sm text-gray-500">
-              No rules yet. Tap an example above or add your own keyword rule.
+              No rules yet. Tap a template above (e.g. Doctors &amp; Health) or add your own.
             </li>
           ) : null}
           {rules.map((rule) => (
             <RuleEditor
               key={rule.id}
               rule={rule}
-              onChange={(next) =>
-                setRules((prev) => prev.map((r) => (r.id === rule.id ? next : r)))
-              }
-              onRemove={() => setRules((prev) => prev.filter((r) => r.id !== rule.id))}
+              onChange={(next) => {
+                setRules((prev) => {
+                  const updated = prev.map((r) => (r.id === rule.id ? next : r));
+                  persistDraftLocally(updated);
+                  return updated;
+                });
+              }}
+              onRemove={() => {
+                setRules((prev) => {
+                  const updated = prev.filter((r) => r.id !== rule.id);
+                  persistDraftLocally(updated);
+                  return updated;
+                });
+              }}
             />
           ))}
         </ul>
@@ -392,7 +416,11 @@ export function InboxPrioritySettings() {
       <div className="flex flex-wrap gap-3">
         <button
           type="button"
-          onClick={() => setRules((prev) => [...prev, newKeywordRule()])}
+          onClick={() => {
+            const next = [...rules, newKeywordRule()];
+            setRules(next);
+            persistDraftLocally(next);
+          }}
           className="rounded-lg border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-medium text-[#0F172A] hover:bg-[#F8FAFC]"
         >
           + Add keyword rule

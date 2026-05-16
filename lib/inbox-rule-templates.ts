@@ -1,5 +1,11 @@
-import { randomUUID } from "node:crypto";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
+
+function newRuleId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `rule-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
 export type InboxRuleTemplate = {
   id: string;
@@ -20,17 +26,13 @@ export const INBOX_RULE_TEMPLATES: InboxRuleTemplate[] = [
       {
         enabled: true,
         priority: 250,
-        phase: "post",
+        phase: "pre",
         label: "Family names → Needs attention",
         match: {
           type: "keywords_contains",
           value: "mom, dad, mamma, papà, family",
         },
-        action: {
-          type: "boost",
-          toCategory: "needs_attention",
-          whenCategories: ["promotion", "newsletter", "handled", "quick_reply"],
-        },
+        action: { type: "force_category", category: "needs_attention" },
       },
     ],
   },
@@ -43,17 +45,14 @@ export const INBOX_RULE_TEMPLATES: InboxRuleTemplate[] = [
       {
         enabled: true,
         priority: 240,
-        phase: "post",
+        phase: "pre",
         label: "Health & doctors → Needs attention",
         match: {
           type: "keywords_contains",
-          value: "doctor, dr., clinic, hospital, ospedale, medico, health, appointment",
+          value:
+            "doctor, dr., clinic, hospital, ospedale, medico, pediatrician, health, appointment",
         },
-        action: {
-          type: "boost",
-          toCategory: "needs_attention",
-          whenCategories: ["promotion", "newsletter", "handled"],
-        },
+        action: { type: "force_category", category: "needs_attention" },
       },
     ],
   },
@@ -66,17 +65,13 @@ export const INBOX_RULE_TEMPLATES: InboxRuleTemplate[] = [
       {
         enabled: true,
         priority: 230,
-        phase: "post",
+        phase: "pre",
         label: "School → Needs attention",
         match: {
           type: "keywords_contains",
           value: "school, scuola, teacher, professore, class, bambini, student",
         },
-        action: {
-          type: "boost",
-          toCategory: "needs_attention",
-          whenCategories: ["promotion", "newsletter", "handled"],
-        },
+        action: { type: "force_category", category: "needs_attention" },
       },
     ],
   },
@@ -130,6 +125,6 @@ export function templateToRules(templateId: string): InboxUserRule[] {
   if (!template) return [];
   return template.rules.map((r) => ({
     ...r,
-    id: randomUUID(),
+    id: newRuleId(),
   }));
 }

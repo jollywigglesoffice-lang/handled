@@ -466,8 +466,15 @@ export default function EmailsInboxPage() {
     const onModeChange = () => {
       void loadInbox();
     };
+    const onRulesChange = () => {
+      void loadInbox();
+    };
     window.addEventListener("handled-workflow-mode-changed", onModeChange);
-    return () => window.removeEventListener("handled-workflow-mode-changed", onModeChange);
+    window.addEventListener("handled-inbox-rules-changed", onRulesChange);
+    return () => {
+      window.removeEventListener("handled-workflow-mode-changed", onModeChange);
+      window.removeEventListener("handled-inbox-rules-changed", onRulesChange);
+    };
   }, [loadInbox]);
 
   useEffect(() => {
