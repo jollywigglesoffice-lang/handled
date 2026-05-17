@@ -6,6 +6,7 @@ import {
   computeInboxRuleScores,
   looksLikeHumanConversation,
 } from "@/lib/inbox-rule-classify";
+import { hasHighPriorityIntent } from "@/lib/email-intent";
 import { hasUrgentHumanSignal, isCommercialBulk } from "@/lib/inbox-triage-signals";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
@@ -23,6 +24,10 @@ export function applyWorkflowModeToCategory(
   category: InboxAiCategory,
   source: CategorySource,
 ): { category: InboxAiCategory; source: CategorySource } {
+  if (hasHighPriorityIntent(row)) {
+    return { category, source };
+  }
+
   if (mode === "assist") {
     return { category, source };
   }

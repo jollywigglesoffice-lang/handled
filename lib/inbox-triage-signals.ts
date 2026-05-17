@@ -1,4 +1,5 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
+import { hasHighPriorityIntent, requiresHumanReply } from "@/lib/email-intent";
 import { computeInboxRuleScores, isBillingLikely } from "@/lib/inbox-rule-classify";
 
 const BULK_SENDER =
@@ -11,13 +12,17 @@ const TRANSACTIONAL_COPY =
   /order\s+confirmed|payment\s+received|receipt|tracking\s+(number|#|link)|shipment|has\s+shipped|out\s+for\s+delivery|delivered|invoice|charged|subscription\s+renewed|amount\s+due|payment\s+due|billing\s+statement|your\s+bill/i;
 
 const URGENT_HUMAN =
-  /please\s+(confirm|review|approve|sign)|need\s+your\s+(approval|signature|response)|action\s+required|by\s+(eod|cob|tomorrow|friday|monday)|deadline|urgent|asap|waiting\s+for\s+your|could\s+you|can\s+you|would\s+you|let\s+me\s+know|following\s+up|follow\s+up|reply\s+needed|requires\s+your\s+attention/i;
+  /please\s+(confirm|review|approve|sign)|need\s+your\s+(approval|signature|response)|action\s+required|by\s+(eod|cob|tomorrow|friday|monday)|deadline|urgent|asap|waiting\s+for\s+your|could\s+you|can\s+you|would\s+you|do\s+you\s+have|let\s+me\s+know|following\s+up|follow\s+up|reply\s+needed|requires\s+your\s+attention|i(?:'d| would)\s+like\s+to|interested\s+in|business\s+opportunity|corporate\s+pricing|pricing\s+plan|early\s+access/i;
 
 export function emailHaystack(row: GmailInboxRow): string {
   return `${row.sender} ${row.subject} ${row.snippet ?? ""}`.toLowerCase();
 }
 
 export function isCommercialBulk(row: GmailInboxRow): boolean {
+  if (hasHighPriorityIntent(row)) {
+    return false;
+  }
+
   const hay = emailHaystack(row);
   const sender = row.sender.toLowerCase();
 
@@ -42,12 +47,19 @@ export function isCommercialBulk(row: GmailInboxRow): boolean {
 }
 
 export function isTransactionalFyi(row: GmailInboxRow): boolean {
+  if (hasHighPriorityIntent(row) || requiresHumanReply(row)) {
+    return false;
+  }
   if (isBillingLikely(row)) return true;
   return TRANSACTIONAL_COPY.test(emailHaystack(row));
 }
 
 /** True when the email likely needs a real human decision (not just marketing noise). */
 export function hasUrgentHumanSignal(row: GmailInboxRow): boolean {
+  if (hasHighPriorityIntent(row) || requiresHumanReply(row)) {
+    return true;
+  }
+
   const hay = emailHaystack(row);
   const sender = row.sender.toLowerCase();
 

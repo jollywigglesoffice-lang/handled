@@ -19,6 +19,11 @@ import {
   applyUserRulesPre,
   type InboxUserRule,
 } from "@/lib/inbox-user-rules";
+import {
+  analyzeEmailIntent,
+  hasHighPriorityIntent,
+  safetyCategoryWhenUncertain,
+} from "@/lib/email-intent";
 import { applyWorkflowModeToCategory } from "@/lib/workflow-mode-effects";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
@@ -134,6 +139,14 @@ export function intelligentFallbackCategory(row: GmailInboxRow): {
   category: InboxAiCategory;
   confidence: number;
 } {
+  const intent = analyzeEmailIntent(row);
+  if (intent.highPriority) {
+    return {
+      category: intent.suggestedCategory,
+      confidence: Math.max(0.82, intent.confidence),
+    };
+  }
+
   const hard = hardPostAiCategory(row);
   if (hard) {
     return { category: hard, confidence: 0.72 };
@@ -196,7 +209,7 @@ export function intelligentFallbackCategory(row: GmailInboxRow): {
     return { category: "promotion", confidence: 0.5 };
   }
 
-  return { category: "handled", confidence: 0.45 };
+  return { category: "needs_attention", confidence: 0.48 };
 }
 
 function finalizeRow(
@@ -214,13 +227,15 @@ function finalizeRow(
     confidence: c,
     gmailId: row.id,
   });
-  const coerced = coerceNeedsAttentionCategory(row, category);
+  let coerced = coerceNeedsAttentionCategory(row, category);
+  coerced = safetyCategoryWhenUncertain(row, coerced, c);
 
   return {
     ...row,
     category: coerced,
-    categoryConfidence: c,
-    categorySource: coerced !== category ? "heuristic" : source,
+    categoryConfidence: coerced !== category ? Math.max(c, 0.75) : c,
+    categorySource:
+      coerced !== category ? "heuristic" : source,
   };
 }
 
@@ -229,6 +244,18 @@ function correctUrgentAiLabel(
   category: InboxAiCategory,
   row: GmailInboxRow,
 ): { category: InboxAiCategory; source: CategorySource; confidenceMul: number } {
+  if (hasHighPriorityIntent(row)) {
+    const intent = analyzeEmailIntent(row);
+    if (category === "handled" || category === "promotion" || category === "newsletter") {
+      return {
+        category: intent.suggestedCategory,
+        source: "ai_coerced",
+        confidenceMul: 0.95,
+      };
+    }
+    return { category, source: "ai", confidenceMul: 1 };
+  }
+
   if (category !== "needs_attention" && category !== "quick_reply") {
     return { category, source: "ai", confidenceMul: 1 };
   }
@@ -245,6 +272,13 @@ function correctUrgentAiLabel(
 
   if (category === "needs_attention" && !looksLikeHumanConversation(row)) {
     const fb = intelligentFallbackCategory(row);
+    if (fb.category === "handled" && hasHighPriorityIntent(row)) {
+      return {
+        category: analyzeEmailIntent(row).suggestedCategory,
+        source: "ai_coerced",
+        confidenceMul: 0.9,
+      };
+    }
     return { category: fb.category, source: "ai_coerced", confidenceMul: 0.85 };
   }
 

@@ -1,6 +1,11 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import {
+  analyzeEmailIntent,
+  hasHighPriorityIntent,
+  isInboundBusinessInquiry,
+} from "@/lib/email-intent";
+import {
   emailHaystack,
   hasUrgentHumanSignal,
   isCommercialBulk,
@@ -30,9 +35,12 @@ const BILLING_VENDOR =
   /shopify|stripe|paypal|square|aws\s*billing|google\s*pay|apple\.com|itunes|microsoft\s*billing|adobe|zoom\.us|notion\.so|vercel|netlify|github|gitlab|heroku|digitalocean|linode|cloudflare/i;
 
 export function isBillingLikely(row: GmailInboxRow): boolean {
+  if (isInboundBusinessInquiry(row) || hasHighPriorityIntent(row)) {
+    return false;
+  }
   if (!BILLING_VENDOR.test(row.sender)) return false;
   const hay = `${row.subject} ${row.snippet ?? ""}`.toLowerCase();
-  return /invoice|receipt|billing|charged|subscription|payment due|amount due|summary|statement|plan renewal|your bill|monthly invoice/i.test(
+  return /invoice|receipt|charged|subscription renewed|payment due|amount due|statement|plan renewal|your bill|monthly invoice/i.test(
     hay,
   );
 }
@@ -214,6 +222,16 @@ export type RuleClassifyResult = {
  * and the message may need AI / human triage.
  */
 export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
+  const intent = analyzeEmailIntent(row);
+  if (intent.highPriority) {
+    return {
+      category: intent.suggestedCategory,
+      confidence: Math.max(0.88, intent.confidence),
+      scores: computeInboxRuleScores(row),
+      matchType: "hard",
+    };
+  }
+
   const scores = computeInboxRuleScores(row);
 
   if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row)) {
@@ -317,6 +335,9 @@ export function commercialLeanCategory(row: GmailInboxRow): InboxAiCategory | nu
 }
 
 export function hardPostAiCategory(row: GmailInboxRow): InboxAiCategory | null {
+  if (hasHighPriorityIntent(row)) {
+    return analyzeEmailIntent(row).suggestedCategory;
+  }
   if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row)) return "handled";
   if (isCommercialBulk(row) && !hasUrgentHumanSignal(row)) {
     const scores = computeInboxRuleScores(row);
@@ -348,6 +369,20 @@ export function coerceNeedsAttentionCategory(
   row: GmailInboxRow,
   category: InboxAiCategory,
 ): InboxAiCategory {
+  if (hasHighPriorityIntent(row)) {
+    const intent = analyzeEmailIntent(row);
+    if (
+      category === "handled" ||
+      category === "promotion" ||
+      category === "newsletter"
+    ) {
+      return intent.suggestedCategory;
+    }
+    if (intent.kinds.includes("pricing_inquiry") || intent.kinds.includes("sales_lead")) {
+      return "needs_attention";
+    }
+  }
+
   if (category !== "needs_attention" && category !== "quick_reply") {
     return category;
   }

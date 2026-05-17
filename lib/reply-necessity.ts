@@ -1,5 +1,6 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { analyzeEmailIntent, requiresHumanReply } from "@/lib/email-intent";
 import {
   hasUrgentHumanSignal,
   isCommercialBulk,
@@ -35,6 +36,27 @@ export function assessReplyNeed(input: {
 }): ReplyNeedAssessment {
   const { row, category, workflowMode = "assist" } = input;
   const subject = (row.subject ?? "").trim();
+  const rowForSignals = row as GmailInboxRow;
+  const intent = analyzeEmailIntent(rowForSignals);
+
+  if (intent.requiresReply || requiresHumanReply(rowForSignals)) {
+    const action =
+      intent.opportunityHint ??
+      (intent.kinds.includes("pricing_inquiry")
+        ? "Review pricing question and reply with details."
+        : "Review and reply when ready.");
+    return {
+      recommended: true,
+      reason:
+        intent.kinds.includes("pricing_inquiry")
+          ? "Pricing or plan inquiry — a reply is expected."
+          : intent.kinds.includes("sales_lead")
+            ? "Inbound business opportunity — reply recommended."
+            : "Direct questions or requests that need a response.",
+      suggestedAction: action,
+      confidence: Math.max(0.85, intent.confidence),
+    };
+  }
 
   if (category === "promotion") {
     return {
@@ -53,8 +75,6 @@ export function assessReplyNeed(input: {
       confidence: 0.9,
     };
   }
-
-  const rowForSignals = row as GmailInboxRow;
 
   if (category === "handled") {
     if (isTransactionalFyi(rowForSignals) && !hasUrgentHumanSignal(rowForSignals)) {
@@ -117,6 +137,15 @@ export function assessReplyNeed(input: {
       recommended: true,
       reason: "May benefit from a short reply.",
       suggestedAction: "Optional quick response.",
+      confidence: 0.55,
+    };
+  }
+
+  if (hasUrgentHumanSignal(rowForSignals)) {
+    return {
+      recommended: true,
+      reason: "May need a response.",
+      suggestedAction: "Review and reply if appropriate.",
       confidence: 0.55,
     };
   }

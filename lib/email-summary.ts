@@ -6,6 +6,7 @@ import {
   readOpenRouterChatContent,
   REPLY_MODEL,
 } from "@/lib/openrouter-reply";
+import { analyzeEmailIntent, intentSummaryLine } from "@/lib/email-intent";
 import { emailHaystack, isCommercialBulk } from "@/lib/inbox-triage-signals";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
@@ -20,9 +21,15 @@ export function heuristicEmailSummary(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
   category: InboxAiCategory,
 ): string {
+  const fullRow = row as GmailInboxRow;
+  const intentLine = intentSummaryLine(fullRow);
+  if (intentLine) {
+    return intentLine;
+  }
+
   const subject = (row.subject ?? "").trim();
   const topic = topicFromSubject(subject || "this message");
-  const hay = emailHaystack(row as GmailInboxRow);
+  const hay = emailHaystack(fullRow);
 
   if (category === "promotion") {
     if (/instagram|tiktok|facebook|linkedin/i.test(hay)) {
@@ -76,8 +83,9 @@ Tone rules (critical):
 Context:
 - Category: ${category.replace(/_/g, " ")}
 - Workflow mode: ${workflowMode}
-- If promotional/newsletter/handled: state no action needed
-- If needs attention: say what it's about and that it may need a response
+- If pricing/sales/questions: describe intent and that a reply is likely needed
+- If promotional/newsletter/automated FYI only: state no action needed
+- NEVER say "automated update" for emails asking questions or about pricing
 
 Good examples:
 - "Marketing email about book sales income. No action needed."
@@ -101,6 +109,11 @@ export async function buildEmailSummary(
 
   const apiKey = getAiApiKey();
   if (!apiKey) {
+    return fallback;
+  }
+
+  const intent = analyzeEmailIntent(row as GmailInboxRow);
+  if (intent.highPriority) {
     return fallback;
   }
 
