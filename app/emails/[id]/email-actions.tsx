@@ -114,6 +114,47 @@ function getClientRefineFallback(language: ReplyLanguage) {
   return getClientFallbackReplies(language)[0];
 }
 
+function formatReplyApiError(result: {
+  error?: string;
+  errorCode?: string;
+  debug?: Record<string, unknown>;
+}): string {
+  const parts: string[] = [];
+  if (result.error) {
+    parts.push(result.error);
+  }
+  if (result.errorCode) {
+    parts.push(`(${result.errorCode})`);
+  }
+  const debug = result.debug;
+  if (debug) {
+    const extras: string[] = [];
+    if (debug.provider) extras.push(`provider: ${String(debug.provider)}`);
+    if (debug.model) extras.push(`model: ${String(debug.model)}`);
+    if (debug.httpStatus) extras.push(`HTTP ${String(debug.httpStatus)}`);
+    if (debug.stage) extras.push(`stage: ${String(debug.stage)}`);
+    if (extras.length) {
+      parts.push(extras.join(" · "));
+    }
+  }
+  return parts.join(" ") || "Reply generation failed.";
+}
+
+/** Dedupe AI replies; never pad with generic templates. */
+function normalizeAiReplies(replies: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of replies) {
+    const trimmed = raw.trim();
+    if (!trimmed || seen.has(trimmed) || out.length >= 3) {
+      continue;
+    }
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
 function ensureThreeReplies(
   replies: string[],
   fallbackReplies: [string, string, string],
@@ -818,18 +859,19 @@ return () => clearTimeout(timeout);
           if (error instanceof DOMException && error.name === "AbortError") {
             console.error("[EmailActions] Reply fetch timed out or was aborted", error);
             setStatusMessage(
-              ui.emailActions.statusTimeoutFallback,
+              `Reply generation timed out after ${FETCH_REPLY_TIMEOUT_MS / 1000}s. Check server logs and /api/reply/health.`,
             );
           } else {
             console.error("[EmailActions] Reply fetch failed", error);
             setStatusMessage(
-              ui.emailActions.statusNetworkFallback,
+              error instanceof Error
+                ? `Network error: ${error.message}`
+                : ui.emailActions.statusNetworkFallback,
             );
           }
-          const triple = ensureThreeReplies([], fallbackTriple);
-          setReplyOptions([...triple]);
-          setStreamedReplies([...triple]);
-          setSelectedReplyIndex(0);
+          setReplyOptions([]);
+          setStreamedReplies([]);
+          setSelectedReplyIndex(null);
           return;
         }
 
@@ -899,17 +941,32 @@ return () => clearTimeout(timeout);
               return;
             }
 
-            const quickTriple = ensureThreeReplies(replies, fallbackTriple);
-            const usedFallback = quickTriple.every((r, i) => r === fallbackTriple[i]);
-            setReplyOptions([...quickTriple]);
-            setStreamedReplies([...quickTriple]);
-            setSelectedReplyIndex(0);
-            setEditedReplyDraft(quickTriple[0] ?? "");
-            setStatusMessage(
-              streamHadError && usedFallback
-                ? ui.emailActions.statusGenerateFailed
-                : ui.emailActions.statusChooseReply,
-            );
+            const aiOnly = replies.filter((r) => r.trim().length > 0);
+            if (aiOnly.length === 0) {
+              setReplyOptions([]);
+              setStreamedReplies([]);
+              setSelectedReplyIndex(null);
+              setStatusMessage(
+                streamHadError
+                  ? "Stream ended without reply text — see server logs."
+                  : ui.emailActions.statusGenerateFailed,
+              );
+            } else {
+              const quickTriple = ensureThreeReplies(aiOnly, fallbackTriple);
+              const usedFallback = quickTriple.every((r, i) => r === fallbackTriple[i]);
+              if (usedFallback) {
+                setReplyOptions([]);
+                setStreamedReplies([]);
+                setSelectedReplyIndex(null);
+                setStatusMessage(ui.emailActions.statusGenerateFailed);
+              } else {
+                setReplyOptions([...quickTriple]);
+                setStreamedReplies([...quickTriple]);
+                setSelectedReplyIndex(0);
+                setEditedReplyDraft(quickTriple[0] ?? "");
+                setStatusMessage(ui.emailActions.statusChooseReply);
+              }
+            }
             if (!options?.skipUsageIncrement) {
               incrementGeneratedRepliesCount();
             }
@@ -918,10 +975,9 @@ return () => clearTimeout(timeout);
             if (runId !== generateRunIdRef.current) {
               return;
             }
-            const triple = ensureThreeReplies([], fallbackTriple);
-            setReplyOptions([...triple]);
-            setStreamedReplies([...triple]);
-            setSelectedReplyIndex(0);
+            setReplyOptions([]);
+            setStreamedReplies([]);
+            setSelectedReplyIndex(null);
             setStatusMessage(ui.emailActions.statusUnexpectedFallback);
           } finally {
             if (runId === generateRunIdRef.current) {
@@ -941,6 +997,7 @@ return () => clearTimeout(timeout);
           replyRecommended?: boolean;
           reason?: string;
           suggestedAction?: string;
+          debug?: Record<string, unknown>;
         } = {};
         try {
           result = (await response.json()) as typeof result;
@@ -950,10 +1007,9 @@ return () => clearTimeout(timeout);
           }
           console.error("[EmailActions] Invalid JSON from /api/reply", error);
           setStatusMessage(ui.emailActions.statusInvalidJson);
-          const triple = ensureThreeReplies([], fallbackTriple);
-          setReplyOptions([...triple]);
-          setStreamedReplies([...triple]);
-          setSelectedReplyIndex(0);
+          setReplyOptions([]);
+          setStreamedReplies([]);
+          setSelectedReplyIndex(null);
           return;
         }
 
@@ -969,20 +1025,29 @@ return () => clearTimeout(timeout);
 
         const rawQuick =
           result.replies?.filter((reply) => reply.trim().length > 0) ?? [];
-        const quickTriple = ensureThreeReplies(rawQuick, fallbackTriple);
-        const usedFallback = quickTriple.every((r, i) => r === fallbackTriple[i]);
+        const showError =
+          !response.ok ||
+          result.source === "error" ||
+          result.fallbackActivated === true ||
+          (response.ok && result.source !== "ai" && rawQuick.length === 0);
 
-        if (!response.ok) {
+        if (showError) {
           if (runId !== generateRunIdRef.current) {
             return;
           }
-          setStatusMessage(
-            result.error ?? ui.emailActions.statusGenerateFailed,
-          );
-          setReplyOptions([...quickTriple]);
-          setStreamedReplies([...quickTriple]);
-          setSelectedReplyIndex(0);
-          setEditedReplyDraft(quickTriple[0] ?? "");
+          setReplyOptions([]);
+          setStreamedReplies([]);
+          setSelectedReplyIndex(null);
+          setEditedReplyDraft("");
+          editedReplyDraftRef.current = "";
+          setIsThinking(false);
+          if (result.errorCode === "missing_api_key") {
+            setStatusMessage(
+              "AI replies need an API key — add OPENROUTER_API_KEY or OPENAI_API_KEY to .env.local, then restart dev server.",
+            );
+          } else {
+            setStatusMessage(formatReplyApiError(result));
+          }
           return;
         }
 
@@ -990,19 +1055,22 @@ return () => clearTimeout(timeout);
           return;
         }
 
-        setReplyOptions([...quickTriple]);
-        setStreamedReplies([...quickTriple]);
+        const aiReplies = normalizeAiReplies(rawQuick);
+        if (aiReplies.length === 0) {
+          setReplyOptions([]);
+          setStreamedReplies([]);
+          setSelectedReplyIndex(null);
+          setStatusMessage(formatReplyApiError(result));
+          return;
+        }
+
+        setReplyOptions(aiReplies);
+        setStreamedReplies(aiReplies);
         setIsThinking(false);
         setSelectedReplyIndex(0);
-        if (result.errorCode === "missing_api_key") {
-          setStatusMessage(
-            "AI replies need an API key — add OPENAI_API_KEY or OPENROUTER_API_KEY to .env.local",
-          );
-        } else if (result.fallbackActivated || (usedFallback && result.source !== "ai")) {
-          setStatusMessage(ui.emailActions.statusGenerateFailed);
-        } else {
-          setStatusMessage(ui.emailActions.statusChooseReply);
-        }
+        setEditedReplyDraft(aiReplies[0] ?? "");
+        editedReplyDraftRef.current = aiReplies[0] ?? "";
+        setStatusMessage(ui.emailActions.statusChooseReply);
         if (!options?.skipUsageIncrement) {
           incrementGeneratedRepliesCount();
         }
@@ -1011,15 +1079,10 @@ return () => clearTimeout(timeout);
           return;
         }
         console.error("generateReplyOptions failed", error);
-        const triple = ensureThreeReplies([], fallbackTriple);
-        setReplyOptions((current) => (current.length > 0 ? current : triple));
-        setSelectedReplyIndex((current) => current ?? 0);
-        setEditedReplyDraft((draft) => {
-          const next = draft.trim() ? draft : triple[0];
-          editedReplyDraftRef.current = next;
-          return next;
-        });
-        setStatusMessage("Showing quick reply suggestions.");
+        setReplyOptions([]);
+        setStatusMessage(
+          error instanceof Error ? error.message : "Reply generation failed unexpectedly.",
+        );
       } finally {
         window.clearTimeout(timeoutId);
         setIsThinking(false);

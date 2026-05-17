@@ -1,19 +1,10 @@
-/** OpenRouter / OpenAI-compatible key (used for categorization + replies). */
+import { getAiChatConfig, logAiChatConfig } from "@/lib/ai-chat-config";
+
+/** API key for OpenAI-compatible chat (OpenRouter or OpenAI direct). */
 export function getAiApiKey(): string | null {
-  const openai = process.env.OPENAI_API_KEY?.trim();
-  if (openai) return openai;
-  const openrouter = process.env.OPENROUTER_API_KEY?.trim();
-  if (openrouter) return openrouter;
-  return null;
+  return getAiChatConfig()?.apiKey ?? null;
 }
 
 export function logAiKeyStatus(context: string): void {
-  const key = getAiApiKey();
-  if (key) {
-    console.log(`[${context}] AI API key: present (${key.slice(0, 7)}…)`);
-    return;
-  }
-  console.log(
-    `[${context}] AI API key: MISSING — set OPENAI_API_KEY or OPENROUTER_API_KEY in .env.local`,
-  );
+  logAiChatConfig(context);
 }

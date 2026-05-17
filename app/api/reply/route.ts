@@ -1,4 +1,6 @@
+import { replySilentFallbackDisabled } from "@/lib/ai-chat-config";
 import { getAiApiKey, logAiKeyStatus } from "@/lib/ai-api-key";
+import { failureToClientPayload } from "@/lib/reply-generation-result";
 import { parseHandledBrainHeader } from "@/lib/handled-brain/client-storage";
 import { formatRelevantBrainForPrompt } from "@/lib/handled-brain/format-for-prompt";
 import { loadHandledBrainForUser } from "@/lib/handled-brain/store";
@@ -249,7 +251,8 @@ function mergeGenerateReplies(
   tone: "casual" | "professional" | "friendly",
   language: "english" | "italian" | "spanish" | "french" | "german",
   userName?: string,
-): [string, string, string] {
+  allowGenericFallback = true,
+): { ok: true; replies: [string, string, string] } | { ok: false; message: string } {
   const fallback = getFallbackReplies(tone, language, userName);
   const merged: string[] = [];
   const seen = new Set<string>();
@@ -262,8 +265,15 @@ function mergeGenerateReplies(
     seen.add(t);
     merged.push(t);
     if (merged.length >= 3) {
-      return [merged[0]!, merged[1]!, merged[2]!];
+      return { ok: true, replies: [merged[0]!, merged[1]!, merged[2]!] };
     }
+  }
+
+  if (!allowGenericFallback) {
+    return {
+      ok: false,
+      message: `AI returned only ${merged.length} unique reply(s); expected 3 contextual variations.`,
+    };
   }
 
   for (const line of fallback) {
@@ -274,7 +284,7 @@ function mergeGenerateReplies(
     seen.add(t);
     merged.push(line);
     if (merged.length >= 3) {
-      return [merged[0]!, merged[1]!, merged[2]!];
+      return { ok: true, replies: [merged[0]!, merged[1]!, merged[2]!] };
     }
   }
 
@@ -282,7 +292,7 @@ function mergeGenerateReplies(
     merged.push(fallback[merged.length % 3]!);
   }
 
-  return [merged[0]!, merged[1]!, merged[2]!];
+  return { ok: true, replies: [merged[0]!, merged[1]!, merged[2]!] };
 }
 
 const DEFAULT_REFINE_FALLBACK = "Got it, thanks! I'll get back to you.";
@@ -360,7 +370,7 @@ ${email}`;
       });
 
       if (!openAiResponse?.ok || !openAiResponse.body) {
-        const fallbackReplies = await generateEmailRepliesJson(
+        const jsonResult = await generateEmailRepliesJson(
           apiKey,
           buildGenerateReplyPrompt({
             email,
@@ -372,10 +382,10 @@ ${email}`;
           }),
           upstreamSignal,
         );
-        if (fallbackReplies?.length) {
-          for (let i = 0; i < Math.min(3, fallbackReplies.length); i++) {
+        if (jsonResult.ok && jsonResult.replies.length) {
+          for (let i = 0; i < Math.min(3, jsonResult.replies.length); i++) {
             controllerRef.enqueue(
-              encoder.encode(JSON.stringify({ index: i, text: fallbackReplies[i] }) + "\n"),
+              encoder.encode(JSON.stringify({ index: i, text: jsonResult.replies[i] }) + "\n"),
             );
           }
         } else {
@@ -448,7 +458,7 @@ ${email}`;
         const finalSlots = [tail[0] ?? "", tail[1] ?? "", tail[2] ?? ""];
         const anyContent = finalSlots.some((s) => s.trim().length > 0);
         if (!anyContent) {
-          const jsonReplies = await generateEmailRepliesJson(
+          const jsonResult = await generateEmailRepliesJson(
             apiKey,
             buildGenerateReplyPrompt({
               email,
@@ -460,10 +470,10 @@ ${email}`;
             }),
             upstreamSignal,
           );
-          if (jsonReplies?.length) {
-            for (let i = 0; i < Math.min(3, jsonReplies.length); i++) {
+          if (jsonResult.ok && jsonResult.replies.length) {
+            for (let i = 0; i < Math.min(3, jsonResult.replies.length); i++) {
               controllerRef.enqueue(
-                encoder.encode(JSON.stringify({ index: i, text: jsonReplies[i] }) + "\n"),
+                encoder.encode(JSON.stringify({ index: i, text: jsonResult.replies[i] }) + "\n"),
               );
             }
           }
@@ -569,22 +579,32 @@ export async function POST(request: Request) {
   logAiKeyStatus("api/reply");
   const apiKey = getAiApiKey();
 
+  const noSilentFallback = replySilentFallbackDisabled();
+
   if (!apiKey) {
-    console.log("REPLY GENERATION ERROR:", "OPENAI_API_KEY and OPENROUTER_API_KEY missing");
+    console.error("[api/reply] missing_api_key");
+    const payload = {
+      source: "error" as const,
+      errorCode: "missing_api_key",
+      error: "Add OPENROUTER_API_KEY or OPENAI_API_KEY to .env.local (OpenRouter key → openrouter.ai; OpenAI key → api.openai.com).",
+    };
     if (mode === "refine") {
+      if (noSilentFallback) {
+        return Response.json(payload, { status: 503 });
+      }
       return Response.json({
+        ...payload,
         reply: cleanReply(currentReply ?? getRefineFallback(tone, language, userName)),
         source: "fallback",
-        errorCode: "missing_api_key",
-        error: "Add OPENAI_API_KEY or OPENROUTER_API_KEY to .env.local",
       });
     }
-
+    if (noSilentFallback) {
+      return Response.json(payload, { status: 503 });
+    }
     return Response.json({
+      ...payload,
       replies: getFallbackReplies(tone, language, userName),
       source: "fallback",
-      errorCode: "missing_api_key",
-      error: "Add OPENAI_API_KEY or OPENROUTER_API_KEY to .env.local",
     });
   }
 
@@ -668,21 +688,55 @@ ${currentReply}`
 
   try {
     if (mode === "generate") {
-      const parsed = await generateEmailRepliesJson(apiKey, generatePrompt, controller.signal);
-      if (parsed?.length) {
+      const generated = await generateEmailRepliesJson(apiKey, generatePrompt, controller.signal);
+
+      if (generated.ok) {
         const merged = mergeGenerateReplies(
-          parsed.map((r) => cleanReply(r)),
+          generated.replies.map((r) => cleanReply(r)),
           tone,
           language,
           userName,
+          !noSilentFallback,
         );
-        return Response.json({ replies: merged, source: "ai" });
+        if (merged.ok) {
+          return Response.json({
+            replies: merged.replies,
+            source: "ai",
+            provider: generated.provider,
+            model: generated.model,
+          });
+        }
+        if (noSilentFallback) {
+          return Response.json(
+            {
+              source: "error",
+              errorCode: "insufficient_replies",
+              error: merged.message,
+              debug: { aiCount: generated.replies.length },
+            },
+            { status: 502 },
+          );
+        }
       }
-      console.log("REPLY GENERATION ERROR:", "generate returned no replies — using fallbacks");
+
+      const failPayload = generated.ok
+        ? null
+        : failureToClientPayload(generated);
+
+      console.error("[api/reply] generate failed:", failPayload);
+
+      if (noSilentFallback && failPayload) {
+        return Response.json(
+          { source: "error", fallbackActivated: false, ...failPayload },
+          { status: generated.ok ? 502 : generated.httpStatus === 401 ? 401 : 502 },
+        );
+      }
+
       return Response.json({
         replies: getFallbackReplies(tone, language, userName),
         source: "fallback",
-        errorCode: "generation_failed",
+        errorCode: failPayload?.errorCode ?? "generation_failed",
+        error: failPayload?.error,
         fallbackActivated: true,
       });
     }
@@ -709,11 +763,37 @@ ${currentReply}`
 
     return Response.json({ reply: cleanReply(content), source: "ai" });
   } catch (error) {
-    console.log("REPLY GENERATION ERROR:", error);
+    console.error("[api/reply] request_failed:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    const isAbort = error instanceof Error && error.name === "AbortError";
+
     if (mode === "refine") {
+      if (noSilentFallback) {
+        return Response.json(
+          {
+            source: "error",
+            errorCode: isAbort ? "timeout" : "request_failed",
+            error: message,
+          },
+          { status: isAbort ? 504 : 502 },
+        );
+      }
       return Response.json({
         reply: cleanReply(currentReply ?? getRefineFallback(tone, language, userName)),
+        source: "fallback",
       });
+    }
+
+    if (noSilentFallback) {
+      return Response.json(
+        {
+          source: "error",
+          errorCode: isAbort ? "timeout" : "request_failed",
+          error: message,
+          fallbackActivated: false,
+        },
+        { status: isAbort ? 504 : 502 },
+      );
     }
 
     return Response.json({
