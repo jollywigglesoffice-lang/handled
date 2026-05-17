@@ -14,7 +14,12 @@ export type EmailIntentKind =
   | "direct_question"
   | "decision_required"
   | "deadline"
-  | "information_request";
+  | "information_request"
+  | "unsubscribe"
+  | "personal_conversation"
+  | "fyi_no_action"
+  | "confirmation"
+  | "urgent_request";
 
 export type EmailIntentAnalysis = {
   /** Overrides promo/newsletter/handled heuristics */
@@ -53,7 +58,14 @@ const INFO_REQUEST =
 
 const QUESTION_MARK = /\?/;
 
-const MULTI_QUESTION = /(?:\?|do you|can you|would you|could you|how do|what is|when is|where is)/gi;
+const UNSUBSCRIBE =
+  /unsubscribe|opt.?out|remove me from (?:your |the )?list|stop (?:sending|emailing) me/i;
+
+const PERSONAL_OPEN =
+  /(?:^|\n)(?:hi|hey|hello)\s+\w+[,!]?\s*(?:how are you|hope you(?:'re| are) well|great (?:to|hearing)|catching up)/im;
+
+const CONFIRMATION_ONLY =
+  /^(?:confirmed|sounds good|works for me|see you then|got it)[\s.!]*$/im;
 
 /** Inbound sales/pricing — NOT vendor billing receipts */
 export function isInboundBusinessInquiry(row: GmailInboxRow): boolean {
@@ -123,6 +135,36 @@ export function analyzeEmailIntent(row: GmailInboxRow): EmailIntentAnalysis {
     kinds.push("information_request");
     reasons.push("information_request");
     confidence = Math.max(confidence, 0.8);
+  }
+  if (UNSUBSCRIBE.test(hay)) {
+    kinds.push("unsubscribe");
+    reasons.push("unsubscribe");
+    confidence = Math.max(confidence, 0.9);
+  }
+  if (PERSONAL_OPEN.test(hay) && !PRICING.test(hay) && !SALES_LEAD.test(hay)) {
+    kinds.push("personal_conversation");
+    reasons.push("personal_conversation");
+    confidence = Math.max(confidence, 0.7);
+  }
+  if (CONFIRMATION_ONLY.test(hay.trim()) && countQuestions(hay) === 0) {
+    kinds.push("confirmation");
+    reasons.push("confirmation");
+    confidence = Math.max(confidence, 0.75);
+  }
+  if (/urgent|asap|time.?sensitive|need (?:this|it) (?:today|now)/i.test(hay)) {
+    kinds.push("urgent_request");
+    reasons.push("urgent_request");
+    confidence = Math.max(confidence, 0.88);
+  }
+  if (
+    /(?:for your (?:info|reference)|fyi|no action needed|just (?:wanted to )?let you know)/i.test(
+      hay,
+    ) &&
+    countQuestions(hay) === 0
+  ) {
+    kinds.push("fyi_no_action");
+    reasons.push("fyi_no_action");
+    confidence = Math.max(confidence, 0.72);
   }
 
   const qCount = countQuestions(hay);

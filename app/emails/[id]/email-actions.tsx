@@ -748,11 +748,10 @@ return () => clearTimeout(timeout);
         index,
         tone: liveTone,
       });
-      const selectedReply =
-        replyOptions[index] ?? emergencyReplies[index] ?? emergencyReplies[0];
+      const selectedReply = replyOptions[index] ?? "";
+      if (!selectedReply) return;
       setReplyOptions((previous) => {
-        const base =
-          previous.length > 0 ? previous : [...emergencyReplies];
+        const base = previous.length > 0 ? previous : [];
         if (selectedReplyIndex === null) {
           return base;
         }
@@ -821,8 +820,7 @@ return () => clearTimeout(timeout);
         setStatusMessage(wfBehavior.status);
         setStreamedReplies([]);
 
-        const intent = detectIntent(emailContent);
-        const personality = buildPersonality(adjustedTone, intent);
+        const personality = buildPersonality(adjustedTone, "server-classified");
 
         let response: Response;
         try {
@@ -839,7 +837,6 @@ return () => clearTimeout(timeout);
               toneSlider: adjustedTone,
               language,
               stream: false,
-              intent,
               personality,
               memory: memoryProfile,
               workflowMode,
@@ -1232,15 +1229,6 @@ return () => clearTimeout(timeout);
     };
   }, [sendSuccessMessage]);
 
-  useEffect(() => {
-    if (!authUser?.id) return;
-    if (!emailContent) return;
-    if (selectedReplyIndex !== null) return;
-
-    setSelectedReplyIndex(0);
-    setEditedReplyDraft(emergencyReplies[0]);
-    editedReplyDraftRef.current = emergencyReplies[0];
-  }, [authUser?.id, emailContent, emergencyReplies, selectedReplyIndex]);
 
   function consumeFreeUse() {
     if (isPro) return true;
@@ -1490,9 +1478,12 @@ return () => clearTimeout(timeout);
     setAuthUser(null);
   }
 
-  const visibleRepliesBase =
-    replyOptions.length > 0 ? replyOptions : emergencyReplies;
-  const visibleReplies = visibleRepliesBase.slice(0, workflowBehavior.replyCount);
+  const visibleReplies =
+    replyOptions.length > 0
+      ? replyOptions.slice(0, workflowBehavior.replyCount)
+      : isGeneratingReplies || isThinking
+        ? []
+        : emergencyReplies.slice(0, workflowBehavior.replyCount);
 
   if (!authUser) {
     const nextPath =

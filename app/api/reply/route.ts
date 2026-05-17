@@ -11,7 +11,14 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   buildGenerateReplyPrompt,
   generateEmailRepliesJson,
+  generateEmailRepliesWithValidation,
 } from "@/lib/generate-email-replies";
+import {
+  analyzeReplyContext,
+  formatReplyContextForPrompt,
+  logReplyContextAnalysis,
+} from "@/lib/reply-context-analysis";
+import { validateGeneratedReplies } from "@/lib/reply-quality";
 import {
   callOpenRouterChat,
   REPLY_MODEL,
@@ -301,52 +308,23 @@ function createGenerateReplyNdjsonStream(
   email: string,
   userName: string | undefined,
   tone: "casual" | "professional" | "friendly",
-  language: "english" | "italian" | "spanish" | "french" | "german",
   languageLabel: string,
   apiKey: string,
   upstreamSignal: AbortSignal,
-  intent: string | undefined,
-  personality: ReplyRequestBody["personality"],
-  memory: ReplyRequestBody["memory"],
+  contextBlock: string,
   workflowMode: ReplyRequestBody["workflowMode"],
-  workflowBehavior: ReplyRequestBody["workflowBehavior"],
-  toneSlider: number | undefined,
+  replyContext: ReturnType<typeof analyzeReplyContext>,
+  brainContext: string,
+  category: ReturnType<typeof normalizeInboxAiCategory>,
 ): Response {
-  const contextBlock = replyContextAppendix(
-    intent,
-    personality,
-    memory,
-    workflowMode,
-    workflowBehavior,
-    toneSlider,
-  );
-  const streamPrompt = `Write 3 different short reply variations to this email.
+  const streamPrompt = `${formatReplyContextForPrompt(replyContext, tone, languageLabel, workflowMode)}
 
-Rules:
-- Keep each reply under 3 sentences
-- Keep each reply short and quick
-- If the email is simple, keep each reply to one sentence
-- Use natural, human language, like texting a colleague
-- Avoid corporate tone
-- Avoid overly polite language
-- Avoid sounding overly helpful
-- Keep the tone ${tone}
-- Write every reply in ${languageLabel}. (All three variations must be in that language.)
-- The first reply is the recommended default (may be slightly fuller when a greeting fits naturally)
-- Replies 2 and 3 should be alternate phrasings, each meaningfully different from the others
-- Keep it simple and direct
-- If appropriate, include the person's name
-- If appropriate, make the reply sound like it was written by ${userName ?? "the user"}
-
-Format (critical):
-- Output plain text only. No JSON. No markdown fences.
-- Output reply 1, then a line containing exactly ${REPLY_STREAM_SEPARATOR}, then reply 2, then a line with exactly ${REPLY_STREAM_SEPARATOR}, then reply 3.
-
-Tone:
-- calm
-- clear
-- direct
+${brainContext ? `${brainContext}\n` : ""}
 ${contextBlock}
+
+Write 3 reply variations as plain text (not JSON). Each must address the sender's intent — never generic "looks good to me" unless pure FYI.
+Tone: ${tone}. Language: ${languageLabel}.
+Output reply 1, then a line exactly "${REPLY_STREAM_SEPARATOR}", then reply 2, then "${REPLY_STREAM_SEPARATOR}", then reply 3.
 
 Email:
 ${email}`;
@@ -379,6 +357,9 @@ ${email}`;
             userName,
             contextBlock,
             workflowMode,
+            category,
+            brainContext,
+            replyContext,
           }),
           upstreamSignal,
         );
@@ -467,6 +448,9 @@ ${email}`;
               userName,
               contextBlock,
               workflowMode,
+              category,
+              brainContext,
+              replyContext,
             }),
             upstreamSignal,
           );
@@ -608,24 +592,6 @@ export async function POST(request: Request) {
     });
   }
 
-  if (body.stream === true && mode === "generate") {
-    return createGenerateReplyNdjsonStream(
-      email,
-      userName,
-      tone,
-      language,
-      languageLabel,
-      apiKey,
-      request.signal,
-      body.intent,
-      body.personality,
-      body.memory,
-      body.workflowMode,
-      body.workflowBehavior,
-      body.toneSlider,
-    );
-  }
-
   const contextBlock = replyContextAppendix(
     body.intent,
     body.personality,
@@ -636,9 +602,50 @@ export async function POST(request: Request) {
   );
 
   const brainContext = await resolveBrainContext(request, email, body.brain);
+  const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
+
+  if (body.stream === true && mode === "generate") {
+    const streamCtx = analyzeReplyContext({
+      email,
+      sender: body.sender,
+      subject: body.subject,
+      category,
+      workflowMode: body.workflowMode,
+    });
+    logReplyContextAnalysis(streamCtx, "pre-generate-stream");
+    return createGenerateReplyNdjsonStream(
+      email,
+      userName,
+      tone,
+      languageLabel,
+      apiKey,
+      request.signal,
+      contextBlock,
+      body.workflowMode,
+      streamCtx,
+      brainContext,
+      category,
+    );
+  }
+
+  const replyContext =
+    mode === "generate"
+      ? analyzeReplyContext({
+          email,
+          sender: body.sender,
+          subject: body.subject,
+          category,
+          workflowMode: body.workflowMode,
+        })
+      : null;
+
+  if (replyContext) {
+    logReplyContextAnalysis(replyContext, "pre-generate");
+    console.log("[api/reply] reply style:", replyContext.replyStyle);
+  }
 
   const generatePrompt =
-    mode === "generate"
+    mode === "generate" && replyContext
       ? buildGenerateReplyPrompt({
           email,
           tone,
@@ -646,8 +653,9 @@ export async function POST(request: Request) {
           userName,
           contextBlock,
           workflowMode: body.workflowMode,
-          category: normalizeInboxAiCategory(body.category ?? "needs_attention"),
+          category,
           brainContext,
+          replyContext,
         })
       : "";
 
@@ -669,10 +677,7 @@ Rules:
 - Write the reply in ${languageLabel}.
 - If appropriate, sign off as ${userName ?? "the user"}
 
-Style examples:
-- "Got it, thanks."
-- "Sounds good to me."
-- "I’ll take a look and get back to you."
+Keep the same intent and substance — do not turn a substantive draft into a generic acknowledgment.
 
 Return only the refined reply text.
 
@@ -688,22 +693,44 @@ ${currentReply}`
 
   try {
     if (mode === "generate") {
-      const generated = await generateEmailRepliesJson(apiKey, generatePrompt, controller.signal);
+      const generated = replyContext
+        ? await generateEmailRepliesWithValidation(
+            apiKey,
+            generatePrompt,
+            (replies) =>
+              validateGeneratedReplies(
+                replies.map((r) => cleanReply(r)),
+                replyContext,
+              ),
+            controller.signal,
+          )
+        : await generateEmailRepliesJson(apiKey, generatePrompt, controller.signal);
 
       if (generated.ok) {
+        const cleaned = generated.replies.map((r) => cleanReply(r));
         const merged = mergeGenerateReplies(
-          generated.replies.map((r) => cleanReply(r)),
+          cleaned,
           tone,
           language,
           userName,
           !noSilentFallback,
         );
         if (merged.ok) {
+          const validationWarnings =
+            "validationFailures" in generated &&
+            Array.isArray(generated.validationFailures) &&
+            generated.validationFailures.length > 0
+              ? generated.validationFailures
+              : null;
+          if (validationWarnings) {
+            console.warn("[api/reply] returned replies despite validation warnings", validationWarnings);
+          }
           return Response.json({
             replies: merged.replies,
             source: "ai",
             provider: generated.provider,
             model: generated.model,
+            replyContext: replyContext?.logSummary,
           });
         }
         if (noSilentFallback) {
@@ -723,7 +750,16 @@ ${currentReply}`
         ? null
         : failureToClientPayload(generated);
 
-      console.error("[api/reply] generate failed:", failPayload);
+      if (
+        !generated.ok &&
+        "validationFailures" in generated &&
+        Array.isArray(generated.validationFailures) &&
+        generated.validationFailures.length > 0
+      ) {
+        console.error("[api/reply] validation failed:", generated.validationFailures);
+      }
+
+      console.error("[api/reply] generate failed:", failPayload, replyContext?.logSummary);
 
       if (noSilentFallback && failPayload) {
         return Response.json(
