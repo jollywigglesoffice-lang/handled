@@ -7,7 +7,7 @@ import { buildEmailSummary } from "@/lib/email-summary";
 import { gmailGetMessageFull, gmailGetMessageMetadata } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
-import { loadInboxUserRulesForUser } from "@/lib/inbox-user-rules";
+import { loadCategorizationRulesForUser } from "@/lib/load-user-categorization-context";
 import { assessReplyNeed } from "@/lib/reply-necessity";
 import { isLikelyHtml } from "@/lib/sanitize-email-html";
 import { getEmailById, type InboxSectionTitle } from "@/lib/fake-emails";
@@ -41,7 +41,7 @@ async function enrichGmailEmail(
     internalDateMs: msg.internalDateMs ?? 0,
   };
 
-  const userRules = await loadInboxUserRulesForUser(userId);
+  const userRules = await loadCategorizationRulesForUser(userId);
   const [categorized] = await categorizeGmailInboxRows([meta], {
     userRules,
     workflowMode,
@@ -136,7 +136,7 @@ export default async function EmailDetailPage({ params }: EmailDetailPageProps) 
   } catch {
     try {
       const meta = await gmailGetMessageMetadata(accessToken, id);
-      const userRules = await loadInboxUserRulesForUser(userId);
+      const userRules = await loadCategorizationRulesForUser(userId);
       const [categorized] = await categorizeGmailInboxRows([meta], {
         userRules,
         workflowMode,

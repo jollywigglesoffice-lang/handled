@@ -7,7 +7,7 @@ import {
 } from "@/lib/inbox-user-rules/store";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-const SETUP_SQL_PATH = "supabase/sql/inbox_rules_setup.sql";
+const SETUP_SQL_PATH = "supabase/sql/inbox_personalization_setup.sql";
 
 async function requireUserId(): Promise<
   { userId: string } | { error: NextResponse }
@@ -71,6 +71,18 @@ export async function PUT(request: Request) {
   const saved = await saveInboxUserRulesForUser(auth.userId, rules);
   if (!saved.ok) {
     console.error("[api/inbox-rules] PUT failed", saved.error);
+    if (saved.clientLocalOk) {
+      return NextResponse.json({
+        ok: true,
+        rules,
+        storageMode: "client_local",
+        dbAvailable: false,
+        hint: saved.hint,
+        setupSqlPath: SETUP_SQL_PATH,
+        message:
+          "Rules saved on this device. Run the setup SQL in Supabase to sync across devices.",
+      });
+    }
     return NextResponse.json(
       {
         error: saved.error,
@@ -88,8 +100,10 @@ export async function PUT(request: Request) {
     storageMode: saved.storageMode,
     message:
       saved.storageMode === "users_json_column"
-        ? "Rules saved to your profile. Run inbox_rules_setup.sql in Supabase for full table storage."
-        : "Rules saved.",
+        ? "Rules saved to your profile."
+        : saved.storageMode === "client_local"
+          ? "Rules saved on this device."
+          : "Rules saved.",
   });
 }
 

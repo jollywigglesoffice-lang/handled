@@ -5,6 +5,7 @@ import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { previewInboxTriage } from "@/lib/preview-inbox-triage";
 import { INBOX_RULE_TEMPLATES, templateToRules } from "@/lib/inbox-rule-templates";
 import type { InboxUserRule } from "@/lib/inbox-user-rules";
+import { saveClientInboxRules } from "@/lib/inbox-rules-client-storage";
 
 const DESTINATION_LABELS: Record<InboxAiCategory, string> = {
   needs_attention: "Needs your attention",
@@ -14,7 +15,7 @@ const DESTINATION_LABELS: Record<InboxAiCategory, string> = {
   handled: "Handled (receipts & FYI)",
 };
 
-const LOCAL_RULES_KEY = "handled_inbox_rules_draft";
+const LOCAL_RULES_KEY = "handled_inbox_rules_v1";
 
 function newKeywordRule(): InboxUserRule {
   return {
@@ -309,13 +310,16 @@ export function InboxPrioritySettings() {
       };
 
       if (!res.ok) {
-        setMessage(data.error ?? "Could not save rules.");
+        saveClientInboxRules(rules);
+        setMessage(data.error ?? "Could not save rules — kept on this device.");
         if (data.hint) {
-          setDbHint(`${data.hint} File: ${data.setupSqlPath ?? "supabase/sql/inbox_rules_setup.sql"}`);
+          setDbHint(`${data.hint} File: ${data.setupSqlPath ?? "supabase/sql/inbox_personalization_setup.sql"}`);
         }
+        window.dispatchEvent(new Event("handled-inbox-rules-changed"));
         return;
       }
 
+      saveClientInboxRules(rules);
       setStorageMode(data.storageMode ?? "");
       setMessage(data.message ?? "Saved! Refresh your inbox to apply these rules.");
       window.dispatchEvent(new Event("handled-inbox-rules-changed"));

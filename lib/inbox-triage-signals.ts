@@ -5,7 +5,7 @@ const BULK_SENDER =
   /instagram|facebookmail|mail\.instagram|meta\.com|linkedin|twitter|x\.com|tiktok|pinterest|snapchat|shopify|mailchimp|sendgrid|amazonses|beehiiv|substack|youtube|discord|noreply|no-reply|donotreply|notifications?@|updates@|marketing@|promo@|newsletter/i;
 
 const MARKETING_COPY =
-  /unsubscribe|opt\s*out|view\s+in\s+browser|email\s+preferences|manage\s+(your\s+)?preferences|%\s*off|\d+%\s*off|limited\s+time|flash\s+sale|shop\s+now|order\s+now|add\s+to\s+cart|free\s+shipping|promo\s+code|sponsored|act\s+now|weekly\s+digest|daily\s+digest|mailing\s+list|you\s+have\s+\d+\s+new\s+(likes|followers|notifications)|mentioned\s+you|liked\s+your|commented\s+on|new\s+notifications?/i;
+  /unsubscribe|opt\s*out|view\s+in\s+browser|email\s+preferences|manage\s+(your\s+)?preferences|%\s*off|\d+%\s*off|\d+%\s+discount|10%\s+discount|limited\s+time|flash\s+sale|shop\s+now|order\s+now|add\s+to\s+cart|free\s+shipping|promo\s+code|sponsored|act\s+now|weekly\s+digest|daily\s+digest|mailing\s+list|you\s+have\s+\d+\s+new\s+(likes|followers|notifications)|mentioned\s+you|liked\s+your|commented\s+on|new\s+notifications?|\$\d+k\/yr|book\s+sales|passive\s+income|make\s+money|affiliate|exclusive\s+offer|creator\s+funnel|join\s+the\s+waitlist|enroll\s+now|webinar|masterclass/i;
 
 const TRANSACTIONAL_COPY =
   /order\s+confirmed|payment\s+received|receipt|tracking\s+(number|#|link)|shipment|has\s+shipped|out\s+for\s+delivery|delivered|invoice|charged|subscription\s+renewed|amount\s+due|payment\s+due|billing\s+statement|your\s+bill/i;

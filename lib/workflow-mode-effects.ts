@@ -34,7 +34,11 @@ export function applyWorkflowModeToCategory(
 
   if (mode === "clean") {
     if (category === "needs_attention" || category === "quick_reply") {
-      if (scores.promotion >= 0.5 || scores.newsletter >= 0.5 || isCommercialBulk(row)) {
+      if (
+        scores.promotion >= 0.35 ||
+        scores.newsletter >= 0.35 ||
+        isCommercialBulk(row)
+      ) {
         const lean = commercialLeanCategory(row);
         if (lean) {
           return { category: lean, source: "heuristic" };
@@ -66,8 +70,8 @@ export function applyWorkflowModeToCategory(
 
   if (mode === "handle") {
     if (
-      category === "needs_attention" &&
-      (scores.promotion >= 1 || scores.newsletter >= 1 || isCommercialBulk(row)) &&
+      (category === "needs_attention" || category === "quick_reply") &&
+      (scores.promotion >= 0.5 || scores.newsletter >= 0.5 || isCommercialBulk(row)) &&
       !hasUrgentHumanSignal(row)
     ) {
       const lean = commercialLeanCategory(row);

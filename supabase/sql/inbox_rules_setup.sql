@@ -11,9 +11,12 @@ create table if not exists public.users (
   created_at timestamptz default now()
 );
 
--- 2) Fallback JSON column (works even if inbox_rules table is missing)
+-- 2) Fallback JSON columns (works even if inbox_rules table is missing)
 alter table public.users
   add column if not exists inbox_rules_json jsonb not null default '[]'::jsonb;
+
+alter table public.users
+  add column if not exists sender_preferences_json jsonb not null default '[]'::jsonb;
 
 -- 3) Dedicated rules table (preferred storage)
 create table if not exists public.inbox_rules (

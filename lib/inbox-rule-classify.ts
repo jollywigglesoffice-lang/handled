@@ -118,10 +118,16 @@ function scoreHaystack(hay: string, out: InboxRuleScores): void {
       tag: "view_online",
     },
     {
-      re: /\bsale\b|\bdiscount\b|\b\d{1,2}%\s*off\b|\blimited\s+time\b|\blast\s+chance\b|\bact\s+now\b/i,
-      promo: 3.5,
+      re: /\bsale\b|\bdiscount\b|\b\d{1,2}%\s*off\b|\b\d+%\s+discount\b|\b10%\s+off\b|\blimited\s+time\b|\blast\s+chance\b|\bact\s+now\b|\bexclusive\s+offer\b|\bspecial\s+offer\b/i,
+      promo: 4,
       news: 0,
       tag: "sale_discount",
+    },
+    {
+      re: /\$\d+k\/yr|\bbook\s+sales\b|\bpassive\s+income\b|\bmake\s+money\b|\bcreator\s+economy\b|\baffiliate\b|\bwaitlist\b|\bfunnel\b|\bwebinar\b|\bmasterclass\b|\benroll\s+now\b|\bjoin\s+the\s+waitlist\b/i,
+      promo: 4.5,
+      news: 0.5,
+      tag: "creator_funnel",
     },
     {
       re: /\bfree\s+shipping\b|\bpromo\s+code\b|\bshop\s+now\b|\border\s+now\b|\badd\s+to\s+cart\b/i,
@@ -347,6 +353,11 @@ export function coerceNeedsAttentionCategory(
   }
   if (hasUrgentHumanSignal(row)) {
     return category;
+  }
+  const scores = computeInboxRuleScores(row);
+  if (Math.max(scores.promotion, scores.newsletter) >= 0.5) {
+    const lean = commercialLeanCategory(row);
+    if (lean) return lean;
   }
   const hard = hardPostAiCategory(row);
   if (hard) return hard;

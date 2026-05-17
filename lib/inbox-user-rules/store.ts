@@ -10,7 +10,9 @@ import type {
 export type { InboxRuleRowDb } from "@/lib/inbox-user-rules/types";
 import type { InboxRuleRowDb } from "@/lib/inbox-user-rules/types";
 import {
+  ensureUuidRuleIds,
   isInboxRulesTableMissingError,
+  isUsersJsonColumnMissingError,
   parseRulesJson,
   type InboxRulesStorageMode,
 } from "@/lib/inbox-user-rules/storage";
@@ -196,32 +198,38 @@ async function saveToInboxRulesTable(
 
 export type LoadRulesResult = {
   rules: InboxUserRule[];
-  storageMode: InboxRulesStorageMode;
+  storageMode: InboxRulesStorageMode | "client_local";
   dbError?: string;
 };
 
 /** Load all rules for settings (table preferred, JSON column fallback). */
 export async function loadAllInboxUserRulesForUser(userId: string): Promise<LoadRulesResult> {
+  const jsonRules = await loadFromUsersJson(userId);
   const table = await loadFromInboxRulesTable(userId);
+
+  if (!table.error && table.rules.length > 0) {
+    return { rules: table.rules, storageMode: "inbox_rules_table" };
+  }
+
+  if (!table.error && table.rules.length === 0 && jsonRules.length > 0) {
+    return { rules: jsonRules, storageMode: "users_json_column" };
+  }
 
   if (!table.error) {
     return { rules: table.rules, storageMode: "inbox_rules_table" };
   }
 
-  if (isInboxRulesTableMissingError(table.error)) {
-    const jsonRules = await loadFromUsersJson(userId);
+  if (jsonRules.length > 0) {
     return {
       rules: jsonRules,
-      storageMode: jsonRules.length ? "users_json_column" : "none",
+      storageMode: "users_json_column",
       dbError: table.error,
     };
   }
 
-  console.warn("[inbox-user-rules] table load error:", table.error);
-  const jsonRules = await loadFromUsersJson(userId);
   return {
-    rules: jsonRules,
-    storageMode: jsonRules.length ? "users_json_column" : "none",
+    rules: [],
+    storageMode: isInboxRulesTableMissingError(table.error) ? "none" : "none",
     dbError: table.error,
   };
 }
@@ -233,42 +241,50 @@ export async function loadInboxUserRulesForUser(userId: string): Promise<InboxUs
 }
 
 export type SaveRulesResult =
-  | { ok: true; storageMode: InboxRulesStorageMode }
-  | { ok: false; error: string; hint?: string };
+  | { ok: true; storageMode: InboxRulesStorageMode | "client_local" }
+  | { ok: false; error: string; hint?: string; clientLocalOk?: boolean };
+
+const SETUP_SQL = "supabase/sql/inbox_personalization_setup.sql";
 
 /** Persist rules (table + JSON mirror for resilience). */
 export async function saveInboxUserRulesForUser(
   userId: string,
   rules: InboxUserRule[],
 ): Promise<SaveRulesResult> {
-  const tableResult = await saveToInboxRulesTable(userId, rules);
+  const normalized = ensureUuidRuleIds(rules);
+
+  const jsonResult = await saveToUsersJson(userId, normalized);
+  const tableResult = await saveToInboxRulesTable(userId, normalized);
 
   if (tableResult.ok) {
-    await saveToUsersJson(userId, rules).catch(() => undefined);
+    if (!jsonResult.ok) {
+      await saveToUsersJson(userId, normalized).catch(() => undefined);
+    }
     return { ok: true, storageMode: "inbox_rules_table" };
   }
 
-  if (isInboxRulesTableMissingError(tableResult.error)) {
-    const jsonResult = await saveToUsersJson(userId, rules);
-    if (jsonResult.ok) {
-      return {
-        ok: true,
-        storageMode: "users_json_column",
-      };
-    }
-    return {
-      ok: false,
-      error: jsonResult.error,
-      hint: "Run supabase/sql/inbox_rules_setup.sql in the Supabase SQL Editor, then save again.",
-    };
-  }
-
-  const jsonResult = await saveToUsersJson(userId, rules);
   if (jsonResult.ok) {
     return { ok: true, storageMode: "users_json_column" };
   }
 
-  return { ok: false, error: tableResult.error, hint: tableResult.error };
+  const jsonMissing = isUsersJsonColumnMissingError(jsonResult.error);
+  const tableMissing = isInboxRulesTableMissingError(tableResult.error);
+
+  if (jsonMissing || tableMissing) {
+    return {
+      ok: false,
+      error: jsonResult.error,
+      hint: `Run ${SETUP_SQL} (or inbox_rules_setup.sql) in the Supabase SQL Editor, then save again.`,
+      clientLocalOk: true,
+    };
+  }
+
+  return {
+    ok: false,
+    error: tableResult.error || jsonResult.error,
+    hint: tableResult.error,
+    clientLocalOk: true,
+  };
 }
 
 export async function seedInboxUserRulesForUser(
@@ -279,10 +295,7 @@ export async function seedInboxUserRulesForUser(
     return { ok: true, rules: existing };
   }
   const { defaultInboxUserRules } = await import("@/lib/inbox-user-rules/presets");
-  const presets = defaultInboxUserRules().map((r, i) => ({
-    ...r,
-    id: `preset-seed-${i}-${Date.now()}`,
-  }));
+  const presets = ensureUuidRuleIds(defaultInboxUserRules());
   const saved = await saveInboxUserRulesForUser(userId, presets);
   if (!saved.ok) {
     return { ok: false, error: saved.error };

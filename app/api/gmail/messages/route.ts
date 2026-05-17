@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
 import { gmailGetMessageMetadata, gmailListInboxIds } from "@/lib/gmail-api";
-import { loadInboxUserRulesForUser } from "@/lib/inbox-user-rules";
+import { loadCategorizationRulesForUser } from "@/lib/load-user-categorization-context";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { parseWorkflowModeHeader } from "@/lib/workflow-mode-effects";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     rows.sort((a, b) => b.internalDateMs - a.internalDateMs);
 
     const userId = session.user.id;
-    const userRules = userId ? await loadInboxUserRulesForUser(userId) : [];
+    const userRules = userId ? await loadCategorizationRulesForUser(userId, request) : [];
     const workflowMode = parseWorkflowModeHeader(
       request.headers.get(WORKFLOW_MODE_HEADER),
     );

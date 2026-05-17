@@ -13,9 +13,16 @@ import { useHandledEmails } from "@/app/handled-emails-context";
 import { AuthNav } from "@/app/components/auth-nav";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
-import { workflowModeHeaders } from "@/lib/workflow-mode";
+import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
+import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import {
-  GMAIL_INBOX_SECTION_ORDER,
+  GMAIL_CATEGORY_ORDER_BY_MODE,
+  shouldShowMessageInWorkflow,
+  workflowModeInboxHint,
+} from "@/lib/workflow-mode-inbox";
+import { GmailInboxCard, type GmailCardMessage } from "@/app/emails/gmail-inbox-card";
+import { InboxTrainingBanner } from "@/app/emails/inbox-training-banner";
+import {
   type CategorySource,
   type InboxAiCategory,
   inboxCategorySectionSubtitle,
@@ -117,14 +124,6 @@ function formatInboxDate(iso: string): string {
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
-
-const CATEGORY_CARD_ACCENT: Record<InboxAiCategory, string> = {
-  needs_attention: "border-l-4 border-l-[#6366F1] bg-[#EEF2FF]/25",
-  quick_reply: "border-l-4 border-l-teal-500 bg-teal-50/40",
-  handled: "border-l-4 border-l-emerald-500 bg-emerald-50/30",
-  newsletter: "border-l-4 border-l-slate-400 bg-slate-50/50",
-  promotion: "border-l-4 border-l-amber-500 bg-amber-50/35",
-};
 
 function GmailSectionLeadingIcon({ category }: { category: InboxAiCategory }) {
   const common = "h-5 w-5 shrink-0 text-[#6366F1]";
@@ -256,44 +255,6 @@ function MockEmailCard({
   );
 }
 
-function GmailInboxCard({
-  message,
-  locale,
-}: {
-  message: GmailInboxMessage;
-  locale: "en" | "it";
-}) {
-  const accent = CATEGORY_CARD_ACCENT[message.category];
-  const catLabel = inboxCategorySectionTitle(message.category, locale);
-  const confidenceTitle =
-    typeof message.categoryConfidence === "number"
-      ? `${Math.round(message.categoryConfidence * 100)}% · ${message.categorySource ?? "unknown"}`
-      : undefined;
-
-  return (
-    <Link
-      href={`/emails/${encodeURIComponent(message.id)}`}
-      title={confidenceTitle}
-      className={`block rounded-xl border border-[#E2E8F0] p-6 shadow-sm transition-all duration-200 hover:scale-[1.01] hover:border-[#6366F1]/40 hover:shadow-md ${accent}`}
-    >
-      <article className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-medium text-gray-500">{message.sender}</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-[#E2E8F0] bg-[#FFFFFF]/80 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-              {catLabel}
-            </span>
-            <time className="text-xs text-gray-400" dateTime={message.date}>
-              {formatInboxDate(message.date)}
-            </time>
-          </div>
-        </div>
-        <h3 className="text-base font-medium text-[#0F172A]">{message.subject}</h3>
-        <p className="text-sm leading-relaxed text-gray-500">{message.snippet}</p>
-      </article>
-    </Link>
-  );
-}
 
 function EmailCardSkeleton() {
   return (
@@ -378,6 +339,10 @@ export default function EmailsInboxPage() {
 
   const [inboxMode, setInboxMode] = useState<InboxMode>("loading");
   const [gmailMessages, setGmailMessages] = useState<GmailInboxMessage[]>([]);
+  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, InboxAiCategory>>(
+    {},
+  );
+  const [workflowMode, setWorkflowMode] = useState(readWorkflowModeFromStorage);
   const [gmailError, setGmailError] = useState("");
   const [messageIndex, setMessageIndex] = useState(0);
   const [showMicroMessage, setShowMicroMessage] = useState(true);
@@ -398,7 +363,7 @@ export default function EmailsInboxPage() {
     try {
       const res = await fetch("/api/gmail/messages", {
         credentials: "same-origin",
-        headers: workflowModeHeaders(),
+        headers: inboxFetchHeaders(),
       });
       const body = (await res.json()) as {
         messages?: GmailInboxMessage[];
@@ -464,6 +429,7 @@ export default function EmailsInboxPage() {
 
   useEffect(() => {
     const onModeChange = () => {
+      setWorkflowMode(readWorkflowModeFromStorage());
       void loadInbox();
     };
     const onRulesChange = () => {
@@ -525,16 +491,37 @@ export default function EmailsInboxPage() {
     };
   }, [inboxLoading, loadingMicroMessages.length]);
 
+  const displayMessages = useMemo(() => {
+    return gmailMessages
+      .map((m) => ({
+        ...m,
+        category: categoryOverrides[m.id] ?? m.category,
+      }))
+      .filter((m) => shouldShowMessageInWorkflow(m, workflowMode));
+  }, [gmailMessages, categoryOverrides, workflowMode]);
+
+  const handleCategoryChange = useCallback((id: string, category: InboxAiCategory) => {
+    setCategoryOverrides((prev) => ({ ...prev, [id]: category }));
+    setGmailMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, category } : m)),
+    );
+  }, []);
+
   const gmailByCategory = useMemo(() => {
+    const order = GMAIL_CATEGORY_ORDER_BY_MODE[workflowMode];
     const buckets = {} as Record<InboxAiCategory, GmailInboxMessage[]>;
-    for (const key of GMAIL_INBOX_SECTION_ORDER) {
+    for (const key of order) {
       buckets[key] = [];
     }
-    for (const m of gmailMessages) {
-      buckets[m.category].push(m);
+    for (const m of displayMessages) {
+      if (buckets[m.category]) {
+        buckets[m.category].push(m);
+      }
     }
     return buckets;
-  }, [gmailMessages]);
+  }, [displayMessages, workflowMode]);
+
+  const workflowHint = workflowModeInboxHint(workflowMode);
 
   const importantEmailCount =
     inboxMode === "gmail"
@@ -692,7 +679,17 @@ export default function EmailsInboxPage() {
             </div>
           ) : inboxMode === "gmail" ? (
             <div className="space-y-10">
-              {GMAIL_INBOX_SECTION_ORDER.map((category) => {
+              {workflowHint ? (
+                <p className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+                  {workflowHint}
+                </p>
+              ) : null}
+              <InboxTrainingBanner
+                messages={displayMessages as GmailCardMessage[]}
+                onCategoryChange={handleCategoryChange}
+                onAlwaysSender={(msg, cat) => handleCategoryChange(msg.id, cat)}
+              />
+              {GMAIL_CATEGORY_ORDER_BY_MODE[workflowMode].map((category) => {
                 const list = gmailByCategory[category];
                 if (!list.length) return null;
                 return (
@@ -713,7 +710,11 @@ export default function EmailsInboxPage() {
                             showContent ? "opacity-100" : "opacity-0"
                           }`}
                         >
-                          <GmailInboxCard message={message} locale={uiLanguage} />
+                          <GmailInboxCard
+                            message={message}
+                            locale={uiLanguage === "it" ? "it" : "en"}
+                            onCategoryChange={handleCategoryChange}
+                          />
                         </div>
                       ))}
                     </div>
