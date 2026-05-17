@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { normalizeInboxAiCategory } from "@/lib/inbox-ai-categories";
+import { subjectKeywordsForSimilar } from "@/lib/category-correction";
+import type { CategoryApplyScope } from "@/lib/category-correction";
 import { loadAllInboxUserRulesForUser, saveInboxUserRulesForUser } from "@/lib/inbox-user-rules/store";
+import { ensureUuidRuleIds } from "@/lib/inbox-user-rules/storage";
 import {
   mergeSenderPreferences,
   preferenceFromSender,
@@ -31,6 +34,13 @@ async function requireUserId(): Promise<{ userId: string } | { error: NextRespon
   return { userId: session.user.id };
 }
 
+function newRuleId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `rule-${Date.now()}`;
+}
+
 function upsertSenderRule(
   rules: InboxUserRule[],
   sender: string,
@@ -55,12 +65,8 @@ function upsertSenderRule(
       ),
   );
 
-  const ruleId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `rule-${Date.now()}`;
   const rule: InboxUserRule = {
-    id: ruleId,
+    id: newRuleId(),
     enabled: true,
     priority: 300,
     phase: "pre",
@@ -72,6 +78,27 @@ function upsertSenderRule(
   return [rule, ...withoutDup];
 }
 
+function upsertSimilarSubjectRule(
+  rules: InboxUserRule[],
+  subject: string,
+  category: InboxAiCategory,
+): InboxUserRule[] {
+  const keywords = subjectKeywordsForSimilar(subject);
+  if (!keywords) return rules;
+
+  const rule: InboxUserRule = {
+    id: newRuleId(),
+    enabled: true,
+    priority: 200,
+    phase: "pre",
+    label: `Similar: ${keywords.slice(0, 40)}`,
+    match: { type: "keywords_contains", value: keywords },
+    action: { type: "force_category", category },
+  };
+
+  return [rule, ...rules];
+}
+
 export async function POST(request: Request) {
   const auth = await requireUserId();
   if ("error" in auth) return auth.error;
@@ -79,8 +106,12 @@ export async function POST(request: Request) {
   let body: {
     action?: string;
     sender?: string;
-    category?: string;
     subject?: string;
+    snippet?: string;
+    emailId?: string;
+    category?: string;
+    guessedCategory?: string;
+    scope?: CategoryApplyScope;
     alwaysForSender?: boolean;
     clientPreferences?: SenderPreference[];
     clientRules?: InboxUserRule[];
@@ -94,48 +125,79 @@ export async function POST(request: Request) {
 
   const sender = body.sender?.trim();
   const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
-  const action = body.action ?? "remember_sender_category";
+  const action = body.action ?? "correct_category";
+  const scope: CategoryApplyScope = body.scope ?? (body.alwaysForSender ? "sender" : "this_email");
 
   if (!sender) {
     return NextResponse.json({ error: "sender required" }, { status: 400 });
+  }
+
+  if (action === "correct_category" && scope === "this_email") {
+    return NextResponse.json({
+      ok: true,
+      category,
+      scope,
+      message: "Updated for this email only.",
+    });
   }
 
   const existingPrefs = await loadSenderPreferencesForUser(auth.userId);
   const clientPrefs = body.clientPreferences ?? [];
 
   let prefsToSave = existingPrefs;
-  if (action === "remember_sender_category" || body.alwaysForSender !== false) {
+  if (scope === "sender") {
     const pref = preferenceFromSender(
       sender,
       category,
       `Always categorize as ${category.replace(/_/g, " ")}`,
     );
     prefsToSave = mergeSenderPreferences(prefsToSave, pref);
-  }
-  for (const cp of clientPrefs) {
-    prefsToSave = mergeSenderPreferences(prefsToSave, cp);
+    for (const cp of clientPrefs) {
+      prefsToSave = mergeSenderPreferences(prefsToSave, cp);
+    }
   }
 
-  const prefSave = await saveSenderPreferencesForUser(auth.userId, prefsToSave);
+  const prefSave =
+    scope === "sender" ? await saveSenderPreferencesForUser(auth.userId, prefsToSave) : { ok: true as const };
 
   const { rules: existingRules } = await loadAllInboxUserRulesForUser(auth.userId);
-  const withLearnedRule = upsertSenderRule(existingRules, sender, category);
-  const rulesSave = await saveInboxUserRulesForUser(auth.userId, withLearnedRule);
+  let mergedRules = existingRules;
+
+  if (scope === "sender") {
+    mergedRules = upsertSenderRule(mergedRules, sender, category);
+  } else if (scope === "similar" && body.subject) {
+    mergedRules = upsertSimilarSubjectRule(mergedRules, body.subject, category);
+  }
+
+  mergedRules = ensureUuidRuleIds(mergedRules);
+  const rulesSave =
+    scope !== "this_email"
+      ? await saveInboxUserRulesForUser(auth.userId, mergedRules)
+      : { ok: true as const, storageMode: "client_local" as const };
+
+  const messages: Record<CategoryApplyScope, string> = {
+    this_email: "Updated for this email only.",
+    sender: `Future emails from this sender will go to ${category.replace(/_/g, " ")}.`,
+    similar: "Handled will match similar subject lines going forward.",
+  };
 
   return NextResponse.json({
     ok: true,
     category,
     sender,
-    preferences: prefsToSave,
-    rules: withLearnedRule,
-    preferenceStorage: prefSave.ok ? prefSave.storageMode : "client_local",
-    rulesStorage: rulesSave.ok ? rulesSave.storageMode : "client_local",
-    hint: !prefSave.ok ? prefSave.hint : !rulesSave.ok ? rulesSave.hint : undefined,
+    scope,
+    preferences: scope === "sender" ? prefsToSave : undefined,
+    rules: scope !== "this_email" ? mergedRules : undefined,
+    preferenceStorage:
+      scope === "sender" && "storageMode" in prefSave
+        ? prefSave.ok
+          ? prefSave.storageMode
+          : "client_local"
+        : undefined,
+    rulesStorage: rulesSave.ok ? ("storageMode" in rulesSave ? rulesSave.storageMode : "users_json_column") : "client_local",
+    hint: undefined,
     setupSqlPath: SETUP_SQL,
-    message:
-      prefSave.ok && rulesSave.ok
-        ? "Handled will remember this sender."
-        : "Saved on this device — run setup SQL in Supabase for cloud sync.",
+    message: messages[scope],
   });
 }
 

@@ -16,6 +16,7 @@ export function buildGenerateReplyPrompt(input: {
   contextBlock: string;
   workflowMode?: WorkflowMode;
   category?: InboxAiCategory;
+  brainContext?: string;
 }): string {
   const modeLine = input.workflowMode
     ? workflowModeReplyDirective(input.workflowMode)
@@ -37,6 +38,7 @@ Rules:
 - Replies must be meaningfully different
 ${categoryLine}
 ${modeLine ? `\n${modeLine}` : ""}
+${input.brainContext ? `\n${input.brainContext}\n` : ""}
 ${input.contextBlock}
 
 Return valid JSON only:

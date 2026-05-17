@@ -7,6 +7,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { FREE_LIMIT, readUsageCountWithDailyReset } from "@/lib/daily-usage";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 import { persistWorkflowModeToBrowser, WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
+import { HandledBrainSettings } from "./handled-brain-settings";
 import { InboxPrioritySettings } from "./inbox-priority-settings";
 import { PersonalizationSettings } from "./personalization-settings";
 import { useUiCopy } from "@/app/use-ui-copy";
@@ -711,6 +712,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        <HandledBrainSettings />
         <InboxPrioritySettings />
         <PersonalizationSettings />
 

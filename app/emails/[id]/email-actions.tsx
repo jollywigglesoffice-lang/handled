@@ -26,6 +26,7 @@ import { useUiCopy } from "@/app/use-ui-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import type { WorkflowMode } from "@/lib/workflow-mode";
+import { loadClientHandledBrain } from "@/lib/handled-brain/client-storage";
 import { persistWorkflowModeToBrowser, WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
 import { getWorkflowModeBehavior } from "@/lib/workflow-mode-config";
 
@@ -807,6 +808,7 @@ return () => clearTimeout(timeout);
               subject,
               snippet,
               replyRecommended: shouldOfferReplies,
+              brain: loadClientHandledBrain(),
             }),
           });
         } catch (error) {

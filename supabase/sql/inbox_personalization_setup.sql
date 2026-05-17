@@ -16,4 +16,7 @@ alter table public.users
 alter table public.users
   add column if not exists sender_preferences_json jsonb not null default '[]'::jsonb;
 
+alter table public.users
+  add column if not exists handled_brain_json jsonb not null default '{"entries":[]}'::jsonb;
+
 notify pgrst, 'reload schema';

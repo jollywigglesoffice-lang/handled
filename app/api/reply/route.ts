@@ -1,6 +1,11 @@
 import { getAiApiKey, logAiKeyStatus } from "@/lib/ai-api-key";
+import { parseHandledBrainHeader } from "@/lib/handled-brain/client-storage";
+import { formatRelevantBrainForPrompt } from "@/lib/handled-brain/format-for-prompt";
+import { loadHandledBrainForUser } from "@/lib/handled-brain/store";
+import type { HandledBrain } from "@/lib/handled-brain/types";
 import { assessReplyNeed } from "@/lib/reply-necessity";
 import { normalizeInboxAiCategory } from "@/lib/inbox-ai-categories";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   buildGenerateReplyPrompt,
   generateEmailRepliesJson,
@@ -45,7 +50,35 @@ type ReplyRequestBody = {
   snippet?: string;
   /** Client pre-check; server re-validates */
   replyRecommended?: boolean;
+  brain?: HandledBrain;
 };
+
+async function resolveBrainContext(
+  request: Request,
+  email: string,
+  bodyBrain?: HandledBrain,
+): Promise<string> {
+  let brain: HandledBrain | null = bodyBrain ?? parseHandledBrainHeader(request.headers.get("x-handled-brain"));
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    if (supabase) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        const serverBrain = await loadHandledBrainForUser(session.user.id);
+        if (serverBrain.entries.length > 0 || serverBrain.writingStyle) {
+          brain = serverBrain;
+        }
+      }
+    }
+  } catch {
+    // use client brain
+  }
+
+  return formatRelevantBrainForPrompt(brain, email);
+}
 
 function replyContextAppendix(
   intent: string | undefined,
@@ -582,6 +615,8 @@ export async function POST(request: Request) {
     body.toneSlider,
   );
 
+  const brainContext = await resolveBrainContext(request, email, body.brain);
+
   const generatePrompt =
     mode === "generate"
       ? buildGenerateReplyPrompt({
@@ -592,6 +627,7 @@ export async function POST(request: Request) {
           contextBlock,
           workflowMode: body.workflowMode,
           category: normalizeInboxAiCategory(body.category ?? "needs_attention"),
+          brainContext,
         })
       : "";
 

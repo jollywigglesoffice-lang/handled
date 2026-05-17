@@ -22,6 +22,7 @@ import {
 } from "@/lib/workflow-mode-inbox";
 import { GmailInboxCard, type GmailCardMessage } from "@/app/emails/gmail-inbox-card";
 import { InboxTrainingBanner } from "@/app/emails/inbox-training-banner";
+import { InboxSyncBar } from "@/app/emails/inbox-sync-bar";
 import {
   type CategorySource,
   type InboxAiCategory,
@@ -344,23 +345,28 @@ export default function EmailsInboxPage() {
   );
   const [workflowMode, setWorkflowMode] = useState(readWorkflowModeFromStorage);
   const [gmailError, setGmailError] = useState("");
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [messageIndex, setMessageIndex] = useState(0);
   const [showMicroMessage, setShowMicroMessage] = useState(true);
 
-  const loadInbox = useCallback(async () => {
-    setInboxMode("loading");
+  const loadInbox = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setInboxMode("loading");
+    }
+    setIsRefreshing(true);
     setGmailError("");
 
     const {
       data: { session },
     } = await supabaseBrowser.auth.getSession();
 
-    if (!session) {
-      setInboxMode("mock");
-      return;
-    }
-
     try {
+      if (!session) {
+        setInboxMode("mock");
+        return;
+      }
+
       const res = await fetch("/api/gmail/messages", {
         credentials: "same-origin",
         headers: inboxFetchHeaders(),
@@ -416,10 +422,13 @@ export default function EmailsInboxPage() {
       });
       setGmailMessages(msgs);
       setInboxMode(msgs.length ? "gmail" : "gmail_empty");
+      setLastSyncedAt(new Date().toISOString());
     } catch (e) {
       console.error("[inbox] gmail load", e);
       setGmailError("Network error while loading Gmail.");
       setInboxMode("gmail_error");
+    } finally {
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -437,11 +446,21 @@ export default function EmailsInboxPage() {
     };
     window.addEventListener("handled-workflow-mode-changed", onModeChange);
     window.addEventListener("handled-inbox-rules-changed", onRulesChange);
+    window.addEventListener("handled-inbox-refresh-requested", onRulesChange);
     return () => {
       window.removeEventListener("handled-workflow-mode-changed", onModeChange);
       window.removeEventListener("handled-inbox-rules-changed", onRulesChange);
+      window.removeEventListener("handled-inbox-refresh-requested", onRulesChange);
     };
   }, [loadInbox]);
+
+  useEffect(() => {
+    if (inboxMode !== "gmail") return;
+    const intervalId = window.setInterval(() => {
+      void loadInbox({ silent: true });
+    }, 3 * 60 * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [inboxMode, loadInbox]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -684,10 +703,14 @@ export default function EmailsInboxPage() {
                   {workflowHint}
                 </p>
               ) : null}
+              <InboxSyncBar
+                lastSyncedAt={lastSyncedAt}
+                isRefreshing={isRefreshing}
+                onRefresh={() => void loadInbox({ silent: true })}
+              />
               <InboxTrainingBanner
                 messages={displayMessages as GmailCardMessage[]}
                 onCategoryChange={handleCategoryChange}
-                onAlwaysSender={(msg, cat) => handleCategoryChange(msg.id, cat)}
               />
               {GMAIL_CATEGORY_ORDER_BY_MODE[workflowMode].map((category) => {
                 const list = gmailByCategory[category];

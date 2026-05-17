@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
+import { UnsubscribeCard } from "@/app/emails/unsubscribe-card";
 import type { FakeEmail } from "@/lib/fake-emails";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
@@ -73,6 +74,12 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
             </p>
             <p className="text-sm leading-relaxed text-gray-500">{email.aiSummary}</p>
           </div>
+
+          <UnsubscribeCard
+            bodyPlain={email.body}
+            bodyHtml={email.bodyHtml}
+            sender={email.sender}
+          />
 
           <div className="space-y-3 border-t border-gray-200 pt-8">
             <p className="flex items-center gap-2 text-sm font-medium text-[#0F172A]">
