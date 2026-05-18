@@ -69,8 +69,7 @@ ${identityBlock ? `${identityBlock}\n\n` : ""}${analysisBlock}
 
 ${categoryLine}
 ${modeLine ? `${modeLine}\n` : ""}
-${input.brainContext ? `${input.brainContext}\n` : ""}
-${input.contextBlock}
+${input.brainContext ? `${input.brainContext}\n\n` : ""}${input.contextBlock}
 ${examples}
 
 Write exactly 3 reply variations:
@@ -85,6 +84,8 @@ Rules:
 - Under 3 sentences each; one sentence if the email is simple
 - Meaningfully different — not the same sentence reworded
 - Write in first person as ${authorName || "the user"}${input.identity?.includeSignOffInReplies ? " and include their sign-off on every reply" : ""}
+${input.brainContext ? "- When Handled Brain context is provided above: answer using those facts only; never invent details; if unsure, offer to follow up" : ""}
+- These are drafts for user approval — never imply the message was already sent
 
 Return valid JSON only:
 {"replies":["reply 1","reply 2","reply 3"]}

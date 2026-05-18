@@ -13,7 +13,8 @@ import { loadUserIdentityForUser } from "@/lib/user-identity/store";
 import type { UserIdentity } from "@/lib/user-identity/types";
 import { EMPTY_IDENTITY } from "@/lib/user-identity/types";
 import { parseHandledBrainHeader } from "@/lib/handled-brain/client-storage";
-import { formatRelevantBrainForPrompt } from "@/lib/handled-brain/format-for-prompt";
+import { retrieveKnowledgeForEmail, toBrainUsageDto } from "@/lib/knowledge/retrieve";
+import type { BrainUsageDto } from "@/lib/knowledge/types";
 import { loadHandledBrainForUser } from "@/lib/handled-brain/store";
 import type { HandledBrain } from "@/lib/handled-brain/types";
 import { assessReplyNeed } from "@/lib/reply-necessity";
@@ -121,12 +122,18 @@ async function resolveUserIdentity(
   return identity;
 }
 
-async function resolveBrainContext(
+async function resolveKnowledgeContext(
   request: Request,
   email: string,
-  bodyBrain?: HandledBrain,
-): Promise<string> {
-  let brain: HandledBrain | null = bodyBrain ?? parseHandledBrainHeader(request.headers.get("x-handled-brain"));
+  options?: {
+    subject?: string;
+    bodyBrain?: HandledBrain;
+    primaryIntent?: string;
+    intentKinds?: string[];
+  },
+): Promise<{ promptBlock: string; brainUsage: BrainUsageDto }> {
+  let brain: HandledBrain | null =
+    options?.bodyBrain ?? parseHandledBrainHeader(request.headers.get("x-handled-brain"));
 
   try {
     const supabase = await createSupabaseServerClient();
@@ -145,7 +152,20 @@ async function resolveBrainContext(
     // use client brain
   }
 
-  return formatRelevantBrainForPrompt(brain, email);
+  const knowledge = retrieveKnowledgeForEmail(
+    {
+      emailText: email,
+      subject: options?.subject,
+      primaryIntent: options?.primaryIntent,
+      intentKinds: options?.intentKinds,
+    },
+    { brain },
+  );
+
+  return {
+    promptBlock: knowledge.promptBlock,
+    brainUsage: toBrainUsageDto(knowledge),
+  };
 }
 
 function replyContextAppendix(
@@ -670,7 +690,27 @@ export async function POST(request: Request) {
     body.toneSlider,
   );
 
-  const brainContext = await resolveBrainContext(request, email, body.brain);
+  const replyContextForBrain =
+    mode === "generate"
+      ? analyzeReplyContext({
+          email,
+          sender: body.sender,
+          subject: body.subject,
+          category: normalizeInboxAiCategory(body.category ?? "needs_attention"),
+          workflowMode: body.workflowMode,
+        })
+      : null;
+
+  const { promptBlock: brainContext, brainUsage } = await resolveKnowledgeContext(
+    request,
+    email,
+    {
+      subject: body.subject,
+      bodyBrain: body.brain,
+      primaryIntent: replyContextForBrain?.primaryIntent,
+      intentKinds: replyContextForBrain?.intent.kinds,
+    },
+  );
   const userIdentity = await resolveUserIdentity(request, email, body.identity, userName);
   const authorName = resolveReplyAuthorName(userIdentity, userName);
   const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
@@ -700,16 +740,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const replyContext =
-    mode === "generate"
-      ? analyzeReplyContext({
-          email,
-          sender: body.sender,
-          subject: body.subject,
-          category,
-          workflowMode: body.workflowMode,
-        })
-      : null;
+  const replyContext = mode === "generate" ? replyContextForBrain : null;
 
   if (replyContext) {
     logReplyContextAnalysis(replyContext, "pre-generate");
@@ -809,6 +840,7 @@ ${currentReply}`
             provider: generated.provider,
             model: generated.model,
             replyContext: replyContext?.logSummary,
+            brainUsage,
           });
         }
         if (noSilentFallback) {

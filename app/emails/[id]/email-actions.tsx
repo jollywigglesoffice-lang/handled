@@ -26,7 +26,10 @@ import { useUiCopy } from "@/app/use-ui-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import type { WorkflowMode } from "@/lib/workflow-mode";
+import { BrainUsagePanel } from "@/app/emails/brain-usage-panel";
 import { loadClientHandledBrain } from "@/lib/handled-brain/client-storage";
+import { retrieveBrainUsageDto } from "@/lib/knowledge/retrieve";
+import type { BrainUsageDto } from "@/lib/knowledge/types";
 import { persistWorkflowModeToBrowser, WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
 import { getWorkflowModeBehavior } from "@/lib/workflow-mode-config";
 
@@ -460,6 +463,7 @@ export function EmailActions({
   const [isRefining, setIsRefining] = useState(false);
   const [isClosingView, setIsClosingView] = useState(false);
   const [replyOptions, setReplyOptions] = useState<string[]>([]);
+  const [brainUsage, setBrainUsage] = useState<BrainUsageDto | null>(null);
   const [selectedReplyIndex, setSelectedReplyIndex] = useState<number | null>(
     null,
   );
@@ -827,6 +831,13 @@ return () => clearTimeout(timeout);
 
         const personality = buildPersonality(adjustedTone, "server-classified");
 
+        setBrainUsage(
+          retrieveBrainUsageDto(
+            { emailText: emailContent, subject },
+            loadClientHandledBrain(),
+          ),
+        );
+
         let response: Response;
         try {
           response = await fetch("/api/reply", {
@@ -1001,6 +1012,7 @@ return () => clearTimeout(timeout);
           reason?: string;
           suggestedAction?: string;
           debug?: Record<string, unknown>;
+          brainUsage?: BrainUsageDto;
         } = {};
         try {
           result = (await response.json()) as typeof result;
@@ -1065,6 +1077,10 @@ return () => clearTimeout(timeout);
           setSelectedReplyIndex(null);
           setStatusMessage(formatReplyApiError(result));
           return;
+        }
+
+        if (result.brainUsage) {
+          setBrainUsage(result.brainUsage);
         }
 
         setReplyOptions(aiReplies);
@@ -1884,6 +1900,7 @@ if (distance < 6) {
     <span>Friendly</span>
   </div>
 </div>
+          <BrainUsagePanel usage={brainUsage} className="mb-1" />
           <div
             className="space-y-3"
             role="radiogroup"
