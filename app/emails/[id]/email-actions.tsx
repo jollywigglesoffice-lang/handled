@@ -395,7 +395,12 @@ export function EmailActions({
   const router = useRouter();
   const { markEmailHandled } = useHandledEmails();
   const { generatedRepliesCount, incrementGeneratedRepliesCount } = useReplyUsage();
-  const { userName, tone: savedTone, replyLanguage: settingsReplyLanguage } = useUserPreferences();
+  const {
+    userName,
+    identity,
+    tone: savedTone,
+    replyLanguage: settingsReplyLanguage,
+  } = useUserPreferences();
 
   const [authUser, setAuthUser] = useState<User | null>(null);
 
@@ -833,6 +838,7 @@ return () => clearTimeout(timeout);
             body: JSON.stringify({
               email: emailContent,
               userName,
+              identity,
               tone: mapTone(adjustedTone),
               toneSlider: adjustedTone,
               language,
@@ -1352,6 +1358,7 @@ return () => clearTimeout(timeout);
             mode: "refine",
             currentReply: selectedReply,
             userName,
+            identity,
             tone: mapTone(tone),
             language: workflowReplyLanguageRef.current,
           }),

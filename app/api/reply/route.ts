@@ -1,6 +1,17 @@
 import { replySilentFallbackDisabled } from "@/lib/ai-chat-config";
 import { getAiApiKey, logAiKeyStatus } from "@/lib/ai-api-key";
 import { failureToClientPayload } from "@/lib/reply-generation-result";
+import { applySignOffToReplies } from "@/lib/user-identity/apply-signature";
+import {
+  parseUserIdentityHeader,
+} from "@/lib/user-identity/client-storage";
+import {
+  formatUserIdentityForPrompt,
+  resolveReplyAuthorName,
+} from "@/lib/user-identity/format-for-prompt";
+import { loadUserIdentityForUser } from "@/lib/user-identity/store";
+import type { UserIdentity } from "@/lib/user-identity/types";
+import { EMPTY_IDENTITY } from "@/lib/user-identity/types";
 import { parseHandledBrainHeader } from "@/lib/handled-brain/client-storage";
 import { formatRelevantBrainForPrompt } from "@/lib/handled-brain/format-for-prompt";
 import { loadHandledBrainForUser } from "@/lib/handled-brain/store";
@@ -60,7 +71,55 @@ type ReplyRequestBody = {
   /** Client pre-check; server re-validates */
   replyRecommended?: boolean;
   brain?: HandledBrain;
+  identity?: UserIdentity;
 };
+
+async function resolveUserIdentity(
+  request: Request,
+  email: string,
+  bodyIdentity?: UserIdentity,
+  legacyUserName?: string,
+): Promise<UserIdentity> {
+  let identity: UserIdentity =
+    bodyIdentity ?? parseUserIdentityHeader(request.headers.get("x-handled-identity")) ?? {
+      ...EMPTY_IDENTITY,
+    };
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    if (supabase) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        const serverIdentity = await loadUserIdentityForUser(session.user.id);
+        if (serverIdentity.displayName.trim() || serverIdentity.fullName?.trim()) {
+          identity = { ...identity, ...serverIdentity };
+        }
+      }
+    }
+  } catch {
+    // client identity only
+  }
+
+  if (!identity.displayName.trim() && legacyUserName?.trim()) {
+    identity = { ...identity, displayName: legacyUserName.trim() };
+  }
+
+  if (identity.displayName.trim() || identity.companyName?.trim()) {
+    console.log("[api/reply] identity:", {
+      displayName: identity.displayName,
+      fullName: identity.fullName,
+      company: identity.companyName,
+      title: identity.businessTitle,
+      style: identity.communicationStyle,
+      defaultSignOff: identity.defaultSignOff,
+      includeSignOff: identity.includeSignOffInReplies,
+    });
+  }
+
+  return identity;
+}
 
 async function resolveBrainContext(
   request: Request,
@@ -316,8 +375,16 @@ function createGenerateReplyNdjsonStream(
   replyContext: ReturnType<typeof analyzeReplyContext>,
   brainContext: string,
   category: ReturnType<typeof normalizeInboxAiCategory>,
+  userIdentity: UserIdentity,
 ): Response {
-  const streamPrompt = `${formatReplyContextForPrompt(replyContext, tone, languageLabel, workflowMode)}
+  const identityBlock = formatUserIdentityForPrompt(
+    userIdentity,
+    replyContext,
+    workflowMode,
+  );
+  const streamPrompt = `${identityBlock}
+
+${formatReplyContextForPrompt(replyContext, tone, languageLabel, workflowMode)}
 
 ${brainContext ? `${brainContext}\n` : ""}
 ${contextBlock}
@@ -355,6 +422,7 @@ ${email}`;
             tone,
             languageLabel,
             userName,
+            identity: userIdentity,
             contextBlock,
             workflowMode,
             category,
@@ -446,6 +514,7 @@ ${email}`;
               tone,
               languageLabel,
               userName,
+              identity: userIdentity,
               contextBlock,
               workflowMode,
               category,
@@ -602,6 +671,8 @@ export async function POST(request: Request) {
   );
 
   const brainContext = await resolveBrainContext(request, email, body.brain);
+  const userIdentity = await resolveUserIdentity(request, email, body.identity, userName);
+  const authorName = resolveReplyAuthorName(userIdentity, userName);
   const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
 
   if (body.stream === true && mode === "generate") {
@@ -625,6 +696,7 @@ export async function POST(request: Request) {
       streamCtx,
       brainContext,
       category,
+      userIdentity,
     );
   }
 
@@ -650,7 +722,8 @@ export async function POST(request: Request) {
           email,
           tone,
           languageLabel,
-          userName,
+          userName: authorName,
+          identity: userIdentity,
           contextBlock,
           workflowMode: body.workflowMode,
           category,
@@ -675,7 +748,7 @@ Rules:
 - If appropriate, include the person's name
 - Write in the user's default tone: ${tone}
 - Write the reply in ${languageLabel}.
-- If appropriate, sign off as ${userName ?? "the user"}
+- Preserve the user's sign-off and voice${authorName ? ` (${authorName})` : ""}
 
 Keep the same intent and substance — do not turn a substantive draft into a generic acknowledgment.
 
@@ -716,6 +789,11 @@ ${currentReply}`
           !noSilentFallback,
         );
         if (merged.ok) {
+          const signedReplies = applySignOffToReplies(
+            merged.replies,
+            userIdentity,
+            replyContext,
+          );
           const validationWarnings =
             "validationFailures" in generated &&
             Array.isArray(generated.validationFailures) &&
@@ -726,7 +804,7 @@ ${currentReply}`
             console.warn("[api/reply] returned replies despite validation warnings", validationWarnings);
           }
           return Response.json({
-            replies: merged.replies,
+            replies: signedReplies as [string, string, string],
             source: "ai",
             provider: generated.provider,
             model: generated.model,

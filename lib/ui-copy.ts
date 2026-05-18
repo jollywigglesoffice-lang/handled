@@ -73,6 +73,37 @@ type UiCopy = {
       german: string;
     };
   };
+  identity: {
+    title: string;
+    description: string;
+    displayNameLabel: string;
+    displayNameHelp: string;
+    displayNamePlaceholder: string;
+    fullNameLabel: string;
+    fullNamePlaceholder: string;
+    businessTitleLabel: string;
+    businessTitlePlaceholder: string;
+    companyNameLabel: string;
+    companyNamePlaceholder: string;
+    communicationStyleLabel: string;
+    communicationStyleHelp: string;
+    communicationStyles: {
+      balanced: string;
+      professional: string;
+      casual: string;
+    };
+    defaultSignOffLabel: string;
+    defaultSignOffHelp: string;
+    customSignOffLabel: string;
+    customSignOffHelp: string;
+    customSignOffPlaceholder: string;
+    signatureBlockLabel: string;
+    signatureBlockHelp: string;
+    signatureBlockPlaceholder: string;
+    includeSignOffLabel: string;
+    includeSignOffHelp: string;
+    previewLabel: string;
+  };
   modeSelector: {
     legend: string;
     modes: {
@@ -198,6 +229,38 @@ const en: UiCopy = {
       french: "French",
       german: "German",
     },
+  },
+  identity: {
+    title: "Your identity",
+    description:
+      "How Handled signs your replies — name, role, and sign-off so drafts sound like you.",
+    displayNameLabel: "Display name",
+    displayNameHelp: "Short name in sign-offs — e.g. Aisha",
+    displayNamePlaceholder: "Aisha",
+    fullNameLabel: "Full name",
+    fullNamePlaceholder: "Aisha Surodjawan",
+    businessTitleLabel: "Title",
+    businessTitlePlaceholder: "Founder",
+    companyNameLabel: "Company",
+    companyNamePlaceholder: "Handled",
+    communicationStyleLabel: "Communication style",
+    communicationStyleHelp: "Overall voice for replies (works with the tone slider on each email).",
+    communicationStyles: {
+      balanced: "Balanced — professional but human",
+      professional: "Professional — polished and clear",
+      casual: "Casual — conversational and warm",
+    },
+    defaultSignOffLabel: "Default sign-off",
+    defaultSignOffHelp: "Used at the end of generated replies unless you set a custom sign-off below.",
+    customSignOffLabel: "Custom sign-off (optional)",
+    customSignOffHelp: "Overrides the default template — e.g. Thanks, Aisha",
+    customSignOffPlaceholder: "Thanks,\nAisha",
+    signatureBlockLabel: "Full signature (optional)",
+    signatureBlockHelp: "Used for formal or sales emails — e.g. name + title + company",
+    signatureBlockPlaceholder: "Aisha Surodjawan\nFounder, Handled",
+    includeSignOffLabel: "Include sign-off in generated replies",
+    includeSignOffHelp: "When off, replies stay unsigned unless you add a signature manually.",
+    previewLabel: "Sign-off preview",
   },
   modeSelector: {
     legend: "Choose your mode",
@@ -345,6 +408,38 @@ const it: UiCopy = {
       french: "Francese",
       german: "Tedesco",
     },
+  },
+  identity: {
+    title: "La tua identita",
+    description:
+      "Come Handled firma le tue risposte — nome, ruolo e chiusura per bozze che suonano come te.",
+    displayNameLabel: "Nome visualizzato",
+    displayNameHelp: "Nome breve in firma — es. Aisha",
+    displayNamePlaceholder: "Aisha",
+    fullNameLabel: "Nome completo",
+    fullNamePlaceholder: "Aisha Surodjawan",
+    businessTitleLabel: "Ruolo",
+    businessTitlePlaceholder: "Founder",
+    companyNameLabel: "Azienda",
+    companyNamePlaceholder: "Handled",
+    communicationStyleLabel: "Stile di comunicazione",
+    communicationStyleHelp: "Voce generale (si combina con il cursore tono su ogni email).",
+    communicationStyles: {
+      balanced: "Equilibrato — professionale ma umano",
+      professional: "Professionale — curato e chiaro",
+      casual: "Informale — conversazionale e caldo",
+    },
+    defaultSignOffLabel: "Chiusura predefinita",
+    defaultSignOffHelp: "In fondo alle risposte generate, salvo chiusura personalizzata.",
+    customSignOffLabel: "Chiusura personalizzata (opzionale)",
+    customSignOffHelp: "Sostituisce il modello — es. Grazie, Aisha",
+    customSignOffPlaceholder: "Grazie,\nAisha",
+    signatureBlockLabel: "Firma completa (opzionale)",
+    signatureBlockHelp: "Per email formali o commerciali",
+    signatureBlockPlaceholder: "Aisha Surodjawan\nFounder, Handled",
+    includeSignOffLabel: "Includi firma nelle risposte generate",
+    includeSignOffHelp: "Se disattivato, le bozze restano senza firma.",
+    previewLabel: "Anteprima firma",
   },
   modeSelector: {
     legend: "Scegli la tua modalita",

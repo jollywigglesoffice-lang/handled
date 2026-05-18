@@ -19,4 +19,7 @@ alter table public.users
 alter table public.users
   add column if not exists handled_brain_json jsonb not null default '{"entries":[]}'::jsonb;
 
+alter table public.users
+  add column if not exists identity_json jsonb not null default '{}'::jsonb;
+
 notify pgrst, 'reload schema';

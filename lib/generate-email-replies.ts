@@ -11,6 +11,8 @@ import {
 } from "@/lib/reply-context-analysis";
 import type { ReplyGenerationResult } from "@/lib/reply-generation-result";
 import { workflowModeReplyDirective } from "@/lib/workflow-mode-effects";
+import { formatUserIdentityForPrompt, resolveReplyAuthorName } from "@/lib/user-identity/format-for-prompt";
+import type { UserIdentity } from "@/lib/user-identity/types";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
 export function buildGenerateReplyPrompt(input: {
@@ -18,12 +20,19 @@ export function buildGenerateReplyPrompt(input: {
   tone: string;
   languageLabel: string;
   userName?: string;
+  identity?: UserIdentity;
   contextBlock: string;
   workflowMode?: WorkflowMode;
   category?: InboxAiCategory;
   brainContext?: string;
   replyContext?: ReplyContextAnalysis;
 }): string {
+  const authorName = input.identity
+    ? resolveReplyAuthorName(input.identity, input.userName)
+    : input.userName?.trim() ?? "";
+  const identityBlock = input.identity
+    ? formatUserIdentityForPrompt(input.identity, input.replyContext, input.workflowMode)
+    : "";
   const modeLine = input.workflowMode
     ? workflowModeReplyDirective(input.workflowMode)
     : "";
@@ -52,11 +61,11 @@ ${input.replyContext.extractedFacts.employeeCount ? `- "Thanks ${input.replyCont
 Each reply must answer or commit to answer the sender's question(s). Do not only thank them for writing.`
         : "";
 
-  return `You are Handled — a proactive executive assistant drafting email replies for the user${input.userName ? ` (${input.userName})` : ""}.
+  return `You are Handled — a proactive executive assistant drafting email replies for ${authorName || "the user"}.
 
 Your job is NOT smart-reply autocomplete. You understand intent, answer questions, and move conversations forward.
 
-${analysisBlock}
+${identityBlock ? `${identityBlock}\n\n` : ""}${analysisBlock}
 
 ${categoryLine}
 ${modeLine ? `${modeLine}\n` : ""}
@@ -75,7 +84,7 @@ Rules:
 - All three in ${input.languageLabel}
 - Under 3 sentences each; one sentence if the email is simple
 - Meaningfully different — not the same sentence reworded
-- Sign as the user when natural${input.userName ? ` (${input.userName})` : ""}
+- Write in first person as ${authorName || "the user"}${input.identity?.includeSignOffInReplies ? " and include their sign-off on every reply" : ""}
 
 Return valid JSON only:
 {"replies":["reply 1","reply 2","reply 3"]}

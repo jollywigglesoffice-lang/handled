@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  loadClientUserIdentity,
+  saveClientUserIdentity,
+} from "@/lib/user-identity/client-storage";
+import type { UserIdentity } from "@/lib/user-identity/types";
+import { EMPTY_IDENTITY } from "@/lib/user-identity/types";
 
 export type ReplyTone = "casual" | "professional" | "friendly";
 export type ReplyLanguage =
@@ -48,12 +54,23 @@ function writeStoredValue(storageKey: string, value: string) {
   }
 }
 
+function mergeIdentityWithLegacyName(identity: UserIdentity, legacyName: string | null): UserIdentity {
+  if (identity.displayName.trim()) return identity;
+  if (legacyName?.trim()) {
+    return { ...identity, displayName: legacyName.trim() };
+  }
+  return identity;
+}
+
 type UserPreferencesContextValue = {
   userName: string;
+  identity: UserIdentity;
   tone: ReplyTone;
   replyLanguage: ReplyLanguage;
   uiLanguage: AppUiLanguage;
   setUserName: (name: string) => void;
+  patchIdentity: (patch: Partial<UserIdentity>) => void;
+  saveIdentityToServer: () => Promise<{ message: string }>;
   setTone: (tone: ReplyTone) => void;
   setReplyLanguage: (language: ReplyLanguage) => void;
   setUiLanguage: (language: AppUiLanguage) => void;
@@ -68,10 +85,10 @@ export function UserPreferencesProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [userName, setUserName] = useState(() => {
-    const stored = readStoredValue(USER_NAME_STORAGE_KEY);
-    return stored?.trim() ? stored : "Aisha";
-  });
+  const legacyName = readStoredValue(USER_NAME_STORAGE_KEY);
+  const [identity, setIdentity] = useState<UserIdentity>(() =>
+    mergeIdentityWithLegacyName(loadClientUserIdentity(), legacyName),
+  );
   const [tone, setTone] = useState<ReplyTone>(() => {
     const stored = readStoredValue(TONE_STORAGE_KEY);
     return stored && replyTones.includes(stored as ReplyTone)
@@ -91,16 +108,68 @@ export function UserPreferencesProvider({
       : "en";
   });
 
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/user-identity")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { identity?: UserIdentity } | null) => {
+        if (cancelled || !data?.identity) return;
+        const cloud = mergeIdentityWithLegacyName(data.identity, legacyName);
+        if (cloud.displayName.trim() || cloud.fullName?.trim()) {
+          setIdentity(cloud);
+          saveClientUserIdentity(cloud);
+        }
+      })
+      .catch(() => {
+        // local only
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [legacyName]);
+
+  const userName = identity.displayName.trim() || "Aisha";
+
+  const patchIdentity = useCallback((patch: Partial<UserIdentity>) => {
+    setIdentity((prev) => {
+      const next = { ...prev, ...patch, updatedAt: Date.now() };
+      saveClientUserIdentity(next);
+      if (patch.displayName !== undefined) {
+        writeStoredValue(USER_NAME_STORAGE_KEY, patch.displayName);
+      }
+      return next;
+    });
+  }, []);
+
+  const saveIdentityToServer = useCallback(async () => {
+    try {
+      const res = await fetch("/api/user-identity", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity }),
+      });
+      const data = (await res.json()) as { message?: string; storageMode?: string };
+      if (res.ok) {
+        return { message: data.message ?? "Identity saved." };
+      }
+      return { message: "Saved on this device only." };
+    } catch {
+      return { message: "Saved on this device only." };
+    }
+  }, [identity]);
+
   const value = useMemo(
     () => ({
       userName,
+      identity,
       tone,
       replyLanguage,
       uiLanguage,
       setUserName: (name: string) => {
-        setUserName(name);
-        writeStoredValue(USER_NAME_STORAGE_KEY, name);
+        patchIdentity({ displayName: name });
       },
+      patchIdentity,
+      saveIdentityToServer,
       setTone: (selectedTone: ReplyTone) => {
         setTone(selectedTone);
         writeStoredValue(TONE_STORAGE_KEY, selectedTone);
@@ -114,7 +183,7 @@ export function UserPreferencesProvider({
         writeStoredValue(UI_LANGUAGE_STORAGE_KEY, language);
       },
     }),
-    [replyLanguage, tone, uiLanguage, userName],
+    [identity, patchIdentity, replyLanguage, saveIdentityToServer, tone, uiLanguage, userName],
   );
 
   return (

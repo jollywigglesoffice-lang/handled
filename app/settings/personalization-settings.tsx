@@ -18,8 +18,7 @@ const languageOptions: ReplyLanguage[] = [
 ];
 
 export function PersonalizationSettings() {
-  const { userName, tone, replyLanguage, setTone, setReplyLanguage, setUserName } =
-    useUserPreferences();
+  const { tone, replyLanguage, setTone, setReplyLanguage } = useUserPreferences();
   const ui = useUiCopy();
 
   return (
@@ -55,22 +54,6 @@ export function PersonalizationSettings() {
             ))}
           </select>
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <label htmlFor="user-name" className="text-sm font-medium text-[#0F172A]">
-          {ui.personalization.yourNameLabel}
-        </label>
-        <input
-          id="user-name"
-          name="display-name"
-          type="text"
-          autoComplete="name"
-          value={userName}
-          onChange={(event) => setUserName(event.target.value)}
-          placeholder={ui.personalization.yourNamePlaceholder}
-          className="w-full rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-3 py-2.5 text-sm text-[#0F172A] outline-none transition-all duration-200 placeholder:text-gray-400 focus:border-[#6366F1]"
-        />
       </div>
 
       <div className="space-y-2">
