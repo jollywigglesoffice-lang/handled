@@ -5,6 +5,8 @@ import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { analyzeUnsubscribe } from "@/lib/unsubscribe/detect";
 import { applyUnsubscribeSenderAction } from "@/lib/unsubscribe/apply-sender-action";
 import type { UnsubscribeAnalysis, UnsubscribeMethod } from "@/lib/unsubscribe/types";
+import type { WorkflowMode } from "@/lib/workflow-mode";
+import { shouldShowUnsubscribeIntelligence } from "@/lib/workflow-mode-unsubscribe";
 
 type UnsubscribeIntelligenceCardProps = {
   emailId: string;
@@ -18,6 +20,7 @@ type UnsubscribeIntelligenceCardProps = {
   inboxCategory?: InboxAiCategory;
   /** Server-precomputed analysis (optional) */
   initialAnalysis?: UnsubscribeAnalysis;
+  workflowMode?: WorkflowMode;
   compact?: boolean;
   onUseReplyDraft?: (text: string) => void;
   onDismiss?: () => void;
@@ -34,6 +37,7 @@ export function UnsubscribeIntelligenceCard({
   listUnsubscribePost,
   inboxCategory,
   initialAnalysis,
+  workflowMode = "assist",
   compact,
   onUseReplyDraft,
   onDismiss,
@@ -67,10 +71,7 @@ export function UnsubscribeIntelligenceCard({
 
   const show =
     !dismissed &&
-    (analysis.methods.length > 0 ||
-      analysis.isNewsletterLike ||
-      inboxCategory === "newsletter" ||
-      inboxCategory === "promotion");
+    shouldShowUnsubscribeIntelligence(workflowMode, analysis, inboxCategory);
 
   const handleSenderAction = useCallback(
     async (action: "promotions" | "ignore" | "keep") => {

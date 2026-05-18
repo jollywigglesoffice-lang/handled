@@ -17,7 +17,9 @@ import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import { applyCategoryOverrides } from "@/lib/inbox-buckets";
 import { fakeEmailsToInboxMessages } from "@/lib/inbox-buckets-mock";
-import { workflowModeInboxHint } from "@/lib/workflow-mode-inbox";
+import { syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
+import { WorkflowModeBanner } from "@/app/emails/workflow-mode-banner";
+import { InboxClutterSection } from "@/app/emails/inbox-clutter-section";
 import { useStableInboxBuckets } from "@/app/emails/use-stable-inbox-buckets";
 import { GmailInboxCard, type GmailCardMessage } from "@/app/emails/gmail-inbox-card";
 import { InboxTrainingBanner } from "@/app/emails/inbox-training-banner";
@@ -439,6 +441,7 @@ export default function EmailsInboxPage() {
 
   useEffect(() => {
     void loadInbox();
+    void syncWorkflowModeFromAccount().then((mode) => setWorkflowMode(mode));
   }, [loadInbox]);
 
   useEffect(() => {
@@ -575,7 +578,6 @@ export default function EmailsInboxPage() {
   );
 
   const activeBuckets = inboxMode === "gmail" ? gmailBuckets : mockBuckets;
-  const workflowHint = workflowModeInboxHint(workflowMode);
 
   const todayAttentionCount = activeBuckets.todayAttentionCount;
   const importantEmailLabel =
@@ -738,11 +740,7 @@ export default function EmailsInboxPage() {
             </div>
           ) : inboxMode === "gmail" ? (
             <div className="space-y-10">
-              {workflowHint ? (
-                <p className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
-                  {workflowHint}
-                </p>
-              ) : null}
+              <WorkflowModeBanner mode={workflowMode} />
               <InboxSyncBar
                 lastSyncedAt={lastSyncedAt}
                 isRefreshing={isRefreshing}
@@ -752,6 +750,14 @@ export default function EmailsInboxPage() {
                 messages={gmailBuckets.allVisible as GmailCardMessage[]}
                 onCategoryChange={handleCategoryChange}
               />
+              {gmailBuckets.showClutterSection ? (
+                <InboxClutterSection
+                  messages={gmailBuckets.clutterEmails as GmailCardMessage[]}
+                  locale={uiLanguage === "it" ? "it" : "en"}
+                  onCategoryChange={handleCategoryChange}
+                  defaultCollapsed
+                />
+              ) : null}
               {gmailBuckets.categoryOrder.map((category) => {
                 const list = gmailBuckets.byCategory[category];
                 if (!list.length) return null;

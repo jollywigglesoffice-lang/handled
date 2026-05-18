@@ -10,10 +10,28 @@ import { hasHighPriorityIntent } from "@/lib/email-intent";
 import { hasUrgentHumanSignal, isCommercialBulk } from "@/lib/inbox-triage-signals";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
+import { getWorkflowModeProfile } from "@/lib/workflow-mode/profiles";
 
 export { WORKFLOW_MODE_HEADER };
-
 export { parseWorkflowMode as parseWorkflowModeHeader } from "@/lib/workflow-mode";
+
+function demoteCommercial(
+  row: GmailInboxRow,
+  scores: ReturnType<typeof computeInboxRuleScores>,
+  threshold: number,
+): InboxAiCategory | null {
+  if (scores.promotion >= threshold || scores.newsletter >= threshold || isCommercialBulk(row)) {
+    const lean = commercialLeanCategory(row);
+    return lean ?? (scores.newsletter >= scores.promotion ? "newsletter" : "promotion");
+  }
+  const combined = `${row.subject ?? ""} ${row.snippet ?? ""}`.toLowerCase();
+  if (
+    /\b(unsubscribe|newsletter|digest|promo|% off|sale|marketing)\b/i.test(combined)
+  ) {
+    return scores.newsletter >= scores.promotion ? "newsletter" : "promotion";
+  }
+  return null;
+}
 
 /**
  * Mode-specific triage after rules/AI. Never auto-sends or archives — only category labels.
@@ -28,62 +46,39 @@ export function applyWorkflowModeToCategory(
     return { category, source };
   }
 
-  if (mode === "assist") {
+  const profile = getWorkflowModeProfile(mode);
+
+  if (profile.categorizationAggression === "conservative") {
     return { category, source };
   }
 
   const scores = computeInboxRuleScores(row);
-  const subject = (row.subject ?? "").toLowerCase();
-  const snippet = (row.snippet ?? "").toLowerCase();
-  const combined = `${subject} ${snippet}`;
+  const threshold = profile.commercialDemoteThreshold;
 
-  if (mode === "clean") {
+  if (profile.categorizationAggression === "aggressive") {
     if (category === "needs_attention" || category === "quick_reply") {
-      if (
-        scores.promotion >= 0.35 ||
-        scores.newsletter >= 0.35 ||
-        isCommercialBulk(row)
-      ) {
-        const lean = commercialLeanCategory(row);
-        if (lean) {
-          return { category: lean, source: "heuristic" };
-        }
-        return { category: "promotion", source: "heuristic" };
-      }
-      if (
-        combined.includes("unsubscribe") ||
-        combined.includes("newsletter") ||
-        combined.includes("digest") ||
-        combined.includes("promo") ||
-        combined.includes("% off") ||
-        combined.includes("sale")
-      ) {
-        return {
-          category: scores.newsletter >= scores.promotion ? "newsletter" : "promotion",
-          source: "heuristic",
-        };
+      const demoted = demoteCommercial(row, scores, threshold);
+      if (demoted) {
+        return { category: demoted, source: "heuristic" };
       }
     }
     if (category === "quick_reply" && !looksLikeHumanConversation(row)) {
       const lean = commercialLeanCategory(row);
-      if (lean) {
-        return { category: lean, source: "heuristic" };
-      }
+      if (lean) return { category: lean, source: "heuristic" };
     }
     return { category, source };
   }
 
-  if (mode === "handle") {
+  if (profile.categorizationAggression === "proactive") {
     if (
       (category === "needs_attention" || category === "quick_reply") &&
-      (scores.promotion >= 0.5 || scores.newsletter >= 0.5 || isCommercialBulk(row)) &&
+      (scores.promotion >= threshold ||
+        scores.newsletter >= threshold ||
+        isCommercialBulk(row)) &&
       !hasUrgentHumanSignal(row)
     ) {
       const lean = commercialLeanCategory(row);
-      return {
-        category: lean ?? "promotion",
-        source: "heuristic",
-      };
+      return { category: lean ?? "promotion", source: "heuristic" };
     }
     if (
       category === "needs_attention" &&
@@ -93,20 +88,16 @@ export function applyWorkflowModeToCategory(
     ) {
       return { category: "needs_attention", source };
     }
-    if (category === "promotion" || category === "newsletter") {
-      return { category, source };
-    }
   }
 
   return { category, source };
 }
 
 export function workflowModeReplyDirective(mode: WorkflowMode): string {
-  if (mode === "clean") {
-    return "User mode: Clean My Inbox. Only draft replies if a human clearly expects a response.";
-  }
-  if (mode === "handle") {
-    return "User mode: Handle It For Me. Draft a complete, send-ready reply only when appropriate. Be decisive.";
-  }
-  return "User mode: Assist Me. Helpful reply options when a human expects a response.";
+  return getWorkflowModeProfile(mode).replyDirective;
+}
+
+/** Brain retrieval cap scales with mode */
+export function workflowModeBrainMaxChunks(mode: WorkflowMode): number {
+  return getWorkflowModeProfile(mode).brainWeight === "high" ? 10 : 6;
 }

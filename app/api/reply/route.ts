@@ -20,6 +20,8 @@ import type { HandledBrain } from "@/lib/handled-brain/types";
 import { assessReplyNeed } from "@/lib/reply-necessity";
 import { normalizeInboxAiCategory } from "@/lib/inbox-ai-categories";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { workflowModeBrainMaxChunks } from "@/lib/workflow-mode-effects";
+import type { WorkflowMode } from "@/lib/workflow-mode";
 import {
   buildGenerateReplyPrompt,
   generateEmailRepliesJson,
@@ -130,6 +132,7 @@ async function resolveKnowledgeContext(
     bodyBrain?: HandledBrain;
     primaryIntent?: string;
     intentKinds?: string[];
+    workflowMode?: WorkflowMode;
   },
 ): Promise<{ promptBlock: string; brainUsage: BrainUsageDto }> {
   let brain: HandledBrain | null =
@@ -159,7 +162,10 @@ async function resolveKnowledgeContext(
       primaryIntent: options?.primaryIntent,
       intentKinds: options?.intentKinds,
     },
-    { brain },
+    {
+      brain,
+      maxChunks: workflowModeBrainMaxChunks(options?.workflowMode ?? "assist"),
+    },
   );
 
   return {
@@ -709,6 +715,7 @@ export async function POST(request: Request) {
       bodyBrain: body.brain,
       primaryIntent: replyContextForBrain?.primaryIntent,
       intentKinds: replyContextForBrain?.intent.kinds,
+      workflowMode: body.workflowMode,
     },
   );
   const userIdentity = await resolveUserIdentity(request, email, body.identity, userName);

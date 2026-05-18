@@ -11,6 +11,8 @@ import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel"
 import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
+import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
+import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe";
 
 export type GmailCardMessage = {
   id: string;
@@ -56,11 +58,15 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
   const accent = CATEGORY_ACCENT[message.category];
   const catLabel = inboxCategorySectionTitle(message.category, locale);
   const learnedApplied = message.categorySource === "sender_rule";
-  const showNewsletterBadge = Boolean(
-    message.category === "newsletter" ||
-      message.category === "promotion" ||
-      message.hasUnsubscribeSignal,
-  );
+  const workflowMode = readWorkflowModeFromStorage();
+  const showNewsletterBadge =
+    shouldShowUnsubscribeInboxBadge(
+      workflowMode,
+      Boolean(message.hasUnsubscribeSignal),
+      message.category,
+    ) ||
+    (workflowMode === "assist" &&
+      (message.category === "newsletter" || message.category === "promotion"));
   const badgeLabel =
     message.category === "promotion" ? "Promotion detected" : "Newsletter detected";
 

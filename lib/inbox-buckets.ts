@@ -5,6 +5,9 @@ import {
 } from "@/lib/inbox-ai-categories";
 import {
   GMAIL_CATEGORY_ORDER_BY_MODE,
+  isClutterCategory,
+  primaryCategoryOrderForMode,
+  shouldCollapseClutter,
   shouldShowMessageInWorkflow,
 } from "@/lib/workflow-mode-inbox";
 import type { WorkflowMode } from "@/lib/workflow-mode";
@@ -30,6 +33,10 @@ export type InboxBuckets<T extends InboxBucketMessage> = {
   /** needs_attention + quick_reply (if you need a broader priority metric) */
   priorityCount: number;
   totalVisible: number;
+  /** Newsletter + promotion grouped for Clean mode */
+  clutterEmails: T[];
+  clutterCount: number;
+  showClutterSection: boolean;
 };
 
 function emptyBuckets<T extends InboxBucketMessage>(): InboxBuckets<T> {
@@ -53,6 +60,9 @@ function emptyBuckets<T extends InboxBucketMessage>(): InboxBuckets<T> {
     todayAttentionCount: 0,
     priorityCount: 0,
     totalVisible: 0,
+    clutterEmails: [],
+    clutterCount: 0,
+    showClutterSection: false,
   };
 }
 
@@ -68,6 +78,14 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
     return emptyBuckets();
   }
 
+  const collapseClutter = shouldCollapseClutter(workflowMode);
+
+  const clutterEmails = collapseClutter
+    ? messages
+        .filter((m) => isClutterCategory(normalizeInboxAiCategory(m.category)))
+        .map((m) => ({ ...m, category: normalizeInboxAiCategory(m.category) }))
+    : [];
+
   const visible = messages.filter((m) =>
     shouldShowMessageInWorkflow(
       { category: normalizeInboxAiCategory(m.category) },
@@ -81,6 +99,7 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
 
   for (const raw of visible) {
     const category = normalizeInboxAiCategory(raw.category);
+    if (collapseClutter && isClutterCategory(category)) continue;
     const row = { ...raw, category };
     byCategory[category].push(row);
   }
@@ -89,9 +108,11 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
     INBOX_AI_CATEGORY_VALUES.map((c) => [c, byCategory[c].length]),
   ) as Record<InboxAiCategory, number>;
 
-  const categoryOrder = GMAIL_CATEGORY_ORDER_BY_MODE[workflowMode].filter(
-    (c) => byCategory[c].length > 0,
-  );
+  const orderSource = collapseClutter
+    ? primaryCategoryOrderForMode(workflowMode)
+    : GMAIL_CATEGORY_ORDER_BY_MODE[workflowMode];
+
+  const categoryOrder = orderSource.filter((c) => byCategory[c].length > 0);
 
   const needsAttentionEmails = byCategory.needs_attention;
   const quickReplyEmails = byCategory.quick_reply;
@@ -109,6 +130,9 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
     todayAttentionCount: needsAttentionEmails.length,
     priorityCount: needsAttentionEmails.length + quickReplyEmails.length,
     totalVisible: visible.length,
+    clutterEmails,
+    clutterCount: clutterEmails.length,
+    showClutterSection: collapseClutter && clutterEmails.length > 0,
   };
 }
 

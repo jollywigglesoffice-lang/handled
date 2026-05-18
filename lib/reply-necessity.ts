@@ -7,6 +7,7 @@ import {
   isTransactionalFyi,
 } from "@/lib/inbox-triage-signals";
 import type { WorkflowMode } from "@/lib/workflow-mode";
+import { getWorkflowModeProfile } from "@/lib/workflow-mode/profiles";
 
 export type ReplyNeedAssessment = {
   recommended: boolean;
@@ -16,10 +17,11 @@ export type ReplyNeedAssessment = {
 };
 
 function modeSuppressesReplies(mode: WorkflowMode, category: InboxAiCategory): boolean {
-  if (mode === "clean" && category !== "needs_attention") {
-    return true;
+  const profile = getWorkflowModeProfile(mode);
+  if (!profile.showReplySection) {
+    return category !== "needs_attention";
   }
-  if (mode === "handle" && (category === "promotion" || category === "newsletter")) {
+  if (profile.hidePromotionsInList && (category === "promotion" || category === "newsletter")) {
     return true;
   }
   return false;

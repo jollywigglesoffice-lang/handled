@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { FREE_LIMIT, readUsageCountWithDailyReset } from "@/lib/daily-usage";
-import type { WorkflowMode } from "@/lib/workflow-mode";
-import { persistWorkflowModeToBrowser, WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
+import { WORKFLOW_MODE_KEY, type WorkflowMode } from "@/lib/workflow-mode";
+import { persistWorkflowModeToAccount, syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
+import { WorkflowModeSelector } from "./workflow-mode-selector";
 import { HandledBrainSettings } from "./handled-brain-settings";
 import { InboxPrioritySettings } from "./inbox-priority-settings";
 import { SenderRulesSettings } from "./sender-rules-settings";
@@ -36,9 +37,16 @@ export default function SettingsPage() {
 
   function updateWorkflowMode(mode: WorkflowMode) {
     setWorkflowMode(mode);
-    persistWorkflowModeToBrowser(mode);
+    void persistWorkflowModeToAccount(mode);
     window.dispatchEvent(new Event("handled-workflow-mode-changed"));
   }
+
+  useEffect(() => {
+    if (!authUser?.id) return;
+    void syncWorkflowModeFromAccount().then((mode) => {
+      setWorkflowMode(mode);
+    });
+  }, [authUser?.id]);
 
   async function refreshUserProfile(userId: string) {
     const res = await fetch(`/api/get-user?userId=${encodeURIComponent(userId)}`);
@@ -681,36 +689,10 @@ export default function SettingsPage() {
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-900">Workflow modes</h2>
           <p className="mt-2 text-sm text-gray-500">
-            Choose how Handled should assist with your inbox.
+            Each mode changes categorization, replies, and inbox layout. Synced to your account.
           </p>
-          <div className="mt-4 space-y-3">
-            {(
-              [
-                { id: "assist" as const, copyKey: "assistMe" as const },
-                { id: "clean" as const, copyKey: "cleanMyInbox" as const },
-                { id: "handle" as const, copyKey: "handleItForMe" as const },
-              ] as const
-            ).map(({ id, copyKey }) => {
-              const modeCopy = ui.modeSelector.modes[copyKey];
-              const isSelected = workflowMode === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => updateWorkflowMode(id)}
-                  className={`w-full rounded-xl border p-4 text-left transition-all duration-200 hover:shadow-sm active:scale-[0.99] ${
-                    isSelected
-                      ? "border-[#6366F1] bg-[#F8FAFC] shadow-[0_1px_3px_rgba(15,23,42,0.05)]"
-                      : "border-[#E2E8F0] bg-[#FFFFFF] hover:border-[#6366F1]/40"
-                  }`}
-                >
-                  <p className="text-lg font-medium text-[#0F172A]">{modeCopy.name}</p>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-500">
-                    {modeCopy.description}
-                  </p>
-                </button>
-              );
-            })}
+          <div className="mt-5">
+            <WorkflowModeSelector value={workflowMode} onChange={updateWorkflowMode} />
           </div>
         </section>
 

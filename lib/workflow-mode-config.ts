@@ -1,4 +1,25 @@
 import type { WorkflowMode } from "@/lib/workflow-mode";
+import { getWorkflowModeProfile, type WorkflowModeProfile } from "@/lib/workflow-mode/profiles";
+
+function profileToLegacyBehavior(profile: WorkflowModeProfile): WorkflowModeBehavior {
+  return {
+    label: profile.label,
+    explanation: profile.description,
+    replyCount: profile.replyCount,
+    toneBias: profile.toneBias,
+    recommendationLabel: profile.recommendationLabel,
+    status: profile.statusMessage,
+    autoGenerateReplies: profile.autoGenerateReplies,
+    showReplySection: profile.showReplySection,
+    emphasizeSummary: profile.emphasizeSummary,
+    showArchiveHint: profile.showArchiveHint,
+    showBulkTriageHint: profile.showBulkTriageHint,
+    tagline: profile.tagline,
+    emphasizeApproval: profile.emphasizeApproval,
+    showFollowUpReminders: profile.showFollowUpReminders,
+    showDecisionHighlights: profile.showDecisionHighlights,
+  };
+}
 
 export type WorkflowModeBehavior = {
   label: string;
@@ -7,62 +28,17 @@ export type WorkflowModeBehavior = {
   toneBias: number;
   recommendationLabel: string;
   status: string;
-  /** Auto-call reply API on open */
   autoGenerateReplies: boolean;
-  /** Show reply composer section */
   showReplySection: boolean;
   emphasizeSummary: boolean;
   showArchiveHint: boolean;
   showBulkTriageHint: boolean;
+  tagline: string;
+  emphasizeApproval: boolean;
+  showFollowUpReminders: boolean;
+  showDecisionHighlights: boolean;
 };
 
 export function getWorkflowModeBehavior(mode: WorkflowMode): WorkflowModeBehavior {
-  if (mode === "clean") {
-    return {
-      label: "Clean My Inbox",
-      explanation:
-        "Demotes newsletters and promotions aggressively. Summaries over replies. Less clutter.",
-      replyCount: 0,
-      toneBias: -20,
-      recommendationLabel: "Quick clear-out",
-      status: "Focusing on clearing clutter — replies only when truly needed.",
-      autoGenerateReplies: false,
-      showReplySection: false,
-      emphasizeSummary: true,
-      showArchiveHint: true,
-      showBulkTriageHint: false,
-    };
-  }
-
-  if (mode === "handle") {
-    return {
-      label: "Handle It For Me",
-      explanation:
-        "Surfaces important human mail first. Hides reply tools on promos. Suggests archive for noise.",
-      replyCount: 3,
-      toneBias: 8,
-      recommendationLabel: "Ready to send",
-      status: "Preparing action only where a reply makes sense.",
-      autoGenerateReplies: true,
-      showReplySection: true,
-      emphasizeSummary: true,
-      showArchiveHint: true,
-      showBulkTriageHint: true,
-    };
-  }
-
-  return {
-    label: "Assist Me",
-    explanation:
-      "Full reply suggestions when a response makes sense. You choose what to send.",
-    replyCount: 3,
-    toneBias: 0,
-    recommendationLabel: "Recommended",
-    status: "Writing reply options when a response is appropriate…",
-    autoGenerateReplies: true,
-    showReplySection: true,
-    emphasizeSummary: false,
-    showArchiveHint: false,
-    showBulkTriageHint: false,
-  };
+  return profileToLegacyBehavior(getWorkflowModeProfile(mode));
 }

@@ -1594,6 +1594,9 @@ return () => clearTimeout(timeout);
               Workflow mode
             </p>
             <p className="text-sm font-semibold text-gray-900">{workflowBehavior.label}</p>
+            <p className="mt-0.5 text-xs font-medium italic text-gray-600">
+              {workflowBehavior.tagline}
+            </p>
           </div>
 
           <Link
@@ -1604,13 +1607,24 @@ return () => clearTimeout(timeout);
           </Link>
         </div>
 
-        <p className="mt-1 text-xs text-gray-500">{workflowBehavior.explanation}</p>
+        <p className="mt-1 text-xs text-gray-500">{workflowBehavior.status}</p>
 
-        {workflowMode === "handle" ? (
-          <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
-            Even in Handle It For Me mode, Handled prepares the response but never sends anything
-            without your approval.
+        {workflowBehavior.emphasizeApproval ? (
+          <div className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[11px] leading-relaxed text-indigo-900">
+            {workflowMode === "assist"
+              ? "Here's what I recommend — review each option and approve before sending."
+              : "This is already prepared — you approve before anything sends."}
           </div>
+        ) : null}
+
+        <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] leading-relaxed text-emerald-800">
+          Handled never sends email without your explicit approval.
+        </div>
+
+        {workflowBehavior.showFollowUpReminders && replyRecommendedProp ? (
+          <p className="mt-2 text-[11px] text-violet-800">
+            Follow-up suggestion: schedule a reminder if you don&apos;t hear back in 2–3 days.
+          </p>
         ) : null}
       </div>
 

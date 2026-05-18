@@ -6,6 +6,7 @@ import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
 import { UnsubscribeIntelligenceCard } from "@/app/emails/unsubscribe-intelligence-card";
 import type { UnsubscribeAnalysis } from "@/lib/unsubscribe/types";
+import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import type { FakeEmail } from "@/lib/fake-emails";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
@@ -39,6 +40,7 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
   const { uiLanguage } = useUserPreferences();
   const uiLocale = uiLocaleFromLanguage(uiLanguage);
   const categoryLocale = uiLocale === "it" ? "it" : "en";
+  const workflowMode = readWorkflowModeFromStorage();
 
   return (
     <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
@@ -95,6 +97,7 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
             listUnsubscribePost={email.listUnsubscribePost}
             inboxCategory={email.inboxCategory}
             initialAnalysis={email.unsubscribeAnalysis}
+            workflowMode={workflowMode}
             onUseReplyDraft={(text) => setReplyDraftOverride(text)}
           />
 
