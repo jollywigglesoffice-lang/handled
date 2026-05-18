@@ -62,12 +62,12 @@ const TOPIC_SYNONYMS: Record<string, string[]> = {
 
 const INTENT_CATEGORY_BOOST: Record<string, BrainEntryCategory[]> = {
   pricing_inquiry: ["pricing", "business"],
-  sales_lead: ["pricing", "business", "templates"],
-  information_request: ["pricing", "policies", "business", "general"],
-  support_request: ["policies", "business", "general"],
+  sales_lead: ["pricing", "business", "snippets"],
+  information_request: ["pricing", "policies", "business", "faq"],
+  support_request: ["policies", "business", "faq"],
   scheduling: ["calendar", "business", "personal"],
   partnership: ["business", "pricing"],
-  direct_question: ["general", "pricing", "policies"],
+  direct_question: ["faq", "pricing", "policies"],
 };
 
 function tokenize(text: string): string[] {

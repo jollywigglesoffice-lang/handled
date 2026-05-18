@@ -1,12 +1,20 @@
+/** Canonical categories for Handled Brain */
 export type BrainEntryCategory =
-  | "business"
-  | "personal"
   | "pricing"
+  | "faq"
   | "policies"
+  | "family"
+  | "calendar"
+  | "snippets"
+  | "business"
+  | "personal";
+
+/** Legacy slugs stored in old JSON / migrations */
+export type LegacyBrainEntryCategory =
+  | "general"
   | "templates"
   | "family_school"
-  | "calendar"
-  | "general";
+  | BrainEntryCategory;
 
 export type BrainEntry = {
   id: string;
@@ -15,23 +23,51 @@ export type BrainEntry = {
   title: string;
   content: string;
   updatedAt: number;
+  createdAt?: number;
+  sortOrder?: number;
 };
 
 export type HandledBrain = {
   entries: BrainEntry[];
-  /** How the user prefers to sound in replies */
   writingStyle?: string;
 };
 
 export const BRAIN_CATEGORY_LABELS: Record<BrainEntryCategory, string> = {
-  business: "Business info",
-  personal: "Personal info",
   pricing: "Pricing",
-  policies: "Policies & refunds",
-  templates: "Reusable snippets",
-  family_school: "Family & school",
-  calendar: "Calendar (coming soon)",
-  general: "General knowledge",
+  faq: "FAQ",
+  policies: "Policies",
+  family: "Family",
+  calendar: "Calendar",
+  snippets: "Snippets",
+  business: "Business",
+  personal: "Personal",
 };
 
+export const BRAIN_CATEGORY_ORDER: BrainEntryCategory[] = [
+  "pricing",
+  "faq",
+  "policies",
+  "business",
+  "personal",
+  "family",
+  "snippets",
+  "calendar",
+];
+
 export const EMPTY_BRAIN: HandledBrain = { entries: [] };
+
+export type BrainSyncStatus = "idle" | "syncing" | "saved" | "error" | "offline_cached";
+
+export type BrainSaveResult =
+  | {
+      ok: true;
+      storageMode: "cloud";
+      message: string;
+      lastSyncedAt: string;
+    }
+  | {
+      ok: false;
+      error: string;
+      clientLocalOk?: boolean;
+      hint?: string;
+    };

@@ -22,4 +22,9 @@ alter table public.users
 alter table public.users
   add column if not exists identity_json jsonb not null default '{}'::jsonb;
 
+alter table public.users
+  add column if not exists handled_brain_writing_style text;
+
+-- Per-entry brain: see supabase/sql/handled_brain_entries.sql
+
 notify pgrst, 'reload schema';

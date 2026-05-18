@@ -2,6 +2,7 @@ import type { HandledBrain } from "@/lib/handled-brain/types";
 import { EMPTY_BRAIN } from "@/lib/handled-brain/types";
 
 export const LOCAL_HANDLED_BRAIN_KEY = "handled_brain_v1";
+export const HANDLED_BRAIN_PENDING_SYNC_KEY = "handled_brain_pending_sync";
 export const HANDLED_BRAIN_HEADER = "x-handled-brain";
 
 export function loadClientHandledBrain(): HandledBrain {

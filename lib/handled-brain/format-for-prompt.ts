@@ -1,3 +1,4 @@
+import { normalizeBrainCategory } from "@/lib/handled-brain/category-map";
 import type { HandledBrain } from "@/lib/handled-brain/types";
 import type { BrainEntry } from "@/lib/handled-brain/types";
 import { retrieveKnowledgeForEmail } from "@/lib/knowledge/retrieve";
@@ -18,7 +19,7 @@ export function selectRelevantBrainEntries(
   );
   return result.chunks.map((c) => ({
     id: c.id,
-    category: (c.category ?? "general") as BrainEntry["category"],
+    category: normalizeBrainCategory(String(c.category ?? "faq")),
     title: c.title,
     content: c.content,
     updatedAt: c.updatedAt ?? Date.now(),

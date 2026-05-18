@@ -53,7 +53,7 @@ export function toBrainUsageDto(result: KnowledgeRetrievalResult) {
       id: c.id,
       source: c.source,
       title: c.title,
-      category: String(c.category ?? "general"),
+      category: String(c.category ?? "faq"),
       contentPreview: c.content.slice(0, 280),
       score: Math.round(c.score * 10) / 10,
       matchReasons: c.matchReasons,
