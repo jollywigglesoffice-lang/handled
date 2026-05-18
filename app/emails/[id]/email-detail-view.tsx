@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
-import { UnsubscribeCard } from "@/app/emails/unsubscribe-card";
+import { UnsubscribeIntelligenceCard } from "@/app/emails/unsubscribe-intelligence-card";
+import type { UnsubscribeAnalysis } from "@/lib/unsubscribe/types";
 import type { FakeEmail } from "@/lib/fake-emails";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
@@ -19,6 +21,10 @@ export type EmailDetailPayload = FakeEmail & {
   replyRecommended?: boolean;
   replySuppressedReason?: string;
   suggestedTriageAction?: string;
+  listUnsubscribe?: string;
+  listUnsubscribePost?: string;
+  unsubscribeAnalysis?: UnsubscribeAnalysis;
+  unsubscribeReplyDraft?: string;
 };
 
 type EmailDetailViewProps = {
@@ -26,6 +32,9 @@ type EmailDetailViewProps = {
 };
 
 export function EmailDetailView({ email }: EmailDetailViewProps) {
+  const [replyDraftOverride, setReplyDraftOverride] = useState(
+    email.unsubscribeReplyDraft ?? "",
+  );
   const ui = useUiCopy();
   const { uiLanguage } = useUserPreferences();
   const uiLocale = uiLocaleFromLanguage(uiLanguage);
@@ -75,10 +84,18 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
             <p className="text-sm leading-relaxed text-gray-500">{email.aiSummary}</p>
           </div>
 
-          <UnsubscribeCard
+          <UnsubscribeIntelligenceCard
+            emailId={email.id}
+            sender={email.sender}
+            subject={email.subject}
+            snippet={email.summary}
             bodyPlain={email.body}
             bodyHtml={email.bodyHtml}
-            sender={email.sender}
+            listUnsubscribe={email.listUnsubscribe}
+            listUnsubscribePost={email.listUnsubscribePost}
+            inboxCategory={email.inboxCategory}
+            initialAnalysis={email.unsubscribeAnalysis}
+            onUseReplyDraft={(text) => setReplyDraftOverride(text)}
           />
 
           <div className="space-y-3 border-t border-gray-200 pt-8">
@@ -96,7 +113,7 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
           senderName={email.sender}
           subject={email.subject}
           snippet={email.summary}
-          suggestedReply={email.suggestedReply}
+          suggestedReply={replyDraftOverride || email.suggestedReply}
           inboxCategory={email.inboxCategory}
           replyRecommended={email.replyRecommended ?? true}
           replySuppressedReason={email.replySuppressedReason}

@@ -41,6 +41,7 @@ type GmailInboxMessage = {
   category: InboxAiCategory;
   categoryConfidence?: number;
   categorySource?: CategorySource;
+  hasUnsubscribeSignal?: boolean;
 };
 
 type InboxMode =
@@ -399,6 +400,7 @@ export default function EmailsInboxPage() {
           category?: string;
           categoryConfidence?: number;
           categorySource?: CategorySource;
+          hasUnsubscribeSignal?: boolean;
         };
         return {
           id: r.id,
@@ -420,6 +422,7 @@ export default function EmailsInboxPage() {
             r.categorySource === "sender_rule"
               ? r.categorySource
               : undefined,
+          hasUnsubscribeSignal: Boolean(r.hasUnsubscribeSignal),
         };
       });
       setGmailMessages(msgs);

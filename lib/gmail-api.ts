@@ -20,6 +20,8 @@ export type GmailInboxRow = {
   snippet: string;
   date: string;
   internalDateMs: number;
+  listUnsubscribe?: string;
+  listUnsubscribePost?: string;
 };
 
 function decodeBase64Url(data: string): string {
@@ -75,7 +77,7 @@ export async function gmailGetMessageMetadata(
   accessToken: string,
   messageId: string,
 ): Promise<GmailInboxRow> {
-  const url = `${GMAIL_BASE}/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`;
+  const url = `${GMAIL_BASE}/messages/${encodeURIComponent(messageId)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Unsubscribe-Post`;
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -111,6 +113,8 @@ export async function gmailGetMessageMetadata(
     snippet: msg.snippet ?? "",
     date,
     internalDateMs: Number.isNaN(internalMs) ? 0 : internalMs,
+    listUnsubscribe: headerValue(headers, "List-Unsubscribe") || undefined,
+    listUnsubscribePost: headerValue(headers, "List-Unsubscribe-Post") || undefined,
   };
 }
 
@@ -125,6 +129,8 @@ export async function gmailGetMessageFull(
   bodyText: string;
   bodyHtml: string;
   internalDateMs: number;
+  listUnsubscribe?: string;
+  listUnsubscribePost?: string;
 }> {
   const url = `${GMAIL_BASE}/messages/${encodeURIComponent(messageId)}?format=full`;
 
@@ -170,5 +176,35 @@ export async function gmailGetMessageFull(
     bodyText,
     bodyHtml: bodyHtml.trim(),
     internalDateMs: internalMs,
+    listUnsubscribe: headerValue(headers, "List-Unsubscribe") || undefined,
+    listUnsubscribePost: headerValue(headers, "List-Unsubscribe-Post") || undefined,
   };
+}
+
+/** RFC 8058 one-click POST to List-Unsubscribe HTTPS URL (no OAuth — sender endpoint only). */
+export async function performOneClickUnsubscribe(
+  httpsUrl: string,
+): Promise<{ ok: boolean; status: number; error?: string }> {
+  try {
+    const res = await fetch(httpsUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Handled/1.0 (unsubscribe-assistant)",
+      },
+      body: "List-Unsubscribe=One-Click",
+      redirect: "manual",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status >= 200 && res.status < 400) {
+      return { ok: true, status: res.status };
+    }
+    return { ok: false, status: res.status, error: `HTTP ${res.status}` };
+  } catch (e) {
+    return {
+      ok: false,
+      status: 0,
+      error: e instanceof Error ? e.message : "request_failed",
+    };
+  }
 }

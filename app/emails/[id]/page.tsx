@@ -9,6 +9,7 @@ import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 import { loadCategorizationRulesForUser } from "@/lib/load-user-categorization-context";
 import { assessReplyNeed } from "@/lib/reply-necessity";
+import { analyzeUnsubscribe } from "@/lib/unsubscribe/detect";
 import { isLikelyHtml } from "@/lib/sanitize-email-html";
 import { getEmailById, type InboxSectionTitle } from "@/lib/fake-emails";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -56,6 +57,15 @@ async function enrichGmailEmail(
 
   const aiSummary = await buildEmailSummary(meta, category, workflowMode);
 
+  const unsubscribeAnalysis = analyzeUnsubscribe({
+    bodyPlain: displayPlain,
+    bodyHtml,
+    snippet: msg.snippet,
+    listUnsubscribe: msg.listUnsubscribe,
+    listUnsubscribePost: msg.listUnsubscribePost,
+    inboxCategory: category,
+  });
+
   return {
     id: msg.id,
     section: legacySectionForCategory(category),
@@ -77,6 +87,10 @@ async function enrichGmailEmail(
     replyRecommended: replyAssessment.recommended,
     replySuppressedReason: replyAssessment.recommended ? undefined : replyAssessment.reason,
     suggestedTriageAction: replyAssessment.suggestedAction,
+    listUnsubscribe: msg.listUnsubscribe,
+    listUnsubscribePost: msg.listUnsubscribePost,
+    unsubscribeAnalysis,
+    unsubscribeReplyDraft: unsubscribeAnalysis.suggestedReplyText ?? undefined,
   };
 }
 

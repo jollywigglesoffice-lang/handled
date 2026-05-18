@@ -21,6 +21,7 @@ export type GmailCardMessage = {
   category: InboxAiCategory;
   categoryConfidence?: number;
   categorySource?: CategorySource;
+  hasUnsubscribeSignal?: boolean;
 };
 
 const CATEGORY_ACCENT: Record<InboxAiCategory, string> = {
@@ -55,6 +56,13 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
   const accent = CATEGORY_ACCENT[message.category];
   const catLabel = inboxCategorySectionTitle(message.category, locale);
   const learnedApplied = message.categorySource === "sender_rule";
+  const showNewsletterBadge = Boolean(
+    message.category === "newsletter" ||
+      message.category === "promotion" ||
+      message.hasUnsubscribeSignal,
+  );
+  const badgeLabel =
+    message.category === "promotion" ? "Promotion detected" : "Newsletter detected";
 
   const handleApply = useCallback(
     async (chosen: InboxAiCategory, scope: CategoryApplyScope) => {
@@ -103,6 +111,8 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
           message={message}
           catLabel={catLabel}
           learnedApplied={learnedApplied}
+          showNewsletterBadge={showNewsletterBadge}
+          badgeLabel={badgeLabel}
           onOpenCorrection={() => setShowCorrection(true)}
         />
 
@@ -149,17 +159,29 @@ function CardHeader({
   message,
   catLabel,
   learnedApplied,
+  showNewsletterBadge,
+  badgeLabel,
   onOpenCorrection,
 }: {
   message: GmailCardMessage;
   catLabel: string;
   learnedApplied: boolean;
+  showNewsletterBadge: boolean;
+  badgeLabel: string;
   onOpenCorrection: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-sm font-medium text-gray-500">{message.sender}</p>
       <div className="flex flex-wrap items-center gap-2">
+        {showNewsletterBadge ? (
+          <Link
+            href={`/emails/${encodeURIComponent(message.id)}`}
+            className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-800 hover:bg-violet-100"
+          >
+            {badgeLabel}
+          </Link>
+        ) : null}
         {learnedApplied ? (
           <span
             className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700"
