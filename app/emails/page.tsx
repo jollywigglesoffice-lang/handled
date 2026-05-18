@@ -15,11 +15,10 @@ import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
 import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
-import {
-  GMAIL_CATEGORY_ORDER_BY_MODE,
-  shouldShowMessageInWorkflow,
-  workflowModeInboxHint,
-} from "@/lib/workflow-mode-inbox";
+import { applyCategoryOverrides } from "@/lib/inbox-buckets";
+import { fakeEmailsToInboxMessages } from "@/lib/inbox-buckets-mock";
+import { workflowModeInboxHint } from "@/lib/workflow-mode-inbox";
+import { useStableInboxBuckets } from "@/app/emails/use-stable-inbox-buckets";
 import { GmailInboxCard, type GmailCardMessage } from "@/app/emails/gmail-inbox-card";
 import { InboxTrainingBanner } from "@/app/emails/inbox-training-banner";
 import { InboxSyncBar } from "@/app/emails/inbox-sync-bar";
@@ -510,14 +509,29 @@ export default function EmailsInboxPage() {
     };
   }, [inboxLoading, loadingMicroMessages.length]);
 
-  const displayMessages = useMemo(() => {
-    return gmailMessages
-      .map((m) => ({
-        ...m,
-        category: categoryOverrides[m.id] ?? m.category,
-      }))
-      .filter((m) => shouldShowMessageInWorkflow(m, workflowMode));
-  }, [gmailMessages, categoryOverrides, workflowMode]);
+  const messagesWithOverrides = useMemo(
+    () => applyCategoryOverrides(gmailMessages, categoryOverrides),
+    [gmailMessages, categoryOverrides],
+  );
+
+  const { buckets: gmailBuckets, isCountsPending } = useStableInboxBuckets({
+    messages: messagesWithOverrides,
+    workflowMode,
+    isRefreshing,
+    isInitialLoading: inboxMode === "loading",
+  });
+
+  const mockInboxMessages = useMemo(
+    () => fakeEmailsToInboxMessages(fakeEmails, handledEmailIds),
+    [handledEmailIds],
+  );
+
+  const { buckets: mockBuckets } = useStableInboxBuckets({
+    messages: mockInboxMessages,
+    workflowMode,
+    isRefreshing: false,
+    isInitialLoading: false,
+  });
 
   const handleCategoryChange = useCallback((id: string, category: InboxAiCategory) => {
     setCategoryOverrides((prev) => ({ ...prev, [id]: category }));
@@ -526,33 +540,14 @@ export default function EmailsInboxPage() {
     );
   }, []);
 
-  const gmailByCategory = useMemo(() => {
-    const order = GMAIL_CATEGORY_ORDER_BY_MODE[workflowMode];
-    const buckets = {} as Record<InboxAiCategory, GmailInboxMessage[]>;
-    for (const key of order) {
-      buckets[key] = [];
-    }
-    for (const m of displayMessages) {
-      if (buckets[m.category]) {
-        buckets[m.category].push(m);
-      }
-    }
-    return buckets;
-  }, [displayMessages, workflowMode]);
-
+  const activeBuckets = inboxMode === "gmail" ? gmailBuckets : mockBuckets;
   const workflowHint = workflowModeInboxHint(workflowMode);
 
-  const importantEmailCount =
-    inboxMode === "gmail"
-      ? gmailMessages.filter(
-          (m) => m.category === "needs_attention" || m.category === "quick_reply",
-        ).length
-      : inboxSections.find((section) => section.title === "Needs Your Attention")?.emails
-          .length ?? 0;
+  const todayAttentionCount = activeBuckets.todayAttentionCount;
   const importantEmailLabel =
-    importantEmailCount === 1
+    todayAttentionCount === 1
       ? `1 ${ui.home.attentionCountSingle}`
-      : `${importantEmailCount} ${ui.home.attentionCountPlural}`;
+      : `${todayAttentionCount} ${ui.home.attentionCountPlural}`;
 
   return (
     <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
@@ -600,8 +595,19 @@ export default function EmailsInboxPage() {
                 </select>
               </div>
             </div>
-            <p className="text-base font-medium text-[#0F172A]">
-              {importantEmailLabel}
+            <p className="flex flex-wrap items-baseline gap-2 text-base font-medium text-[#0F172A]">
+              {isCountsPending && inboxMode === "gmail" ? (
+                <span className="inline-flex items-center gap-1.5 text-sm font-normal text-gray-400">
+                  <span
+                    className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[#6366F1] border-t-transparent"
+                    aria-hidden
+                  />
+                  Updating counts…
+                </span>
+              ) : null}
+              <span className={isCountsPending && inboxMode === "gmail" ? "opacity-70" : ""}>
+                {importantEmailLabel}
+              </span>
             </p>
             <p className="text-sm text-gray-500">{ui.home.everythingHandled}</p>
             {inboxMode === "gmail" && (
@@ -709,11 +715,11 @@ export default function EmailsInboxPage() {
                 onRefresh={() => void loadInbox({ silent: true })}
               />
               <InboxTrainingBanner
-                messages={displayMessages as GmailCardMessage[]}
+                messages={gmailBuckets.allVisible as GmailCardMessage[]}
                 onCategoryChange={handleCategoryChange}
               />
-              {GMAIL_CATEGORY_ORDER_BY_MODE[workflowMode].map((category) => {
-                const list = gmailByCategory[category];
+              {gmailBuckets.categoryOrder.map((category) => {
+                const list = gmailBuckets.byCategory[category];
                 if (!list.length) return null;
                 return (
                   <div
@@ -723,7 +729,7 @@ export default function EmailsInboxPage() {
                     <GmailCategorySectionHeader
                       category={category}
                       locale={uiLanguage}
-                      count={list.length}
+                      count={gmailBuckets.counts[category]}
                     />
                     <div className="mt-6 space-y-4">
                       {list.map((message) => (
