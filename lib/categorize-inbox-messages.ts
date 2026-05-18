@@ -450,6 +450,8 @@ ${lines.join("\n\n")}`;
 
 export type CategorizeInboxOptions = {
   userRules?: InboxUserRule[];
+  /** Learned sender rules — evaluated before keyword userRules. */
+  senderRules?: InboxUserRule[];
   workflowMode?: WorkflowMode;
 };
 
@@ -494,7 +496,9 @@ export async function categorizeGmailInboxRows(
     return [];
   }
 
+  const senderRules = options?.senderRules ?? [];
   const userRules = options?.userRules ?? [];
+  const allUserRules = [...senderRules, ...userRules];
   const workflowMode = options?.workflowMode ?? "assist";
   const apiKey = getAiApiKey();
   logAiKeyStatus("categorize-inbox");
@@ -504,16 +508,23 @@ export async function categorizeGmailInboxRows(
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
-    const userPre = applyUserRulesPre(row, userRules);
+    const senderPre = applyUserRulesPre(row, senderRules);
+    const keywordPre = senderPre ? null : applyUserRulesPre(row, userRules);
+    const userPre = senderPre ?? keywordPre;
+    const preSource: CategorySource = senderPre ? "sender_rule" : "user_rule";
+
     if (userPre?.kind === "force") {
-      console.log("RULE MATCH:", userPre.category, { source: "user_pre", label: userPre.label });
+      console.log("RULE MATCH:", userPre.category, {
+        source: senderPre ? "sender_learned" : "user_pre",
+        label: userPre.label,
+      });
       out[i] = applyUserPostIfNeeded(
         row,
         i,
         userPre.category,
-        "user_rule",
+        preSource,
         0.96,
-        userRules,
+        allUserRules,
         workflowMode,
       );
       continue;
@@ -524,9 +535,9 @@ export async function categorizeGmailInboxRows(
         row,
         i,
         "handled",
-        "user_rule",
+        preSource,
         0.99,
-        userRules,
+        allUserRules,
         workflowMode,
       );
       continue;
@@ -552,7 +563,7 @@ export async function categorizeGmailInboxRows(
         rule.category,
         "rule",
         rule.confidence,
-        userRules,
+        allUserRules,
         workflowMode,
       );
     } else {
@@ -595,7 +606,7 @@ export async function categorizeGmailInboxRows(
         category,
         source,
         confidence,
-        userRules,
+        allUserRules,
         workflowMode,
       );
     }
@@ -611,7 +622,7 @@ export async function categorizeGmailInboxRows(
       fb.category,
       "heuristic",
       fb.confidence,
-      userRules,
+      allUserRules,
       workflowMode,
     );
   };

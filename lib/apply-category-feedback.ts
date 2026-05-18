@@ -3,9 +3,11 @@ import type { CategoryApplyScope } from "@/lib/category-correction";
 import { loadClientInboxRules, saveClientInboxRules } from "@/lib/inbox-rules-client-storage";
 import {
   loadClientSenderPreferences,
+  mergeSenderPreferences,
   preferenceFromSender,
   saveClientSenderPreferences,
 } from "@/lib/inbox-sender-preferences";
+import { applySenderRuleToMessages } from "@/lib/sender-rules/apply-to-messages";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
 
 export type CategoryFeedbackInput = {
@@ -18,20 +20,27 @@ export type CategoryFeedbackInput = {
   scope: CategoryApplyScope;
 };
 
+export type CategoryFeedbackResult = {
+  message: string;
+  rules?: InboxUserRule[];
+  affectedCount?: number;
+  learnedSender?: boolean;
+};
+
 export async function submitCategoryFeedback(
   input: CategoryFeedbackInput,
-): Promise<{ message: string; rules?: InboxUserRule[] }> {
+): Promise<CategoryFeedbackResult> {
   const clientPrefs = loadClientSenderPreferences();
   const mergedPrefs =
     input.scope === "sender"
-      ? [
+      ? mergeSenderPreferences(
+          clientPrefs,
           preferenceFromSender(
             input.sender,
             input.chosenCategory,
             `Always: ${input.chosenCategory.replace(/_/g, " ")}`,
           ),
-          ...clientPrefs,
-        ]
+        )
       : clientPrefs;
 
   if (input.scope === "sender") {
@@ -60,6 +69,7 @@ export async function submitCategoryFeedback(
     message?: string;
     rules?: InboxUserRule[];
     error?: string;
+    learnedSender?: boolean;
   };
 
   if (data.rules?.length) {
@@ -70,14 +80,18 @@ export async function submitCategoryFeedback(
     throw new Error(data.error ?? "Could not save preference");
   }
 
+  const scopeMessages: Record<CategoryApplyScope, string> = {
+    this_email: "Updated for this email only.",
+    sender: "Learned sender rule saved — matching emails updated.",
+    similar: "Handled will match similar subject lines going forward.",
+  };
+
   return {
-    message:
-      data.message ??
-      (input.scope === "this_email"
-        ? "Updated for this email."
-        : input.scope === "sender"
-          ? "Handled will remember this sender."
-          : "Handled will match similar subjects."),
+    message: data.message ?? scopeMessages[input.scope],
     rules: data.rules,
+    learnedSender: data.learnedSender ?? input.scope === "sender",
+    affectedCount: input.scope === "this_email" ? 1 : undefined,
   };
 }
+
+export { applySenderRuleToMessages };

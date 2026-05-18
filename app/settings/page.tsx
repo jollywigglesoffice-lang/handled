@@ -9,6 +9,7 @@ import type { WorkflowMode } from "@/lib/workflow-mode";
 import { persistWorkflowModeToBrowser, WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
 import { HandledBrainSettings } from "./handled-brain-settings";
 import { InboxPrioritySettings } from "./inbox-priority-settings";
+import { SenderRulesSettings } from "./sender-rules-settings";
 import { IdentitySettings } from "./identity-settings";
 import { PersonalizationSettings } from "./personalization-settings";
 import { useUiCopy } from "@/app/use-ui-copy";
@@ -714,6 +715,7 @@ export default function SettingsPage() {
         </section>
 
         <HandledBrainSettings />
+        <SenderRulesSettings />
         <InboxPrioritySettings />
         <IdentitySettings />
         <PersonalizationSettings />

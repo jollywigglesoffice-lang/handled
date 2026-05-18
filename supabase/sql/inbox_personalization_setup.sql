@@ -26,5 +26,6 @@ alter table public.users
   add column if not exists handled_brain_writing_style text;
 
 -- Per-entry brain: see supabase/sql/handled_brain_entries.sql
+-- Sender learning: see supabase/sql/sender_rules.sql
 
 notify pgrst, 'reload schema';

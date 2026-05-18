@@ -101,21 +101,21 @@ export function CategoryCorrectionPanel({
             <ScopeButton
               disabled={busy}
               onClick={() => void confirm("this_email")}
-              title="Only this email"
-              description="One-time correction"
+              title="Apply only to this email"
+              description="One-time correction for this message"
             />
             <ScopeButton
               disabled={busy}
               onClick={() => void confirm("sender")}
-              title="This sender forever"
-              description={`All mail from ${target.sender.split("<")[0].trim() || "this sender"}`}
+              title="Always categorize emails from this sender like this"
+              description={`All mail from ${target.sender.split("<")[0].trim() || "this sender"} — updates your inbox now`}
               primary
             />
             <ScopeButton
               disabled={busy}
               onClick={() => void confirm("similar")}
-              title="Similar emails"
-              description="Match subject keywords going forward"
+              title="Similar subject lines"
+              description="Match keywords in the subject going forward"
             />
           </div>
           <button

@@ -29,6 +29,8 @@ import {
   inboxCategorySectionTitle,
   normalizeInboxAiCategory,
 } from "@/lib/inbox-ai-categories";
+import { applySenderRuleToMessages } from "@/lib/sender-rules/apply-to-messages";
+import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
 
 type GmailInboxMessage = {
   id: string;
@@ -414,7 +416,8 @@ export default function EmailsInboxPage() {
             r.categorySource === "ai" ||
             r.categorySource === "heuristic" ||
             r.categorySource === "ai_coerced" ||
-            r.categorySource === "user_rule"
+            r.categorySource === "user_rule" ||
+            r.categorySource === "sender_rule"
               ? r.categorySource
               : undefined,
         };
@@ -446,10 +449,12 @@ export default function EmailsInboxPage() {
     window.addEventListener("handled-workflow-mode-changed", onModeChange);
     window.addEventListener("handled-inbox-rules-changed", onRulesChange);
     window.addEventListener("handled-inbox-refresh-requested", onRulesChange);
+    window.addEventListener("handled-sender-preferences-changed", onRulesChange);
     return () => {
       window.removeEventListener("handled-workflow-mode-changed", onModeChange);
       window.removeEventListener("handled-inbox-rules-changed", onRulesChange);
       window.removeEventListener("handled-inbox-refresh-requested", onRulesChange);
+      window.removeEventListener("handled-sender-preferences-changed", onRulesChange);
     };
   }, [loadInbox]);
 
@@ -533,12 +538,38 @@ export default function EmailsInboxPage() {
     isInitialLoading: false,
   });
 
-  const handleCategoryChange = useCallback((id: string, category: InboxAiCategory) => {
-    setCategoryOverrides((prev) => ({ ...prev, [id]: category }));
-    setGmailMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, category } : m)),
-    );
-  }, []);
+  const handleCategoryChange = useCallback(
+    (id: string, category: InboxAiCategory, options?: InboxCategoryChangeOptions) => {
+      if (options?.scope === "sender" && options.sender) {
+        setGmailMessages((prev) => {
+          const { messages, affectedIds } = applySenderRuleToMessages(
+            prev,
+            options.sender!,
+            category,
+          );
+          setCategoryOverrides((ov) => {
+            const next = { ...ov };
+            for (const affectedId of affectedIds) {
+              next[affectedId] = category;
+            }
+            return next;
+          });
+          return messages;
+        });
+        return;
+      }
+
+      setCategoryOverrides((prev) => ({ ...prev, [id]: category }));
+      setGmailMessages((prev) =>
+        prev.map((m) =>
+          m.id === id
+            ? { ...m, category, categorySource: "user_rule" as const }
+            : m,
+        ),
+      );
+    },
+    [],
+  );
 
   const activeBuckets = inboxMode === "gmail" ? gmailBuckets : mockBuckets;
   const workflowHint = workflowModeInboxHint(workflowMode);

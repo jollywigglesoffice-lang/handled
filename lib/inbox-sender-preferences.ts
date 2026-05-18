@@ -1,7 +1,22 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { senderRulesToInboxRules } from "@/lib/sender-rules/to-inbox-rules";
+import type { SenderRule } from "@/lib/sender-rules/types";
 import { parseSenderDomain, parseSenderEmail } from "@/lib/inbox-user-rules/match";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
+
+function preferenceToSenderRule(pref: SenderPreference): SenderRule {
+  return {
+    id: pref.id,
+    senderEmail: pref.senderEmail,
+    senderDomain: pref.senderDomain,
+    targetCategory: pref.category,
+    label: pref.label,
+    enabled: pref.enabled !== false,
+    createdAt: pref.createdAt,
+    updatedAt: pref.updatedAt ?? pref.createdAt,
+  };
+}
 
 export type SenderPreference = {
   id: string;
@@ -9,7 +24,9 @@ export type SenderPreference = {
   senderDomain: string;
   category: InboxAiCategory;
   label?: string;
+  enabled?: boolean;
   createdAt: number;
+  updatedAt?: number;
 };
 
 export const LOCAL_SENDER_PREFS_KEY = "handled_sender_preferences_v1";
@@ -29,13 +46,16 @@ export function preferenceFromSender(
 ): SenderPreference {
   const senderEmail = parseSenderEmail(sender) || sender.trim().toLowerCase();
   const senderDomain = parseSenderDomain(sender);
+  const now = Date.now();
   return {
     id: newPrefId(),
     senderEmail,
     senderDomain,
     category,
     label,
-    createdAt: Date.now(),
+    enabled: true,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -53,6 +73,7 @@ export function applySenderPreference(
   prefs: SenderPreference[],
 ): InboxAiCategory | null {
   for (const pref of prefs) {
+    if (pref.enabled === false) continue;
     if (senderMatchesPreference(row, pref)) {
       return pref.category;
     }
@@ -60,25 +81,9 @@ export function applySenderPreference(
   return null;
 }
 
+/** @deprecated use senderRulesToInboxRules */
 export function senderPreferencesToRules(prefs: SenderPreference[]): InboxUserRule[] {
-  return prefs.map((pref, index) => {
-    const match =
-      pref.senderEmail && pref.senderEmail.includes("@")
-        ? ({ type: "sender_email" as const, value: pref.senderEmail })
-        : pref.senderDomain
-          ? ({ type: "sender_domain" as const, value: pref.senderDomain })
-          : ({ type: "sender_contains" as const, value: pref.senderEmail });
-
-    return {
-      id: `sender-pref-${pref.id}`,
-      enabled: true,
-      priority: 250 - index,
-      phase: "pre",
-      label: pref.label ?? `Always: ${pref.senderEmail || pref.senderDomain}`,
-      match,
-      action: { type: "force_category", category: pref.category },
-    };
-  });
+  return senderRulesToInboxRules(prefs.map(preferenceToSenderRule));
 }
 
 export function mergeSenderPreferences(
@@ -90,7 +95,7 @@ export function mergeSenderPreferences(
       p.senderEmail !== incoming.senderEmail &&
       (p.senderDomain !== incoming.senderDomain || !incoming.senderDomain),
   );
-  return [incoming, ...filtered];
+  return [{ ...incoming, updatedAt: Date.now() }, ...filtered];
 }
 
 export function loadClientSenderPreferences(): SenderPreference[] {

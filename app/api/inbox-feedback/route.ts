@@ -5,20 +5,17 @@ import { subjectKeywordsForSimilar } from "@/lib/category-correction";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import { loadAllInboxUserRulesForUser, saveInboxUserRulesForUser } from "@/lib/inbox-user-rules/store";
 import { ensureUuidRuleIds } from "@/lib/inbox-user-rules/storage";
+import { preferenceFromSender, type SenderPreference } from "@/lib/inbox-sender-preferences";
 import {
-  mergeSenderPreferences,
-  preferenceFromSender,
-  type SenderPreference,
-} from "@/lib/inbox-sender-preferences";
-import {
-  loadSenderPreferencesForUser,
-  saveSenderPreferencesForUser,
-} from "@/lib/inbox-sender-preferences-store";
+  loadSenderRulesForUser,
+  saveSenderRulesForUser,
+  rulesToPreferences,
+} from "@/lib/sender-rules/store";
 import { parseSenderEmail } from "@/lib/inbox-user-rules/match";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-const SETUP_SQL = "supabase/sql/inbox_personalization_setup.sql";
+const SETUP_SQL = "supabase/sql/sender_rules.sql";
 
 async function requireUserId(): Promise<{ userId: string } | { error: NextResponse }> {
   const supabase = await createSupabaseServerClient();
@@ -39,43 +36,6 @@ function newRuleId(): string {
     return crypto.randomUUID();
   }
   return `rule-${Date.now()}`;
-}
-
-function upsertSenderRule(
-  rules: InboxUserRule[],
-  sender: string,
-  category: InboxAiCategory,
-): InboxUserRule[] {
-  const email = parseSenderEmail(sender) || sender.trim().toLowerCase();
-  const domain = email.includes("@") ? email.split("@")[1] : "";
-  const match =
-    email.includes("@")
-      ? ({ type: "sender_email" as const, value: email })
-      : domain
-        ? ({ type: "sender_domain" as const, value: domain })
-        : ({ type: "sender_contains" as const, value: email });
-
-  const withoutDup = rules.filter(
-    (r) =>
-      !(
-        r.phase === "pre" &&
-        r.action.type === "force_category" &&
-        r.match.type === match.type &&
-        r.match.value.toLowerCase() === match.value.toLowerCase()
-      ),
-  );
-
-  const rule: InboxUserRule = {
-    id: newRuleId(),
-    enabled: true,
-    priority: 300,
-    phase: "pre",
-    label: `Learned: ${email || sender}`,
-    match,
-    action: { type: "force_category", category },
-  };
-
-  return [rule, ...withoutDup];
 }
 
 function upsertSimilarSubjectRule(
@@ -138,46 +98,76 @@ export async function POST(request: Request) {
       category,
       scope,
       message: "Updated for this email only.",
+      affectedCount: 1,
     });
   }
 
-  const existingPrefs = await loadSenderPreferencesForUser(auth.userId);
-  const clientPrefs = body.clientPreferences ?? [];
+  let prefsToSave = await loadSenderRulesForUser(auth.userId);
+  let preferences: SenderPreference[] = rulesToPreferences(prefsToSave);
 
-  let prefsToSave = existingPrefs;
   if (scope === "sender") {
     const pref = preferenceFromSender(
       sender,
       category,
       `Always categorize as ${category.replace(/_/g, " ")}`,
     );
-    prefsToSave = mergeSenderPreferences(prefsToSave, pref);
-    for (const cp of clientPrefs) {
-      prefsToSave = mergeSenderPreferences(prefsToSave, cp);
+    prefsToSave = [
+      {
+        id: pref.id,
+        senderEmail: pref.senderEmail,
+        senderDomain: pref.senderDomain,
+        targetCategory: category,
+        label: pref.label,
+        enabled: true,
+        createdAt: pref.createdAt,
+        updatedAt: Date.now(),
+      },
+      ...prefsToSave.filter(
+        (p) =>
+          p.senderEmail !== pref.senderEmail &&
+          (p.senderDomain !== pref.senderDomain || !pref.senderDomain),
+      ),
+    ];
+    for (const cp of body.clientPreferences ?? []) {
+      prefsToSave = [
+        {
+          id: cp.id,
+          senderEmail: cp.senderEmail,
+          senderDomain: cp.senderDomain,
+          targetCategory: cp.category,
+          label: cp.label,
+          enabled: cp.enabled !== false,
+          createdAt: cp.createdAt,
+          updatedAt: Date.now(),
+        },
+        ...prefsToSave.filter((p) => p.id !== cp.id),
+      ];
     }
+    preferences = rulesToPreferences(prefsToSave);
   }
 
   const prefSave =
-    scope === "sender" ? await saveSenderPreferencesForUser(auth.userId, prefsToSave) : { ok: true as const };
+    scope === "sender"
+      ? await saveSenderRulesForUser(auth.userId, prefsToSave)
+      : { ok: true as const, storageMode: "sender_rules_table" as const };
 
   const { rules: existingRules } = await loadAllInboxUserRulesForUser(auth.userId);
   let mergedRules = existingRules;
 
-  if (scope === "sender") {
-    mergedRules = upsertSenderRule(mergedRules, sender, category);
-  } else if (scope === "similar" && body.subject) {
+  if (scope === "similar" && body.subject) {
     mergedRules = upsertSimilarSubjectRule(mergedRules, body.subject, category);
   }
 
   mergedRules = ensureUuidRuleIds(mergedRules);
   const rulesSave =
-    scope !== "this_email"
+    scope === "similar"
       ? await saveInboxUserRulesForUser(auth.userId, mergedRules)
       : { ok: true as const, storageMode: "client_local" as const };
 
+  const senderEmail = parseSenderEmail(sender);
   const messages: Record<CategoryApplyScope, string> = {
     this_email: "Updated for this email only.",
-    sender: `Future emails from this sender will go to ${category.replace(/_/g, " ")}.`,
+    sender: `Always categorize emails from ${senderEmail || sender} as ${category.replace(/_/g, " ")}.`,
     similar: "Handled will match similar subject lines going forward.",
   };
 
@@ -186,18 +176,23 @@ export async function POST(request: Request) {
     category,
     sender,
     scope,
-    preferences: scope === "sender" ? prefsToSave : undefined,
-    rules: scope !== "this_email" ? mergedRules : undefined,
+    preferences: scope === "sender" ? preferences : undefined,
+    rules: scope === "similar" ? mergedRules : undefined,
     preferenceStorage:
       scope === "sender" && "storageMode" in prefSave
         ? prefSave.ok
           ? prefSave.storageMode
           : "client_local"
         : undefined,
-    rulesStorage: rulesSave.ok ? ("storageMode" in rulesSave ? rulesSave.storageMode : "users_json_column") : "client_local",
-    hint: undefined,
+    rulesStorage:
+      scope === "similar" && rulesSave.ok
+        ? "storageMode" in rulesSave
+          ? rulesSave.storageMode
+          : "users_json_column"
+        : undefined,
     setupSqlPath: SETUP_SQL,
     message: messages[scope],
+    learnedSender: scope === "sender",
   });
 }
 
@@ -205,6 +200,6 @@ export async function GET() {
   const auth = await requireUserId();
   if ("error" in auth) return auth.error;
 
-  const prefs = await loadSenderPreferencesForUser(auth.userId);
-  return NextResponse.json({ preferences: prefs });
+  const rules = await loadSenderRulesForUser(auth.userId);
+  return NextResponse.json({ preferences: rulesToPreferences(rules) });
 }

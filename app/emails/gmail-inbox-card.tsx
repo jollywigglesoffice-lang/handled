@@ -6,9 +6,11 @@ import {
   type InboxAiCategory,
   inboxCategorySectionTitle,
 } from "@/lib/inbox-ai-categories";
+import type { CategorySource } from "@/lib/inbox-ai-categories";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
 import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
 import type { CategoryApplyScope } from "@/lib/category-correction";
+import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
 
 export type GmailCardMessage = {
   id: string;
@@ -18,7 +20,7 @@ export type GmailCardMessage = {
   date: string;
   category: InboxAiCategory;
   categoryConfidence?: number;
-  categorySource?: string;
+  categorySource?: CategorySource;
 };
 
 const CATEGORY_ACCENT: Record<InboxAiCategory, string> = {
@@ -39,7 +41,11 @@ function formatInboxDate(iso: string): string {
 type GmailInboxCardProps = {
   message: GmailCardMessage;
   locale: "en" | "it";
-  onCategoryChange: (id: string, category: InboxAiCategory) => void;
+  onCategoryChange: (
+    id: string,
+    category: InboxAiCategory,
+    options?: InboxCategoryChangeOptions,
+  ) => void;
 };
 
 export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInboxCardProps) {
@@ -48,10 +54,15 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
   const guessedRef = useRef(message.category);
   const accent = CATEGORY_ACCENT[message.category];
   const catLabel = inboxCategorySectionTitle(message.category, locale);
+  const learnedApplied = message.categorySource === "sender_rule";
 
   const handleApply = useCallback(
     async (chosen: InboxAiCategory, scope: CategoryApplyScope) => {
-      onCategoryChange(message.id, chosen);
+      const options: InboxCategoryChangeOptions =
+        scope === "sender" ? { scope, sender: message.sender } : { scope };
+
+      onCategoryChange(message.id, chosen, options);
+
       try {
         const result = await submitCategoryFeedback({
           emailId: message.id,
@@ -62,7 +73,9 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
           chosenCategory: chosen,
           scope,
         });
-        setFeedback(result.message);
+        const extra =
+          scope === "sender" ? " Matching emails in your inbox were updated." : "";
+        setFeedback(`${result.message}${extra}`);
         guessedRef.current = chosen;
         if (scope !== "this_email") {
           window.dispatchEvent(new Event("handled-inbox-rules-changed"));
@@ -70,7 +83,11 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
           window.dispatchEvent(new Event("handled-inbox-refresh-requested"));
         }
       } catch {
-        setFeedback("Saved on this device for this sender.");
+        setFeedback(
+          scope === "sender"
+            ? "Saved on this device — will sync when online."
+            : "Could not save — try again.",
+        );
       }
       setShowCorrection(false);
     },
@@ -85,6 +102,7 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
         <CardHeader
           message={message}
           catLabel={catLabel}
+          learnedApplied={learnedApplied}
           onOpenCorrection={() => setShowCorrection(true)}
         />
 
@@ -130,16 +148,26 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
 function CardHeader({
   message,
   catLabel,
+  learnedApplied,
   onOpenCorrection,
 }: {
   message: GmailCardMessage;
   catLabel: string;
+  learnedApplied: boolean;
   onOpenCorrection: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-sm font-medium text-gray-500">{message.sender}</p>
       <div className="flex flex-wrap items-center gap-2">
+        {learnedApplied ? (
+          <span
+            className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700"
+            title="A learned sender rule set this category"
+          >
+            Learned rule applied
+          </span>
+        ) : null}
         <button
           type="button"
           onClick={onOpenCorrection}
