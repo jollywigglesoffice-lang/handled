@@ -1,4 +1,10 @@
 import {
+  buildCalendarAwareness,
+  expectedSchedulingAction,
+  schedulingReplyDirective,
+  readCalendarConnectionState,
+} from "@/lib/calendar-awareness";
+import {
   analyzeEmailIntent,
   type EmailIntentAnalysis,
   type EmailIntentKind,
@@ -47,6 +53,7 @@ export type ReplyContextAnalysis = {
     productMentions: string[];
   };
   relationship?: SenderRelationshipProfile;
+  calendarAwareness?: ReturnType<typeof buildCalendarAwareness>;
   logSummary: Record<string, unknown>;
 };
 
@@ -169,7 +176,7 @@ function expectedActionFor(primary: PrimaryReplyIntent, facts: ReplyContextAnaly
     case "sales_lead":
       return "Acknowledge interest, welcome them, and propose a clear next step (pricing, demo, or call).";
     case "scheduling":
-      return "Propose times or confirm availability for a meeting/call.";
+      return "Draft scheduling options only — user must approve before any time is confirmed.";
     case "support_request":
       return "Acknowledge the issue and state what you will do to help.";
     case "unsubscribe":
@@ -209,7 +216,8 @@ function replyStyleFor(
       "Sales-assist style: thank them, reference team size if mentioned, offer to send corporate/enterprise pricing.",
     sales_lead: "Opportunity style: warm interest, invite next step (pricing sheet, demo, call).",
     direct_question: "Q&A style: answer or explicitly commit to answer each question.",
-    scheduling: "Coordinator style: suggest scheduling or confirm times.",
+    scheduling:
+      "Coordinator style: suggest tentative times or next steps — never confirm availability without user approval.",
     support_request: "Support style: empathy + action.",
     unsubscribe: "Compliance style: confirm opt-out, no upsell.",
     fyi_no_action: "Brief acknowledgment only when appropriate.",
@@ -229,6 +237,7 @@ export function analyzeReplyContext(input: {
   const row = rowFromEmail(input);
   const hay = `${row.sender} ${row.subject} ${row.snippet}`.toLowerCase();
   const intent = analyzeEmailIntent(row);
+  const calendarAwareness = buildCalendarAwareness(row, input.email);
   const category = input.category ?? "needs_attention";
   const replyNeed = assessReplyNeed({
     row,
@@ -247,7 +256,13 @@ export function analyzeReplyContext(input: {
     productMentions: extractProductMentions(input.email),
   };
 
-  const expectedAction = expectedActionFor(primaryIntent, extractedFacts);
+  let expectedAction = expectedActionFor(primaryIntent, extractedFacts);
+  if (primaryIntent === "scheduling" || calendarAwareness.schedulingIntent.detected) {
+    expectedAction = expectedSchedulingAction(
+      calendarAwareness.schedulingIntent,
+      readCalendarConnectionState().status,
+    );
+  }
   const forbidsGenericAckOnly =
     hasDirectQuestion ||
     primaryIntent === "pricing_inquiry" ||
@@ -272,6 +287,7 @@ export function analyzeReplyContext(input: {
     forbidsGenericAckOnly,
     extractedFacts,
     relationship: input.relationship ?? undefined,
+    calendarAwareness,
     logSummary: {
       replyNeeded,
       primaryIntent,
@@ -332,5 +348,13 @@ FORBIDDEN (do not use unless email is pure FYI with no questions):
 ${facts.length ? `- Facts to reference:\n${facts.map((f) => `  - ${f}`).join("\n")}` : ""}
 ${forbidden}
 ${ctx.relationship ? `\n${relationshipReplyDirective(ctx.relationship)}` : ""}
+${
+  ctx.calendarAwareness?.schedulingIntent.detected
+    ? `\n${schedulingReplyDirective(
+        ctx.calendarAwareness.schedulingIntent,
+        readCalendarConnectionState().status,
+      )}`
+    : ""
+}
 `.trim();
 }

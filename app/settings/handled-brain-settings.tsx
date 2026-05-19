@@ -17,6 +17,8 @@ import {
   registerBrainOnlineSync,
   syncBrainToCloud,
 } from "@/lib/handled-brain/brain-sync-client";
+import Link from "next/link";
+import { readCalendarConnectionState } from "@/lib/calendar-awareness";
 
 function newEntry(category: BrainEntryCategory = "faq"): BrainEntry {
   return {
@@ -318,10 +320,25 @@ export function HandledBrainSettings() {
 
       <SyncStatusBar status={syncStatus} message={syncMessage} lastSyncedAt={lastSyncedAt} />
 
+      <div className="rounded-xl border border-sky-100 bg-sky-50/50 p-4 text-sm text-sky-900">
+        <p className="font-medium">Google Calendar</p>
+        <p className="mt-1 text-xs leading-relaxed text-sky-800">
+          {readCalendarConnectionState().status === "connected"
+            ? "Connected — Handled can suggest draft times from your calendar (you approve every reply)."
+            : "Not connected yet. Scheduling emails still show a Calendar context badge; connect when OAuth ships."}
+        </p>
+        <Link
+          href="/settings#calendar"
+          className="mt-2 inline-block text-xs font-medium text-sky-700 underline underline-offset-2 hover:text-sky-900"
+        >
+          Calendar settings →
+        </Link>
+      </div>
+
       <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 text-sm text-indigo-900">
-        <p className="font-medium">Coming soon</p>
+        <p className="font-medium">More sources coming soon</p>
         <p className="mt-1 text-xs text-indigo-800">
-          Google Calendar, Contacts, Docs, and Drive will plug into the same knowledge pipeline.
+          Contacts, Docs, and Drive will plug into the same knowledge pipeline as Handled Brain.
         </p>
       </div>
 

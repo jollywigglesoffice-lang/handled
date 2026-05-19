@@ -21,6 +21,7 @@ import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import { RelationshipAssignPanel } from "@/app/emails/relationship-assign-panel";
 import { RelationshipBadge } from "@/app/emails/relationship-badge";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
+import { CalendarContextBadge } from "@/app/components/calendar-context-badge";
 import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe";
 import { useUiCopy } from "@/app/use-ui-copy";
 
@@ -34,6 +35,7 @@ export type GmailCardMessage = {
   categoryConfidence?: number;
   categorySource?: CategorySource;
   hasUnsubscribeSignal?: boolean;
+  needsCalendarContext?: boolean;
   relationship?: SenderRelationshipProfile;
 };
 
@@ -186,6 +188,7 @@ export function GmailInboxCard({
           manualOverride={manualOverride}
           showNewsletterBadge={showNewsletterBadge}
           badgeLabel={badgeLabel}
+          locale={locale}
           onOpenCorrection={() => setShowCorrection(true)}
         />
 
@@ -289,6 +292,7 @@ function CardHeader({
   manualOverride,
   showNewsletterBadge,
   badgeLabel,
+  locale,
   onOpenCorrection,
 }: {
   message: GmailCardMessage;
@@ -297,12 +301,16 @@ function CardHeader({
   manualOverride: boolean;
   showNewsletterBadge: boolean;
   badgeLabel: string;
+  locale: "en" | "it";
   onOpenCorrection: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-sm font-medium text-gray-500">{message.sender}</p>
       <div className="flex flex-wrap items-center gap-2">
+        {message.needsCalendarContext ? (
+          <CalendarContextBadge locale={locale} compact showLink={false} />
+        ) : null}
         {showNewsletterBadge ? (
           <Link
             href={`/emails/${encodeURIComponent(message.id)}`}

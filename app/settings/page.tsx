@@ -9,6 +9,7 @@ import { WORKFLOW_MODE_KEY, type WorkflowMode } from "@/lib/workflow-mode";
 import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
 import { persistWorkflowModeToAccount, syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
 import { WorkflowModeSelector } from "./workflow-mode-selector";
+import { CalendarSettings } from "./calendar-settings";
 import { HandledBrainSettings } from "./handled-brain-settings";
 import { InboxPrioritySettings } from "./inbox-priority-settings";
 import { SenderRelationshipsSettings } from "./sender-relationships-settings";
@@ -703,6 +704,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        <CalendarSettings />
         <HandledBrainSettings />
         <SenderRulesSettings />
         <SenderRelationshipsSettings />

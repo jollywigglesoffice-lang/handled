@@ -1,3 +1,4 @@
+import { hasSchedulingIntent } from "@/lib/calendar-awareness";
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { analyzeEmailIntent } from "@/lib/email-intent";
@@ -31,9 +32,6 @@ const WAITING_ON_THEM =
 const USER_COMMITMENT_MENTIONED =
   /you (?:said|mentioned|promised|agreed|noted) (?:you(?:'|')?d|that you would)|as you mentioned|still waiting (?:for|on) (?:the|your)|when you (?:send|get) (?:a chance|time)/i;
 
-const SCHEDULING =
-  /schedule|calendar|meet(?:ing)?|book a (?:time|slot|call)|when are you (?:free|available)|reschedule/i;
-
 const PROMISED_BY_USER_IN_SNIPPET =
   /i(?:'|')?ll (?:send|share|get back|follow up|confirm)|i will (?:send|share|get back|follow up|confirm)|send (?:you )?(?:the |that )?(?:details|info|pricing|document)/i;
 
@@ -50,6 +48,7 @@ function detectCommitment(hay: string): string | undefined {
 }
 
 function resolveState(input: {
+  row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">;
   hay: string;
   intentRequiresReply: boolean;
   replyRecommended: boolean;
@@ -67,7 +66,7 @@ function resolveState(input: {
     return "user_commitment_pending";
   }
 
-  if (SCHEDULING.test(hay)) {
+  if (hasSchedulingIntent(input.row) || /schedule|calendar|meet(?:ing)?/i.test(hay)) {
     return "pending_scheduling";
   }
 
@@ -165,6 +164,7 @@ export function analyzeFollowUp(
 
   const days = daysSince(row.internalDateMs);
   const state = resolveState({
+    row,
     hay,
     intentRequiresReply: intent.requiresReply,
     replyRecommended: reply.recommended,

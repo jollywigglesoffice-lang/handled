@@ -53,6 +53,7 @@ type GmailInboxMessage = {
   categoryConfidence?: number;
   categorySource?: CategorySource;
   hasUnsubscribeSignal?: boolean;
+  needsCalendarContext?: boolean;
   relationship?: SenderRelationshipProfile;
 };
 
@@ -414,6 +415,7 @@ export default function EmailsInboxPage() {
           categoryConfidence?: number;
           categorySource?: CategorySource;
           hasUnsubscribeSignal?: boolean;
+          needsCalendarContext?: boolean;
         };
         return {
           id: r.id,
@@ -444,6 +446,7 @@ export default function EmailsInboxPage() {
               ? r.categorySource
               : undefined,
           hasUnsubscribeSignal: Boolean(r.hasUnsubscribeSignal),
+          needsCalendarContext: Boolean(r.needsCalendarContext),
           relationship:
             (r as { relationship?: SenderRelationshipProfile }).relationship ?? undefined,
         };

@@ -1,3 +1,4 @@
+import { hasSchedulingIntent } from "@/lib/calendar-awareness";
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { hasMultilingualImportanceSignal } from "@/lib/multilingual-importance";
@@ -46,7 +47,8 @@ const PARTNERSHIP =
 const SUPPORT =
   /(?:help|issue|problem|bug|error|broken|not working) with|support (?:request|ticket)|need assistance|can't (?:log in|access)|trouble with/i;
 
-const SCHEDULING =
+/** @deprecated Prefer detectSchedulingIntent from lib/calendar-awareness */
+const SCHEDULING_LEGACY =
   /schedule (?:a |the )?(?:call|meeting|time)|book (?:a )?(?:time|slot|meeting)|calendar invite|when are you (?:free|available)|meet (?:this|next) week|set up a call/i;
 
 const DECISION =
@@ -118,7 +120,7 @@ export function analyzeEmailIntent(row: GmailInboxRow): EmailIntentAnalysis {
     reasons.push("support_request");
     confidence = Math.max(confidence, 0.86);
   }
-  if (SCHEDULING.test(hay)) {
+  if (hasSchedulingIntent(row) || SCHEDULING_LEGACY.test(hay)) {
     kinds.push("scheduling");
     reasons.push("scheduling");
     confidence = Math.max(confidence, 0.85);

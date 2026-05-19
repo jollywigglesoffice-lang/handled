@@ -5,7 +5,9 @@ import Link from "next/link";
 import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
 import { FollowUpIntelligenceCard } from "@/app/emails/follow-up-intelligence-card";
+import { CalendarContextBadge } from "@/app/components/calendar-context-badge";
 import { RelationshipBadge } from "@/app/emails/relationship-badge";
+import { calendarContextBadgeHint, readCalendarConnectionState } from "@/lib/calendar-awareness";
 import { UnsubscribeIntelligenceCard } from "@/app/emails/unsubscribe-intelligence-card";
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
@@ -32,6 +34,8 @@ export type EmailDetailPayload = FakeEmail & {
   unsubscribeReplyDraft?: string;
   followUpAnalysis?: FollowUpAnalysis;
   relationship?: SenderRelationshipProfile;
+  needsCalendarContext?: boolean;
+  schedulingIntentDetected?: boolean;
 };
 
 type EmailDetailViewProps = {
@@ -67,12 +71,31 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
               {ui.emailDetail.sender}
             </p>
             <p className="text-lg font-medium text-[#0F172A]">{email.sender}</p>
-            {email.relationship ? (
-              <div className="pt-2">
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              {email.relationship ? (
                 <RelationshipBadge relationship={email.relationship} />
-              </div>
-            ) : null}
+              ) : null}
+              {email.needsCalendarContext ? (
+                <CalendarContextBadge locale={categoryLocale} />
+              ) : null}
+            </div>
           </div>
+
+          {email.needsCalendarContext ? (
+            <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-4 text-sm text-sky-900">
+              <p className="font-medium">
+                {categoryLocale === "it"
+                  ? "Programmazione rilevata"
+                  : "Scheduling detected"}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-sky-800">
+                {calendarContextBadgeHint(
+                  readCalendarConnectionState().status,
+                  categoryLocale,
+                )}
+              </p>
+            </div>
+          ) : null}
 
           <div className="space-y-2 border-t border-gray-200 pt-8">
             <p className="flex items-center gap-2 text-sm text-gray-500">

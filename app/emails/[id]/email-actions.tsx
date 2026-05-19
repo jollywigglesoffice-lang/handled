@@ -248,7 +248,7 @@ function buildPersonality(tone: number, intent: string) {
       : intent === "problem"
         ? " Intent: problem — acknowledge clearly; avoid dismissive phrasing."
         : intent === "scheduling"
-          ? " Intent: scheduling — be concrete about availability when relevant."
+          ? " Intent: scheduling — suggest tentative times only; NEVER confirm availability or book meetings without explicit user approval."
           : intent === "gratitude"
             ? " Intent: gratitude — brief, genuine reciprocity when appropriate."
             : "";

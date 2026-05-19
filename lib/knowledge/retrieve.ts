@@ -15,6 +15,7 @@ export type RetrieveKnowledgeOptions = {
 
 /**
  * Unified knowledge retrieval — Handled Brain today; plug additional providers here.
+ * @see lib/knowledge/providers/google-calendar.ts for future Calendar availability chunks
  */
 export function retrieveKnowledgeForEmail(
   input: KnowledgeRetrievalInput,

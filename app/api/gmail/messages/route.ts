@@ -5,6 +5,7 @@ import { loadCategorizationContext } from "@/lib/load-user-categorization-contex
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { parseWorkflowModeHeader } from "@/lib/workflow-mode-effects";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
+import { enrichMessageWithCalendarAwareness } from "@/lib/calendar-awareness";
 import { hasUnsubscribeSignal } from "@/lib/unsubscribe/detect";
 
 export async function GET(request: Request) {
@@ -75,14 +76,17 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({
-      messages: categorized.map((m) => ({
-        ...m,
-        relationship: m.relationship,
-        hasUnsubscribeSignal: hasUnsubscribeSignal(
-          m.snippet,
-          m.listUnsubscribe,
-        ),
-      })),
+      messages: categorized.map((m) => {
+        const enriched = enrichMessageWithCalendarAwareness(m);
+        return {
+          ...enriched,
+          relationship: m.relationship,
+          hasUnsubscribeSignal: hasUnsubscribeSignal(
+            m.snippet,
+            m.listUnsubscribe,
+          ),
+        };
+      }),
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Gmail request failed";
