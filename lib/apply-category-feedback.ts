@@ -1,5 +1,6 @@
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import type { CategoryApplyScope } from "@/lib/category-correction";
+import { upsertClientEmailOverride } from "@/lib/email-overrides/client-storage";
 import { loadClientInboxRules, saveClientInboxRules } from "@/lib/inbox-rules-client-storage";
 import {
   loadClientSenderPreferences,
@@ -30,6 +31,17 @@ export type CategoryFeedbackResult = {
 export async function submitCategoryFeedback(
   input: CategoryFeedbackInput,
 ): Promise<CategoryFeedbackResult> {
+  if (input.scope === "this_email") {
+    const now = new Date().toISOString();
+    upsertClientEmailOverride({
+      emailId: input.emailId,
+      originalCategory: input.guessedCategory,
+      overriddenCategory: input.chosenCategory,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
   const clientPrefs = loadClientSenderPreferences();
   const mergedPrefs =
     input.scope === "sender"
@@ -76,12 +88,18 @@ export async function submitCategoryFeedback(
     saveClientInboxRules(data.rules);
   }
 
-  if (!res.ok && input.scope !== "this_email") {
+  if (!res.ok) {
+    if (input.scope === "this_email") {
+      return {
+        message: "Saved on this device — will sync when online.",
+        affectedCount: 1,
+      };
+    }
     throw new Error(data.error ?? "Could not save preference");
   }
 
   const scopeMessages: Record<CategoryApplyScope, string> = {
-    this_email: "Updated for this email only.",
+    this_email: data.message ?? "Saved",
     sender: "Learned sender rule saved — matching emails updated.",
     similar: "Handled will match similar subject lines going forward.",
   };

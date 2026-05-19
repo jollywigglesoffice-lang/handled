@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
-import { normalizeInboxAiCategory } from "@/lib/inbox-ai-categories";
+import { normalizeInboxAiCategory, parseInboxAiCategory } from "@/lib/inbox-ai-categories";
 import { subjectKeywordsForSimilar } from "@/lib/category-correction";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import { loadAllInboxUserRulesForUser, saveInboxUserRulesForUser } from "@/lib/inbox-user-rules/store";
@@ -13,6 +13,8 @@ import {
 } from "@/lib/sender-rules/store";
 import { parseSenderEmail } from "@/lib/inbox-user-rules/match";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
+import { saveEmailOverrideForUser } from "@/lib/email-overrides/store";
+import { SETUP_SQL as EMAIL_OVERRIDES_SETUP_SQL } from "@/lib/email-overrides/store";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const SETUP_SQL = "supabase/sql/sender_rules.sql";
@@ -93,11 +95,35 @@ export async function POST(request: Request) {
   }
 
   if (action === "correct_category" && scope === "this_email") {
+    const emailId = body.emailId?.trim();
+    if (!emailId) {
+      return NextResponse.json({ error: "emailId required for this_email scope" }, { status: 400 });
+    }
+
+    const guessed =
+      body.guessedCategory && parseInboxAiCategory(body.guessedCategory)
+        ? normalizeInboxAiCategory(body.guessedCategory)
+        : null;
+
+    const saved = await saveEmailOverrideForUser(auth.userId, {
+      emailId,
+      overriddenCategory: category,
+      originalCategory: guessed,
+    });
+
+    if (!saved.ok) {
+      return NextResponse.json(
+        { error: saved.error, setupSqlPath: EMAIL_OVERRIDES_SETUP_SQL },
+        { status: 502 },
+      );
+    }
+
     return NextResponse.json({
       ok: true,
       category,
       scope,
-      message: "Updated for this email only.",
+      override: saved.override,
+      message: "Saved",
       affectedCount: 1,
     });
   }

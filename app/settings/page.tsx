@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { FREE_LIMIT, readUsageCountWithDailyReset } from "@/lib/daily-usage";
 import { WORKFLOW_MODE_KEY, type WorkflowMode } from "@/lib/workflow-mode";
+import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
 import { persistWorkflowModeToAccount, syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
 import { WorkflowModeSelector } from "./workflow-mode-selector";
 import { HandledBrainSettings } from "./handled-brain-settings";
@@ -34,11 +35,15 @@ export default function SettingsPage() {
       (localStorage.getItem(WORKFLOW_MODE_KEY) as WorkflowMode | null) || "assist"
     );
   });
+  const [workflowModeSaveStatus, setWorkflowModeSaveStatus] = useState<SaveStatusState>("idle");
 
-  function updateWorkflowMode(mode: WorkflowMode) {
+  async function updateWorkflowMode(mode: WorkflowMode) {
     setWorkflowMode(mode);
-    void persistWorkflowModeToAccount(mode);
+    setWorkflowModeSaveStatus("saving");
+    const { ok } = await persistWorkflowModeToAccount(mode);
+    setWorkflowModeSaveStatus(ok ? "synced" : "offline");
     window.dispatchEvent(new Event("handled-workflow-mode-changed"));
+    window.setTimeout(() => setWorkflowModeSaveStatus("idle"), 2500);
   }
 
   useEffect(() => {
@@ -693,6 +698,7 @@ export default function SettingsPage() {
           </p>
           <div className="mt-5">
             <WorkflowModeSelector value={workflowMode} onChange={updateWorkflowMode} />
+            <SaveStatus status={workflowModeSaveStatus} className="mt-3 block" />
           </div>
         </section>
 

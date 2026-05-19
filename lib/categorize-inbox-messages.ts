@@ -452,6 +452,8 @@ export type CategorizeInboxOptions = {
   userRules?: InboxUserRule[];
   /** Learned sender rules — evaluated before keyword userRules. */
   senderRules?: InboxUserRule[];
+  /** Per-email manual overrides — highest priority, skips AI and rules. */
+  emailOverrides?: Record<string, InboxAiCategory>;
   workflowMode?: WorkflowMode;
 };
 
@@ -486,7 +488,7 @@ function applyUserPostIfNeeded(
 }
 
 /**
- * Pipeline: user pre-rules → system rules → AI → fallback → user post-rules.
+ * Pipeline: manual overrides → sender rules → keyword rules → system rules → AI → fallback → post-rules.
  */
 export async function categorizeGmailInboxRows(
   rows: GmailInboxRow[],
@@ -498,6 +500,7 @@ export async function categorizeGmailInboxRows(
 
   const senderRules = options?.senderRules ?? [];
   const userRules = options?.userRules ?? [];
+  const emailOverrides = options?.emailOverrides ?? {};
   const allUserRules = [...senderRules, ...userRules];
   const workflowMode = options?.workflowMode ?? "assist";
   const apiKey = getAiApiKey();
@@ -507,6 +510,24 @@ export async function categorizeGmailInboxRows(
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
+
+    const manualCategory = emailOverrides[row.id];
+    if (manualCategory) {
+      const modeAdjusted = applyWorkflowModeToCategory(
+        workflowMode,
+        row,
+        manualCategory,
+        "manual_override",
+      );
+      out[i] = finalizeRow(
+        row,
+        i,
+        modeAdjusted.category,
+        modeAdjusted.source,
+        1,
+      );
+      continue;
+    }
 
     const senderPre = applyUserRulesPre(row, senderRules);
     const keywordPre = senderPre ? null : applyUserRulesPre(row, userRules);

@@ -1,4 +1,5 @@
 export const WORKFLOW_MODE_KEY = "handled_workflow_mode";
+export const WORKFLOW_MODE_DIRTY_AT_KEY = "handled_workflow_mode_dirty_at";
 export const WORKFLOW_MODE_HEADER = "x-handled-workflow-mode";
 export const WORKFLOW_MODE_COOKIE = "handled_workflow_mode";
 

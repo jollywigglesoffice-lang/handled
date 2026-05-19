@@ -1,13 +1,58 @@
 import {
   persistWorkflowModeToBrowser,
   readWorkflowModeFromStorage,
+  WORKFLOW_MODE_DIRTY_AT_KEY,
   type WorkflowMode,
 } from "@/lib/workflow-mode";
 
-/** Load mode from account when signed in; fall back to browser. */
+const DIRTY_WINDOW_MS = 5 * 60 * 1000;
+
+function markWorkflowModeDirty(): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(WORKFLOW_MODE_DIRTY_AT_KEY, String(Date.now()));
+}
+
+function clearWorkflowModeDirty(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(WORKFLOW_MODE_DIRTY_AT_KEY);
+}
+
+function isWorkflowModeDirty(): boolean {
+  if (typeof window === "undefined") return false;
+  const raw = localStorage.getItem(WORKFLOW_MODE_DIRTY_AT_KEY);
+  if (!raw) return false;
+  const at = parseInt(raw, 10);
+  if (!Number.isFinite(at)) return false;
+  return Date.now() - at < DIRTY_WINDOW_MS;
+}
+
+async function pushWorkflowModeToAccount(mode: WorkflowMode): Promise<boolean> {
+  try {
+    const res = await fetch("/api/workflow-mode", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    });
+    if (res.ok) {
+      clearWorkflowModeDirty();
+      return true;
+    }
+  } catch {
+    // keep dirty flag for retry
+  }
+  return false;
+}
+
+/** Load mode from account when signed in; push local changes if pending. */
 export async function syncWorkflowModeFromAccount(): Promise<WorkflowMode> {
   const local = readWorkflowModeFromStorage();
   if (typeof window === "undefined") return local;
+
+  if (isWorkflowModeDirty()) {
+    await pushWorkflowModeToAccount(local);
+    return local;
+  }
 
   try {
     const res = await fetch("/api/workflow-mode", { credentials: "same-origin" });
@@ -23,16 +68,11 @@ export async function syncWorkflowModeFromAccount(): Promise<WorkflowMode> {
   return local;
 }
 
-export async function persistWorkflowModeToAccount(mode: WorkflowMode): Promise<void> {
+export async function persistWorkflowModeToAccount(
+  mode: WorkflowMode,
+): Promise<{ ok: boolean }> {
   persistWorkflowModeToBrowser(mode);
-  try {
-    await fetch("/api/workflow-mode", {
-      method: "PUT",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
-    });
-  } catch {
-    // local still saved
-  }
+  markWorkflowModeDirty();
+  const ok = await pushWorkflowModeToAccount(mode);
+  return { ok };
 }

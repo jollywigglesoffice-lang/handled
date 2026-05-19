@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
+import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
 import {
   type InboxAiCategory,
   inboxCategorySectionTitle,
@@ -49,15 +50,23 @@ type GmailInboxCardProps = {
     category: InboxAiCategory,
     options?: InboxCategoryChangeOptions,
   ) => void;
+  onResetOverride?: (id: string) => void | Promise<void>;
 };
 
-export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInboxCardProps) {
+export function GmailInboxCard({
+  message,
+  locale,
+  onCategoryChange,
+  onResetOverride,
+}: GmailInboxCardProps) {
   const [feedback, setFeedback] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatusState>("idle");
   const [showCorrection, setShowCorrection] = useState(false);
   const guessedRef = useRef(message.category);
   const accent = CATEGORY_ACCENT[message.category];
   const catLabel = inboxCategorySectionTitle(message.category, locale);
   const learnedApplied = message.categorySource === "sender_rule";
+  const manualOverride = message.categorySource === "manual_override";
   const workflowMode = readWorkflowModeFromStorage();
   const showNewsletterBadge =
     shouldShowUnsubscribeInboxBadge(
@@ -76,6 +85,7 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
         scope === "sender" ? { scope, sender: message.sender } : { scope };
 
       onCategoryChange(message.id, chosen, options);
+      setSaveStatus("saving");
 
       try {
         const result = await submitCategoryFeedback({
@@ -90,7 +100,11 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
         const extra =
           scope === "sender" ? " Matching emails in your inbox were updated." : "";
         setFeedback(`${result.message}${extra}`);
+        setSaveStatus(scope === "sender" ? "synced" : "saved");
         guessedRef.current = chosen;
+        if (scope === "this_email") {
+          window.dispatchEvent(new Event("handled-email-overrides-changed"));
+        }
         if (scope !== "this_email") {
           window.dispatchEvent(new Event("handled-inbox-rules-changed"));
           window.dispatchEvent(new Event("handled-sender-preferences-changed"));
@@ -102,11 +116,28 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
             ? "Saved on this device — will sync when online."
             : "Could not save — try again.",
         );
+        setSaveStatus(scope === "this_email" ? "offline" : "error");
       }
+      window.setTimeout(() => setSaveStatus("idle"), 2500);
       setShowCorrection(false);
     },
     [message, onCategoryChange],
   );
+
+  const handleReset = useCallback(async () => {
+    if (!onResetOverride) return;
+    setSaveStatus("saving");
+    try {
+      await onResetOverride(message.id);
+      setFeedback("Override removed — AI categorization restored.");
+      setSaveStatus("synced");
+      window.dispatchEvent(new Event("handled-email-overrides-changed"));
+    } catch {
+      setFeedback("Could not reset — try again.");
+      setSaveStatus("error");
+    }
+    window.setTimeout(() => setSaveStatus("idle"), 2500);
+  }, [message.id, onResetOverride]);
 
   return (
     <div
@@ -117,6 +148,7 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
           message={message}
           catLabel={catLabel}
           learnedApplied={learnedApplied}
+          manualOverride={manualOverride}
           showNewsletterBadge={showNewsletterBadge}
           badgeLabel={badgeLabel}
           onOpenCorrection={() => setShowCorrection(true)}
@@ -146,16 +178,30 @@ export function GmailInboxCard({ message, locale, onCategoryChange }: GmailInbox
         </Link>
 
         {!showCorrection ? (
-          <button
-            type="button"
-            onClick={() => setShowCorrection(true)}
-            className="text-xs font-medium text-indigo-600 hover:underline"
-          >
-            Change category or teach Handled…
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowCorrection(true)}
+              className="text-xs font-medium text-indigo-600 hover:underline"
+            >
+              Change category or teach Handled…
+            </button>
+            {manualOverride && onResetOverride ? (
+              <button
+                type="button"
+                onClick={() => void handleReset()}
+                className="text-xs font-medium text-gray-500 hover:text-gray-800 hover:underline"
+              >
+                Reset to AI categorization
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
-        {feedback ? <p className="text-xs text-emerald-700">{feedback}</p> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <SaveStatus status={saveStatus} />
+          {feedback ? <p className="text-xs text-emerald-700">{feedback}</p> : null}
+        </div>
       </article>
     </div>
   );
@@ -165,6 +211,7 @@ function CardHeader({
   message,
   catLabel,
   learnedApplied,
+  manualOverride,
   showNewsletterBadge,
   badgeLabel,
   onOpenCorrection,
@@ -172,6 +219,7 @@ function CardHeader({
   message: GmailCardMessage;
   catLabel: string;
   learnedApplied: boolean;
+  manualOverride: boolean;
   showNewsletterBadge: boolean;
   badgeLabel: string;
   onOpenCorrection: () => void;
@@ -188,12 +236,20 @@ function CardHeader({
             {badgeLabel}
           </Link>
         ) : null}
+        {manualOverride ? (
+          <span
+            className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800"
+            title="You moved this email manually"
+          >
+            You changed this
+          </span>
+        ) : null}
         {learnedApplied ? (
           <span
             className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700"
             title="A learned sender rule set this category"
           >
-            Learned rule applied
+            Rule applied
           </span>
         ) : null}
         <button

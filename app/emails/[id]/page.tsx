@@ -7,7 +7,7 @@ import { buildEmailSummary } from "@/lib/email-summary";
 import { gmailGetMessageFull, gmailGetMessageMetadata } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
-import { loadCategorizationRulesForUser } from "@/lib/load-user-categorization-context";
+import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import { assessReplyNeed } from "@/lib/reply-necessity";
 import { analyzeUnsubscribe } from "@/lib/unsubscribe/detect";
 import { isLikelyHtml } from "@/lib/sanitize-email-html";
@@ -42,9 +42,11 @@ async function enrichGmailEmail(
     internalDateMs: msg.internalDateMs ?? 0,
   };
 
-  const userRules = await loadCategorizationRulesForUser(userId);
+  const rulesCtx = await loadCategorizationContext(userId);
   const [categorized] = await categorizeGmailInboxRows([meta], {
-    userRules,
+    emailOverrides: rulesCtx.emailOverrides,
+    senderRules: rulesCtx.senderRules,
+    userRules: rulesCtx.keywordRules,
     workflowMode,
   });
   const category: InboxAiCategory = categorized?.category ?? "needs_attention";
@@ -150,9 +152,11 @@ export default async function EmailDetailPage({ params }: EmailDetailPageProps) 
   } catch {
     try {
       const meta = await gmailGetMessageMetadata(accessToken, id);
-      const userRules = await loadCategorizationRulesForUser(userId);
+      const rulesCtx = await loadCategorizationContext(userId);
       const [categorized] = await categorizeGmailInboxRows([meta], {
-        userRules,
+        emailOverrides: rulesCtx.emailOverrides,
+        senderRules: rulesCtx.senderRules,
+        userRules: rulesCtx.keywordRules,
         workflowMode,
       });
       const category = categorized?.category ?? "needs_attention";

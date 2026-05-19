@@ -43,11 +43,18 @@ export async function GET(request: Request) {
     const userId = session.user.id;
     const rulesCtx = userId
       ? await loadCategorizationContext(userId, request)
-      : { senderRules: [], keywordRules: [], allRules: [] };
+      : {
+          emailOverrides: {},
+          emailOverrideRecords: [],
+          senderRules: [],
+          keywordRules: [],
+          allRules: [],
+        };
     const workflowMode = parseWorkflowModeHeader(
       request.headers.get(WORKFLOW_MODE_HEADER),
     );
     const categorized = await categorizeGmailInboxRows(rows, {
+      emailOverrides: rulesCtx.emailOverrides,
       senderRules: rulesCtx.senderRules,
       userRules: rulesCtx.keywordRules,
       workflowMode,

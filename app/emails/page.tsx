@@ -16,6 +16,11 @@ import { useUserPreferences } from "@/app/user-preferences-context";
 import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import { applyCategoryOverrides } from "@/lib/inbox-buckets";
+import { loadClientEmailOverrideMap } from "@/lib/email-overrides/client-storage";
+import {
+  removeEmailOverrideFromAccount,
+  syncEmailOverridesFromAccount,
+} from "@/lib/email-overrides/client-sync";
 import { fakeEmailsToInboxMessages } from "@/lib/inbox-buckets-mock";
 import { syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
 import { WorkflowModeBanner } from "@/app/emails/workflow-mode-banner";
@@ -345,8 +350,9 @@ export default function EmailsInboxPage() {
   const [inboxMode, setInboxMode] = useState<InboxMode>("loading");
   const [gmailMessages, setGmailMessages] = useState<GmailInboxMessage[]>([]);
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, InboxAiCategory>>(
-    {},
+    () => loadClientEmailOverrideMap(),
   );
+  const [persistenceReady, setPersistenceReady] = useState(false);
   const [workflowMode, setWorkflowMode] = useState(readWorkflowModeFromStorage);
   const [gmailError, setGmailError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -421,7 +427,8 @@ export default function EmailsInboxPage() {
             r.categorySource === "heuristic" ||
             r.categorySource === "ai_coerced" ||
             r.categorySource === "user_rule" ||
-            r.categorySource === "sender_rule"
+            r.categorySource === "sender_rule" ||
+            r.categorySource === "manual_override"
               ? r.categorySource
               : undefined,
           hasUnsubscribeSignal: Boolean(r.hasUnsubscribeSignal),
@@ -440,9 +447,29 @@ export default function EmailsInboxPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const {
+        data: { session },
+      } = await supabaseBrowser.auth.getSession();
+      const [mode, overrides] = await Promise.all([
+        syncWorkflowModeFromAccount(),
+        session ? syncEmailOverridesFromAccount() : Promise.resolve(loadClientEmailOverrideMap()),
+      ]);
+      if (cancelled) return;
+      setWorkflowMode(mode);
+      setCategoryOverrides(overrides);
+      setPersistenceReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!persistenceReady) return;
     void loadInbox();
-    void syncWorkflowModeFromAccount().then((mode) => setWorkflowMode(mode));
-  }, [loadInbox]);
+  }, [loadInbox, persistenceReady]);
 
   useEffect(() => {
     const onModeChange = () => {
@@ -452,15 +479,22 @@ export default function EmailsInboxPage() {
     const onRulesChange = () => {
       void loadInbox();
     };
+    const onOverridesChange = async () => {
+      const overrides = await syncEmailOverridesFromAccount();
+      setCategoryOverrides(overrides);
+      void loadInbox({ silent: true });
+    };
     window.addEventListener("handled-workflow-mode-changed", onModeChange);
     window.addEventListener("handled-inbox-rules-changed", onRulesChange);
     window.addEventListener("handled-inbox-refresh-requested", onRulesChange);
     window.addEventListener("handled-sender-preferences-changed", onRulesChange);
+    window.addEventListener("handled-email-overrides-changed", onOverridesChange);
     return () => {
       window.removeEventListener("handled-workflow-mode-changed", onModeChange);
       window.removeEventListener("handled-inbox-rules-changed", onRulesChange);
       window.removeEventListener("handled-inbox-refresh-requested", onRulesChange);
       window.removeEventListener("handled-sender-preferences-changed", onRulesChange);
+      window.removeEventListener("handled-email-overrides-changed", onOverridesChange);
     };
   }, [loadInbox]);
 
@@ -497,7 +531,7 @@ export default function EmailsInboxPage() {
     })();
   }, []);
 
-  const inboxLoading = inboxMode === "loading";
+  const inboxLoading = !persistenceReady || inboxMode === "loading";
   const showContent = !inboxLoading;
 
   useEffect(() => {
@@ -569,12 +603,25 @@ export default function EmailsInboxPage() {
       setGmailMessages((prev) =>
         prev.map((m) =>
           m.id === id
-            ? { ...m, category, categorySource: "user_rule" as const }
+            ? { ...m, category, categorySource: "manual_override" as const }
             : m,
         ),
       );
     },
     [],
+  );
+
+  const handleResetCategoryOverride = useCallback(
+    async (id: string) => {
+      await removeEmailOverrideFromAccount(id);
+      setCategoryOverrides((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      void loadInbox({ silent: true });
+    },
+    [loadInbox],
   );
 
   const activeBuckets = inboxMode === "gmail" ? gmailBuckets : mockBuckets;
@@ -783,6 +830,7 @@ export default function EmailsInboxPage() {
                             message={message}
                             locale={uiLanguage === "it" ? "it" : "en"}
                             onCategoryChange={handleCategoryChange}
+                            onResetOverride={handleResetCategoryOverride}
                           />
                         </div>
                       ))}
