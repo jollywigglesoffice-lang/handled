@@ -24,6 +24,9 @@ import {
   hasHighPriorityIntent,
   safetyCategoryWhenUncertain,
 } from "@/lib/email-intent";
+import { applyRelationshipToCategory } from "@/lib/relationship-intelligence/effects";
+import { resolveSenderRelationship } from "@/lib/relationship-intelligence/resolve";
+import type { SenderRelationship, SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import { applyWorkflowModeToCategory } from "@/lib/workflow-mode-effects";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
@@ -31,6 +34,7 @@ export type GmailInboxRowCategorized = GmailInboxRow & {
   category: InboxAiCategory;
   categoryConfidence: number;
   categorySource: CategorySource;
+  relationship?: SenderRelationshipProfile;
 };
 
 function warnFallback(reason: string, extra?: unknown) {
@@ -218,24 +222,30 @@ function finalizeRow(
   category: InboxAiCategory,
   source: CategorySource,
   confidence: number,
+  relationship?: SenderRelationshipProfile | null,
 ): GmailInboxRowCategorized {
   const c = Math.round(Math.max(0, Math.min(1, confidence)) * 100) / 100;
-  console.log("FINAL CATEGORY:", category, {
+  let coerced = coerceNeedsAttentionCategory(row, category);
+  coerced = safetyCategoryWhenUncertain(row, coerced, c);
+  if (relationship) {
+    coerced = applyRelationshipToCategory(row, coerced, relationship);
+  }
+
+  console.log("FINAL CATEGORY:", coerced, {
     subject: row.subject?.slice(0, 100),
     rowIndex,
     source,
     confidence: c,
     gmailId: row.id,
+    relationship: relationship?.kind,
   });
-  let coerced = coerceNeedsAttentionCategory(row, category);
-  coerced = safetyCategoryWhenUncertain(row, coerced, c);
 
   return {
     ...row,
     category: coerced,
     categoryConfidence: coerced !== category ? Math.max(c, 0.75) : c,
-    categorySource:
-      coerced !== category ? "heuristic" : source,
+    categorySource: coerced !== category ? "heuristic" : source,
+    relationship: relationship ?? undefined,
   };
 }
 
@@ -454,6 +464,7 @@ export type CategorizeInboxOptions = {
   senderRules?: InboxUserRule[];
   /** Per-email manual overrides — highest priority, skips AI and rules. */
   emailOverrides?: Record<string, InboxAiCategory>;
+  senderRelationships?: SenderRelationship[];
   workflowMode?: WorkflowMode;
 };
 
@@ -465,11 +476,14 @@ function applyUserPostIfNeeded(
   confidence: number,
   userRules: InboxUserRule[],
   workflowMode: WorkflowMode,
+  senderRelationships: SenderRelationship[],
 ): GmailInboxRowCategorized {
   const post = applyUserRulesPost(row, category, userRules);
   const afterUser = post
     ? { category: post.category, source: "user_rule" as const, confidence: 0.94 }
     : { category, source, confidence };
+
+  const relationship = resolveSenderRelationship(row, afterUser.category, senderRelationships);
 
   const modeAdjusted = applyWorkflowModeToCategory(
     workflowMode,
@@ -484,6 +498,7 @@ function applyUserPostIfNeeded(
     modeAdjusted.category,
     modeAdjusted.source,
     afterUser.confidence,
+    relationship,
   );
 }
 
@@ -501,6 +516,7 @@ export async function categorizeGmailInboxRows(
   const senderRules = options?.senderRules ?? [];
   const userRules = options?.userRules ?? [];
   const emailOverrides = options?.emailOverrides ?? {};
+  const senderRelationships = options?.senderRelationships ?? [];
   const allUserRules = [...senderRules, ...userRules];
   const workflowMode = options?.workflowMode ?? "assist";
   const apiKey = getAiApiKey();
@@ -519,13 +535,8 @@ export async function categorizeGmailInboxRows(
         manualCategory,
         "manual_override",
       );
-      out[i] = finalizeRow(
-        row,
-        i,
-        modeAdjusted.category,
-        modeAdjusted.source,
-        1,
-      );
+      const rel = resolveSenderRelationship(row, manualCategory, senderRelationships);
+      out[i] = finalizeRow(row, i, modeAdjusted.category, modeAdjusted.source, 1, rel);
       continue;
     }
 
@@ -547,6 +558,7 @@ export async function categorizeGmailInboxRows(
         0.96,
         allUserRules,
         workflowMode,
+        senderRelationships,
       );
       continue;
     }
@@ -560,6 +572,7 @@ export async function categorizeGmailInboxRows(
         0.99,
         allUserRules,
         workflowMode,
+        senderRelationships,
       );
       continue;
     }
@@ -586,6 +599,7 @@ export async function categorizeGmailInboxRows(
         rule.confidence,
         allUserRules,
         workflowMode,
+        senderRelationships,
       );
     } else {
       ambiguousIndices.push(i);
@@ -629,6 +643,7 @@ export async function categorizeGmailInboxRows(
         confidence,
         allUserRules,
         workflowMode,
+        senderRelationships,
       );
     }
 
@@ -645,6 +660,7 @@ export async function categorizeGmailInboxRows(
       fb.confidence,
       allUserRules,
       workflowMode,
+      senderRelationships,
     );
   };
 

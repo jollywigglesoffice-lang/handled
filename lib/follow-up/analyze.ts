@@ -3,6 +3,12 @@ import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { analyzeEmailIntent } from "@/lib/email-intent";
 import { assessReplyNeed } from "@/lib/reply-necessity";
 import { senderFirstNameFromRow } from "@/lib/follow-up/format";
+import {
+  relationshipFollowUpHeadline,
+  relationshipUrgencyBoost,
+} from "@/lib/relationship-intelligence/effects";
+import { resolveSenderRelationship } from "@/lib/relationship-intelligence/resolve";
+import type { SenderRelationship } from "@/lib/relationship-intelligence/types";
 import { scoreFollowUpUrgency } from "@/lib/follow-up/urgency";
 import type { ConversationState, FollowUpAnalysis } from "@/lib/follow-up/types";
 
@@ -144,7 +150,10 @@ function buildHeadlines(
 export function analyzeFollowUp(
   row: GmailInboxRow,
   category: InboxAiCategory,
-  options?: { workflowMode?: "assist" | "clean" | "handle" },
+  options?: {
+    workflowMode?: "assist" | "clean" | "handle";
+    senderRelationships?: SenderRelationship[];
+  },
 ): FollowUpAnalysis | null {
   const hay = haystack(row);
   const intent = analyzeEmailIntent(row);
@@ -165,22 +174,30 @@ export function analyzeFollowUp(
 
   if (!state) return null;
 
-  const urgencyScore = scoreFollowUpUrgency({
-    state,
-    intentKinds: intent.kinds,
+  const relationship = resolveSenderRelationship(
+    row,
     category,
-    haystack: hay,
-    daysSinceMessage: days,
-  });
+    options?.senderRelationships ?? [],
+  );
+
+  let urgencyScore =
+    scoreFollowUpUrgency({
+      state,
+      intentKinds: intent.kinds,
+      category,
+      haystack: hay,
+      daysSinceMessage: days,
+    }) + relationshipUrgencyBoost(relationship);
+
+  urgencyScore = Math.max(0, Math.min(100, urgencyScore));
 
   const name = senderFirstNameFromRow(row.sender);
   const commitment = detectCommitment(hay);
-  const { headline, calmPrompt } = buildHeadlines(
-    state,
-    name,
-    days,
-    row.subject,
-    commitment,
+  const baseHeadlines = buildHeadlines(state, name, days, row.subject, commitment);
+  const { headline, calmPrompt } = relationshipFollowUpHeadline(
+    relationship,
+    baseHeadlines.headline,
+    baseHeadlines.calmPrompt,
   );
 
   const reasons = [...intent.reasons];
@@ -207,10 +224,14 @@ export function analyzeFollowUp(
 export function analyzeFollowUpBatch(
   rows: Array<GmailInboxRow & { category: InboxAiCategory }>,
   workflowMode?: "assist" | "clean" | "handle",
+  senderRelationships?: SenderRelationship[],
 ): FollowUpAnalysis[] {
   const out: FollowUpAnalysis[] = [];
   for (const row of rows) {
-    const analysis = analyzeFollowUp(row, row.category, { workflowMode });
+    const analysis = analyzeFollowUp(row, row.category, {
+      workflowMode,
+      senderRelationships,
+    });
     if (analysis) out.push(analysis);
   }
   return out.sort((a, b) => b.urgencyScore - a.urgencyScore);

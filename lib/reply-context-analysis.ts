@@ -6,6 +6,8 @@ import {
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { assessReplyNeed, type ReplyNeedAssessment } from "@/lib/reply-necessity";
+import { relationshipReplyDirective } from "@/lib/relationship-intelligence/effects";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
 export type ReplyEmailType =
@@ -44,6 +46,7 @@ export type ReplyContextAnalysis = {
     employeeCount?: number;
     productMentions: string[];
   };
+  relationship?: SenderRelationshipProfile;
   logSummary: Record<string, unknown>;
 };
 
@@ -221,6 +224,7 @@ export function analyzeReplyContext(input: {
   subject?: string;
   category?: InboxAiCategory;
   workflowMode?: WorkflowMode;
+  relationship?: SenderRelationshipProfile | null;
 }): ReplyContextAnalysis {
   const row = rowFromEmail(input);
   const hay = `${row.sender} ${row.subject} ${row.snippet}`.toLowerCase();
@@ -267,6 +271,7 @@ export function analyzeReplyContext(input: {
     replyStyle: replyStyleFor(primaryIntent, "balanced", input.workflowMode),
     forbidsGenericAckOnly,
     extractedFacts,
+    relationship: input.relationship ?? undefined,
     logSummary: {
       replyNeeded,
       primaryIntent,
@@ -326,5 +331,6 @@ FORBIDDEN (do not use unless email is pure FYI with no questions):
 - Language: ${languageLabel}
 ${facts.length ? `- Facts to reference:\n${facts.map((f) => `  - ${f}`).join("\n")}` : ""}
 ${forbidden}
+${ctx.relationship ? `\n${relationshipReplyDirective(ctx.relationship)}` : ""}
 `.trim();
 }

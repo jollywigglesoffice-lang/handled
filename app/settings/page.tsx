@@ -11,6 +11,7 @@ import { persistWorkflowModeToAccount, syncWorkflowModeFromAccount } from "@/lib
 import { WorkflowModeSelector } from "./workflow-mode-selector";
 import { HandledBrainSettings } from "./handled-brain-settings";
 import { InboxPrioritySettings } from "./inbox-priority-settings";
+import { SenderRelationshipsSettings } from "./sender-relationships-settings";
 import { SenderRulesSettings } from "./sender-rules-settings";
 import { IdentitySettings } from "./identity-settings";
 import { PersonalizationSettings } from "./personalization-settings";
@@ -704,6 +705,7 @@ export default function SettingsPage() {
 
         <HandledBrainSettings />
         <SenderRulesSettings />
+        <SenderRelationshipsSettings />
         <InboxPrioritySettings />
         <IdentitySettings />
         <PersonalizationSettings />

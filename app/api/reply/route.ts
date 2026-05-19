@@ -18,7 +18,10 @@ import type { BrainUsageDto } from "@/lib/knowledge/types";
 import { loadHandledBrainForUser } from "@/lib/handled-brain/store";
 import type { HandledBrain } from "@/lib/handled-brain/types";
 import { assessReplyNeed } from "@/lib/reply-necessity";
-import { normalizeInboxAiCategory } from "@/lib/inbox-ai-categories";
+import { normalizeInboxAiCategory, type InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
+import { resolveSenderRelationship } from "@/lib/relationship-intelligence/resolve";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { workflowModeBrainMaxChunks } from "@/lib/workflow-mode-effects";
 import type { WorkflowMode } from "@/lib/workflow-mode";
@@ -122,6 +125,32 @@ async function resolveUserIdentity(
   }
 
   return identity;
+}
+
+async function resolveRelationshipForReply(
+  request: Request,
+  sender: string | undefined,
+  category: InboxAiCategory,
+): Promise<SenderRelationshipProfile | undefined> {
+  if (!sender?.trim()) return undefined;
+  try {
+    const supabase = await createSupabaseServerClient();
+    if (!supabase) return undefined;
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.user?.id) return undefined;
+    const ctx = await loadCategorizationContext(session.user.id, request);
+    return (
+      resolveSenderRelationship(
+        { sender, subject: "", snippet: "" },
+        category,
+        ctx.senderRelationships,
+      ) ?? undefined
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 async function resolveKnowledgeContext(
@@ -696,14 +725,18 @@ export async function POST(request: Request) {
     body.toneSlider,
   );
 
+  const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
+  const relationship = await resolveRelationshipForReply(request, body.sender, category);
+
   const replyContextForBrain =
     mode === "generate"
       ? analyzeReplyContext({
           email,
           sender: body.sender,
           subject: body.subject,
-          category: normalizeInboxAiCategory(body.category ?? "needs_attention"),
+          category,
           workflowMode: body.workflowMode,
+          relationship,
         })
       : null;
 
@@ -720,7 +753,6 @@ export async function POST(request: Request) {
   );
   const userIdentity = await resolveUserIdentity(request, email, body.identity, userName);
   const authorName = resolveReplyAuthorName(userIdentity, userName);
-  const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
 
   if (body.stream === true && mode === "generate") {
     const streamCtx = analyzeReplyContext({
@@ -729,6 +761,7 @@ export async function POST(request: Request) {
       subject: body.subject,
       category,
       workflowMode: body.workflowMode,
+      relationship,
     });
     logReplyContextAnalysis(streamCtx, "pre-generate-stream");
     return createGenerateReplyNdjsonStream(

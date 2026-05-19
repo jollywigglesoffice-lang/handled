@@ -13,7 +13,11 @@ import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
+import { RelationshipAssignPanel } from "@/app/emails/relationship-assign-panel";
+import { RelationshipBadge } from "@/app/emails/relationship-badge";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe";
+import { useUiCopy } from "@/app/use-ui-copy";
 
 export type GmailCardMessage = {
   id: string;
@@ -25,6 +29,7 @@ export type GmailCardMessage = {
   categoryConfidence?: number;
   categorySource?: CategorySource;
   hasUnsubscribeSignal?: boolean;
+  relationship?: SenderRelationshipProfile;
 };
 
 const CATEGORY_ACCENT: Record<InboxAiCategory, string> = {
@@ -62,6 +67,8 @@ export function GmailInboxCard({
   const [feedback, setFeedback] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatusState>("idle");
   const [showCorrection, setShowCorrection] = useState(false);
+  const [showRelationship, setShowRelationship] = useState(false);
+  const ui = useUiCopy();
   const guessedRef = useRef(message.category);
   const accent = CATEGORY_ACCENT[message.category];
   const catLabel = inboxCategorySectionTitle(message.category, locale);
@@ -154,6 +161,14 @@ export function GmailInboxCard({
           onOpenCorrection={() => setShowCorrection(true)}
         />
 
+        {showRelationship ? (
+          <RelationshipAssignPanel
+            compact
+            sender={message.sender}
+            onDismiss={() => setShowRelationship(false)}
+          />
+        ) : null}
+
         {showCorrection ? (
           <CategoryCorrectionPanel
             compact
@@ -177,7 +192,7 @@ export function GmailInboxCard({
           <p className="text-sm leading-relaxed text-gray-500">{message.snippet}</p>
         </Link>
 
-        {!showCorrection ? (
+        {!showCorrection && !showRelationship ? (
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -185,6 +200,13 @@ export function GmailInboxCard({
               className="text-xs font-medium text-indigo-600 hover:underline"
             >
               Change category or teach Handled…
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowRelationship(true)}
+              className="text-xs font-medium text-teal-700 hover:underline"
+            >
+              {ui.relationship.assignLink}
             </button>
             {manualOverride && onResetOverride ? (
               <button
@@ -243,6 +265,9 @@ function CardHeader({
           >
             You changed this
           </span>
+        ) : null}
+        {message.relationship ? (
+          <RelationshipBadge relationship={message.relationship} />
         ) : null}
         {learnedApplied ? (
           <span

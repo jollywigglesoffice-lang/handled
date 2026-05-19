@@ -10,11 +10,13 @@ import {
   shouldCollapseClutter,
   shouldShowMessageInWorkflow,
 } from "@/lib/workflow-mode-inbox";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
 export type InboxBucketMessage = {
   id: string;
   category: InboxAiCategory;
+  relationship?: SenderRelationshipProfile;
 };
 
 export type InboxBuckets<T extends InboxBucketMessage> = {
@@ -88,7 +90,10 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
 
   const visible = messages.filter((m) =>
     shouldShowMessageInWorkflow(
-      { category: normalizeInboxAiCategory(m.category) },
+      {
+        category: normalizeInboxAiCategory(m.category),
+        relationship: m.relationship,
+      },
       workflowMode,
     ),
   );

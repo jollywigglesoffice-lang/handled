@@ -49,9 +49,11 @@ async function enrichGmailEmail(
     emailOverrides: rulesCtx.emailOverrides,
     senderRules: rulesCtx.senderRules,
     userRules: rulesCtx.keywordRules,
+    senderRelationships: rulesCtx.senderRelationships,
     workflowMode,
   });
   const category: InboxAiCategory = categorized?.category ?? "needs_attention";
+  const relationship = categorized?.relationship;
 
   const replyAssessment = assessReplyNeed({
     row: meta,
@@ -62,7 +64,10 @@ async function enrichGmailEmail(
   const aiSummary = await buildEmailSummary(meta, category, workflowMode);
 
   const followUpAnalysis: FollowUpAnalysis | undefined =
-    analyzeFollowUp(meta, category, { workflowMode }) ?? undefined;
+    analyzeFollowUp(meta, category, {
+      workflowMode,
+      senderRelationships: rulesCtx.senderRelationships,
+    }) ?? undefined;
 
   const unsubscribeAnalysis = analyzeUnsubscribe({
     bodyPlain: displayPlain,
@@ -83,6 +88,7 @@ async function enrichGmailEmail(
     inboxCategory: category,
     aiSummary,
     followUpAnalysis,
+    relationship,
     body: displayPlain,
     bodyHtml: bodyHtml || undefined,
     suggestedReply: "",
@@ -163,9 +169,11 @@ export default async function EmailDetailPage({ params }: EmailDetailPageProps) 
         emailOverrides: rulesCtx.emailOverrides,
         senderRules: rulesCtx.senderRules,
         userRules: rulesCtx.keywordRules,
+        senderRelationships: rulesCtx.senderRelationships,
         workflowMode,
       });
       const category = categorized?.category ?? "needs_attention";
+      const relationship = categorized?.relationship;
       const replyAssessment = assessReplyNeed({ row: meta, category, workflowMode });
       const aiSummary = await buildEmailSummary(meta, category, workflowMode);
       return (
@@ -179,6 +187,7 @@ export default async function EmailDetailPage({ params }: EmailDetailPageProps) 
             category: inboxCategorySectionTitle(category, "en"),
             inboxCategory: category,
             aiSummary,
+            relationship,
             body: meta.snippet,
             suggestedReply: "",
             replyRecommended: replyAssessment.recommended,

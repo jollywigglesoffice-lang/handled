@@ -5,6 +5,7 @@ import { loadFollowUpRemindersForUser } from "@/lib/follow-up-reminders/store";
 import { normalizeInboxAiCategory } from "@/lib/inbox-ai-categories";
 import { parseWorkflowModeHeader } from "@/lib/workflow-mode-effects";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
+import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
@@ -52,7 +53,8 @@ export async function POST(request: Request) {
     category: normalizeInboxAiCategory(m.category ?? "needs_attention"),
   }));
 
-  const analyses = analyzeFollowUpBatch(rows, workflowMode);
+  const rulesCtx = await loadCategorizationContext(session.user.id, request);
+  const analyses = analyzeFollowUpBatch(rows, workflowMode, rulesCtx.senderRelationships);
   const persisted = await loadFollowUpRemindersForUser(session.user.id);
   const items = mergeFollowUpItems(analyses, persisted);
 

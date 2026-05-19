@@ -47,6 +47,7 @@ type EmailActionsProps = {
   replySuppressedReason?: string;
   suggestedTriageAction?: string;
   followUpAnalysis?: FollowUpAnalysis;
+  relationship?: import("@/lib/relationship-intelligence/types").SenderRelationshipProfile;
 };
 
 const FETCH_REPLY_TIMEOUT_MS = 28_000;
@@ -397,6 +398,7 @@ export function EmailActions({
   replySuppressedReason,
   suggestedTriageAction,
   followUpAnalysis,
+  relationship: _relationship,
 }: EmailActionsProps) {
   const ui = useUiCopy();
   const router = useRouter();

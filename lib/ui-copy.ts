@@ -133,6 +133,15 @@ type UiCopy = {
     safetyNote: string;
     modesTitle: string;
   };
+  relationship: {
+    assignTitle: string;
+    assignHint: string;
+    assignLink: string;
+    dismiss: string;
+    settingsTitle: string;
+    settingsSubtitle: string;
+    emptySettings: string;
+  };
   followUp: {
     sectionTitle: string;
     sectionSubtitle: string;
@@ -311,6 +320,17 @@ const en: UiCopy = {
     subject: "Subject",
     aiSummary: "AI summary",
     fullEmailBody: "Full email body",
+  },
+  relationship: {
+    assignTitle: "Who is this to you?",
+    assignHint:
+      "Handled adapts tone, priority, and reminders based on how you know this sender.",
+    assignLink: "Set relationship",
+    dismiss: "Not now",
+    settingsTitle: "Sender relationships",
+    settingsSubtitle:
+      "Teach Handled who matters — family, school, VIP clients, and more.",
+    emptySettings: "No relationships saved yet. Mark senders from your inbox.",
   },
   followUp: {
     sectionTitle: "Follow-ups & memory",
@@ -515,6 +535,17 @@ const it: UiCopy = {
     subject: "Oggetto",
     aiSummary: "Riepilogo AI",
     fullEmailBody: "Testo completo dell'email",
+  },
+  relationship: {
+    assignTitle: "Chi e per te?",
+    assignHint:
+      "Handled adatta tono, priorita e promemoria in base a come conosci questo mittente.",
+    assignLink: "Imposta relazione",
+    dismiss: "Non ora",
+    settingsTitle: "Relazioni con i mittenti",
+    settingsSubtitle:
+      "Insegna a Handled chi conta — famiglia, scuola, clienti VIP e altro.",
+    emptySettings: "Nessuna relazione salvata. Segna i mittenti dalla inbox.",
   },
   followUp: {
     sectionTitle: "Follow-up e memoria",

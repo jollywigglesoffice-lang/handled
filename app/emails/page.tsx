@@ -21,6 +21,8 @@ import {
   removeEmailOverrideFromAccount,
   syncEmailOverridesFromAccount,
 } from "@/lib/email-overrides/client-sync";
+import { syncSenderRelationshipsFromAccount } from "@/lib/relationship-intelligence/client-sync";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import { fakeEmailsToInboxMessages } from "@/lib/inbox-buckets-mock";
 import { syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
 import { FollowUpsSection } from "@/app/emails/follow-ups-section";
@@ -51,6 +53,7 @@ type GmailInboxMessage = {
   categoryConfidence?: number;
   categorySource?: CategorySource;
   hasUnsubscribeSignal?: boolean;
+  relationship?: SenderRelationshipProfile;
 };
 
 type InboxMode =
@@ -438,6 +441,8 @@ export default function EmailsInboxPage() {
               ? r.categorySource
               : undefined,
           hasUnsubscribeSignal: Boolean(r.hasUnsubscribeSignal),
+          relationship:
+            (r as { relationship?: SenderRelationshipProfile }).relationship ?? undefined,
         };
       });
       setGmailMessages(msgs);
@@ -461,6 +466,7 @@ export default function EmailsInboxPage() {
       const [mode, overrides] = await Promise.all([
         syncWorkflowModeFromAccount(),
         session ? syncEmailOverridesFromAccount() : Promise.resolve(loadClientEmailOverrideMap()),
+        session ? syncSenderRelationshipsFromAccount() : Promise.resolve([]),
       ]);
       if (cancelled) return;
       setWorkflowMode(mode);
@@ -495,12 +501,14 @@ export default function EmailsInboxPage() {
     window.addEventListener("handled-inbox-refresh-requested", onRulesChange);
     window.addEventListener("handled-sender-preferences-changed", onRulesChange);
     window.addEventListener("handled-email-overrides-changed", onOverridesChange);
+    window.addEventListener("handled-sender-relationships-changed", onRulesChange);
     return () => {
       window.removeEventListener("handled-workflow-mode-changed", onModeChange);
       window.removeEventListener("handled-inbox-rules-changed", onRulesChange);
       window.removeEventListener("handled-inbox-refresh-requested", onRulesChange);
       window.removeEventListener("handled-sender-preferences-changed", onRulesChange);
       window.removeEventListener("handled-email-overrides-changed", onOverridesChange);
+      window.removeEventListener("handled-sender-relationships-changed", onRulesChange);
     };
   }, [loadInbox]);
 

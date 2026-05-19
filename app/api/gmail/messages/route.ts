@@ -49,6 +49,7 @@ export async function GET(request: Request) {
           senderRules: [],
           keywordRules: [],
           allRules: [],
+          senderRelationships: [],
         };
     const workflowMode = parseWorkflowModeHeader(
       request.headers.get(WORKFLOW_MODE_HEADER),
@@ -57,6 +58,7 @@ export async function GET(request: Request) {
       emailOverrides: rulesCtx.emailOverrides,
       senderRules: rulesCtx.senderRules,
       userRules: rulesCtx.keywordRules,
+      senderRelationships: rulesCtx.senderRelationships,
       workflowMode,
     });
 
@@ -75,6 +77,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       messages: categorized.map((m) => ({
         ...m,
+        relationship: m.relationship,
         hasUnsubscribeSignal: hasUnsubscribeSignal(
           m.snippet,
           m.listUnsubscribe,

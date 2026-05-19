@@ -5,8 +5,10 @@ import Link from "next/link";
 import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
 import { FollowUpIntelligenceCard } from "@/app/emails/follow-up-intelligence-card";
+import { RelationshipBadge } from "@/app/emails/relationship-badge";
 import { UnsubscribeIntelligenceCard } from "@/app/emails/unsubscribe-intelligence-card";
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import type { UnsubscribeAnalysis } from "@/lib/unsubscribe/types";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import type { FakeEmail } from "@/lib/fake-emails";
@@ -29,6 +31,7 @@ export type EmailDetailPayload = FakeEmail & {
   unsubscribeAnalysis?: UnsubscribeAnalysis;
   unsubscribeReplyDraft?: string;
   followUpAnalysis?: FollowUpAnalysis;
+  relationship?: SenderRelationshipProfile;
 };
 
 type EmailDetailViewProps = {
@@ -64,6 +67,11 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
               {ui.emailDetail.sender}
             </p>
             <p className="text-lg font-medium text-[#0F172A]">{email.sender}</p>
+            {email.relationship ? (
+              <div className="pt-2">
+                <RelationshipBadge relationship={email.relationship} />
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-2 border-t border-gray-200 pt-8">
@@ -133,6 +141,7 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
           replySuppressedReason={email.replySuppressedReason}
           suggestedTriageAction={email.suggestedTriageAction}
           followUpAnalysis={email.followUpAnalysis}
+          relationship={email.relationship}
         />
       </div>
     </main>

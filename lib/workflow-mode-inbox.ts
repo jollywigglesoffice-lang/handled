@@ -1,9 +1,12 @@
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { shouldHideForRelationship } from "@/lib/relationship-intelligence/effects";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 import { getWorkflowModeProfile } from "@/lib/workflow-mode/profiles";
 
 export type InboxListMessage = {
   category: InboxAiCategory;
+  relationship?: SenderRelationshipProfile;
 };
 
 const CLUTTER_CATEGORIES: InboxAiCategory[] = ["newsletter", "promotion"];
@@ -13,6 +16,12 @@ export function shouldShowMessageInWorkflow<T extends InboxListMessage>(
   message: T,
   mode: WorkflowMode,
 ): boolean {
+  if (
+    message.relationship &&
+    shouldHideForRelationship(message.relationship, message.category, mode)
+  ) {
+    return false;
+  }
   const profile = getWorkflowModeProfile(mode);
   if (profile.hidePromotionsInList) {
     return !CLUTTER_CATEGORIES.includes(message.category);

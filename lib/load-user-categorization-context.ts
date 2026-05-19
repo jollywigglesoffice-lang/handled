@@ -12,6 +12,9 @@ import {
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { loadSenderRulesForUser } from "@/lib/sender-rules/store";
 import { isLearnedSenderInboxRule, senderRulesToInboxRules } from "@/lib/sender-rules/to-inbox-rules";
+import { parseSenderRelationshipsHeader } from "@/lib/relationship-intelligence/client-storage";
+import { loadSenderRelationshipsForUser } from "@/lib/relationship-intelligence/store";
+import type { SenderRelationship } from "@/lib/relationship-intelligence/types";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
 
 export type CategorizationContext = {
@@ -24,6 +27,8 @@ export type CategorizationContext = {
   keywordRules: InboxUserRule[];
   /** Combined for legacy callers (sender first by priority). */
   allRules: InboxUserRule[];
+  /** Learned + manual sender relationships. */
+  senderRelationships: SenderRelationship[];
 };
 
 function stripLearnedSenderDuplicates(rules: InboxUserRule[]): InboxUserRule[] {
@@ -34,11 +39,13 @@ export async function loadCategorizationContext(
   userId: string,
   request?: Request,
 ): Promise<CategorizationContext> {
-  const [serverKeywordRules, senderRulesFromDb, serverOverrides] = await Promise.all([
-    loadInboxUserRulesForUser(userId),
-    loadSenderRulesForUser(userId),
-    loadEmailOverridesForUser(userId),
-  ]);
+  const [serverKeywordRules, senderRulesFromDb, serverOverrides, serverRelationships] =
+    await Promise.all([
+      loadInboxUserRulesForUser(userId),
+      loadSenderRulesForUser(userId),
+      loadEmailOverridesForUser(userId),
+      loadSenderRelationshipsForUser(userId),
+    ]);
 
   const clientOverrides = request
     ? parseEmailOverridesHeader(request.headers.get("x-handled-email-overrides"))
@@ -67,7 +74,28 @@ export async function loadCategorizationContext(
   const mergedSender = mergeInboxUserRules(senderRules, clientSenderRules);
   const allRules = mergeInboxUserRules(mergedSender, keywordRules);
 
-  return { emailOverrides, emailOverrideRecords, senderRules: mergedSender, keywordRules, allRules };
+  const clientRelationships = request
+    ? parseSenderRelationshipsHeader(request.headers.get("x-handled-sender-relationships"))
+    : [];
+  const relByKey = new Map<string, SenderRelationship>();
+  for (const r of clientRelationships) {
+    const key = r.senderEmail || r.senderDomain;
+    if (key) relByKey.set(key, r);
+  }
+  for (const r of serverRelationships) {
+    const key = r.senderEmail || r.senderDomain;
+    if (key) relByKey.set(key, r);
+  }
+  const senderRelationships = [...relByKey.values()];
+
+  return {
+    emailOverrides,
+    emailOverrideRecords,
+    senderRules: mergedSender,
+    keywordRules,
+    allRules,
+    senderRelationships,
+  };
 }
 
 /** @deprecated use loadCategorizationContext */
