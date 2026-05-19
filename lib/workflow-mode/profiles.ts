@@ -65,7 +65,7 @@ const ASSIST_PROFILE: WorkflowModeProfile = {
   statusMessage: "Suggested options — you choose what to send.",
   showArchiveHint: false,
   showBulkTriageHint: false,
-  showFollowUpReminders: false,
+  showFollowUpReminders: true,
   emphasizeSummary: false,
   showDecisionHighlights: true,
 };
@@ -99,7 +99,7 @@ const CLEAN_PROFILE: WorkflowModeProfile = {
   statusMessage: "Inbox simplified — replies only when truly needed.",
   showArchiveHint: true,
   showBulkTriageHint: true,
-  showFollowUpReminders: false,
+  showFollowUpReminders: true,
   emphasizeSummary: true,
   showDecisionHighlights: false,
 };

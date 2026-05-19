@@ -32,6 +32,8 @@ import { retrieveBrainUsageDto } from "@/lib/knowledge/retrieve";
 import type { BrainUsageDto } from "@/lib/knowledge/types";
 import { persistWorkflowModeToBrowser, WORKFLOW_MODE_KEY } from "@/lib/workflow-mode";
 import { getWorkflowModeBehavior } from "@/lib/workflow-mode-config";
+import { saveFollowUpReminderToAccount } from "@/lib/follow-up-reminders/client-sync";
+import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 
 type EmailActionsProps = {
   emailId: string;
@@ -44,6 +46,7 @@ type EmailActionsProps = {
   replyRecommended?: boolean;
   replySuppressedReason?: string;
   suggestedTriageAction?: string;
+  followUpAnalysis?: FollowUpAnalysis;
 };
 
 const FETCH_REPLY_TIMEOUT_MS = 28_000;
@@ -393,6 +396,7 @@ export function EmailActions({
   replyRecommended: replyRecommendedProp = true,
   replySuppressedReason,
   suggestedTriageAction,
+  followUpAnalysis,
 }: EmailActionsProps) {
   const ui = useUiCopy();
   const router = useRouter();
@@ -1621,9 +1625,13 @@ return () => clearTimeout(timeout);
           Handled never sends email without your explicit approval.
         </div>
 
-        {workflowBehavior.showFollowUpReminders && replyRecommendedProp ? (
+        {followUpAnalysis ? (
+          <p className="mt-2 rounded-lg border border-violet-100 bg-violet-50/80 px-3 py-2 text-[11px] leading-relaxed text-violet-900">
+            {followUpAnalysis.calmPrompt}
+          </p>
+        ) : workflowBehavior.showFollowUpReminders && replyRecommendedProp ? (
           <p className="mt-2 text-[11px] text-violet-800">
-            Follow-up suggestion: schedule a reminder if you don&apos;t hear back in 2–3 days.
+            When you&apos;re ready, Handled can remember to nudge this thread — no pressure.
           </p>
         ) : null}
       </div>
@@ -1667,7 +1675,16 @@ return () => clearTimeout(timeout);
         </button>
         <button
           type="button"
-          onClick={() => setStatusMessage(ui.emailActions.statusReminderSaved)}
+          onClick={() => {
+            if (followUpAnalysis) {
+              void saveFollowUpReminderToAccount(followUpAnalysis).then(() => {
+                setStatusMessage(ui.followUp.savedReminder);
+                window.dispatchEvent(new Event("handled-follow-ups-changed"));
+              });
+            } else {
+              setStatusMessage(ui.emailActions.statusReminderSaved);
+            }
+          }}
           className="rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#0F172A] transition-all duration-200 hover:bg-[#F1F5F9] active:scale-95"
         >
           {ui.emailActions.remindLaterButton}

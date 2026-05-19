@@ -8,6 +8,8 @@ import { gmailGetMessageFull, gmailGetMessageMetadata } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
+import { analyzeFollowUp } from "@/lib/follow-up/analyze";
+import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import { assessReplyNeed } from "@/lib/reply-necessity";
 import { analyzeUnsubscribe } from "@/lib/unsubscribe/detect";
 import { isLikelyHtml } from "@/lib/sanitize-email-html";
@@ -59,6 +61,9 @@ async function enrichGmailEmail(
 
   const aiSummary = await buildEmailSummary(meta, category, workflowMode);
 
+  const followUpAnalysis: FollowUpAnalysis | undefined =
+    analyzeFollowUp(meta, category, { workflowMode }) ?? undefined;
+
   const unsubscribeAnalysis = analyzeUnsubscribe({
     bodyPlain: displayPlain,
     bodyHtml,
@@ -77,6 +82,7 @@ async function enrichGmailEmail(
     category: inboxCategorySectionTitle(category, "en"),
     inboxCategory: category,
     aiSummary,
+    followUpAnalysis,
     body: displayPlain,
     bodyHtml: bodyHtml || undefined,
     suggestedReply: "",

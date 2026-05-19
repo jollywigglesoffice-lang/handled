@@ -4,7 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
+import { FollowUpIntelligenceCard } from "@/app/emails/follow-up-intelligence-card";
 import { UnsubscribeIntelligenceCard } from "@/app/emails/unsubscribe-intelligence-card";
+import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import type { UnsubscribeAnalysis } from "@/lib/unsubscribe/types";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import type { FakeEmail } from "@/lib/fake-emails";
@@ -26,6 +28,7 @@ export type EmailDetailPayload = FakeEmail & {
   listUnsubscribePost?: string;
   unsubscribeAnalysis?: UnsubscribeAnalysis;
   unsubscribeReplyDraft?: string;
+  followUpAnalysis?: FollowUpAnalysis;
 };
 
 type EmailDetailViewProps = {
@@ -86,6 +89,14 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
             <p className="text-sm leading-relaxed text-gray-500">{email.aiSummary}</p>
           </div>
 
+          {email.followUpAnalysis ? (
+            <FollowUpIntelligenceCard
+              emailId={email.id}
+              analysis={email.followUpAnalysis}
+              locale={categoryLocale}
+            />
+          ) : null}
+
           <UnsubscribeIntelligenceCard
             emailId={email.id}
             sender={email.sender}
@@ -121,6 +132,7 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
           replyRecommended={email.replyRecommended ?? true}
           replySuppressedReason={email.replySuppressedReason}
           suggestedTriageAction={email.suggestedTriageAction}
+          followUpAnalysis={email.followUpAnalysis}
         />
       </div>
     </main>

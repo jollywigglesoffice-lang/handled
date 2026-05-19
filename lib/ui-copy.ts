@@ -133,6 +133,30 @@ type UiCopy = {
     safetyNote: string;
     modesTitle: string;
   };
+  followUp: {
+    sectionTitle: string;
+    sectionSubtitle: string;
+    emptyState: string;
+    followUpsTab: string;
+    waitingOnTab: string;
+    unresolvedTab: string;
+    pendingTab: string;
+    snoozeButton: string;
+    dismissButton: string;
+    resolveButton: string;
+    draftFollowUpButton: string;
+    draftFollowUpBusy: string;
+    copyDraftButton: string;
+    copiedDraft: string;
+    savedReminder: string;
+    snoozedReminder: string;
+    dismissedReminder: string;
+    resolvedReminder: string;
+    intelligenceTitle: string;
+    remindMeLater: string;
+    openEmail: string;
+    urgencyLabel: string;
+  };
   home: {
     appLanguageLabel: string;
     appLanguageEnglish: string;
@@ -287,6 +311,31 @@ const en: UiCopy = {
     subject: "Subject",
     aiSummary: "AI summary",
     fullEmailBody: "Full email body",
+  },
+  followUp: {
+    sectionTitle: "Follow-ups & memory",
+    sectionSubtitle:
+      "Calm reminders for open conversations — nothing urgent unless you want it to be.",
+    emptyState: "No follow-ups right now. Handled will surface open threads when it helps.",
+    followUpsTab: "Follow-ups",
+    waitingOnTab: "Waiting on",
+    unresolvedTab: "Unresolved",
+    pendingTab: "Pending",
+    snoozeButton: "Snooze 3 days",
+    dismissButton: "Dismiss",
+    resolveButton: "Mark resolved",
+    draftFollowUpButton: "Draft follow-up",
+    draftFollowUpBusy: "Drafting…",
+    copyDraftButton: "Copy draft",
+    copiedDraft: "Copied",
+    savedReminder: "Saved",
+    snoozedReminder: "Snoozed",
+    dismissedReminder: "Dismissed",
+    resolvedReminder: "Resolved",
+    intelligenceTitle: "Conversation memory",
+    remindMeLater: "Remind me later",
+    openEmail: "Open email",
+    urgencyLabel: "Priority",
   },
   settingsPage: {
     headingTag: "Handled Settings",
@@ -466,6 +515,31 @@ const it: UiCopy = {
     subject: "Oggetto",
     aiSummary: "Riepilogo AI",
     fullEmailBody: "Testo completo dell'email",
+  },
+  followUp: {
+    sectionTitle: "Follow-up e memoria",
+    sectionSubtitle:
+      "Promemoria calmi per conversazioni aperte — niente urgenza artificiale.",
+    emptyState: "Nessun follow-up per ora. Handled segnalera i thread aperti quando serve.",
+    followUpsTab: "Follow-up",
+    waitingOnTab: "In attesa",
+    unresolvedTab: "Aperte",
+    pendingTab: "In sospeso",
+    snoozeButton: "Posticipa 3 giorni",
+    dismissButton: "Nascondi",
+    resolveButton: "Segna risolto",
+    draftFollowUpButton: "Bozza follow-up",
+    draftFollowUpBusy: "Sto scrivendo…",
+    copyDraftButton: "Copia bozza",
+    copiedDraft: "Copiata",
+    savedReminder: "Salvato",
+    snoozedReminder: "Posticipato",
+    dismissedReminder: "Nascosto",
+    resolvedReminder: "Risolto",
+    intelligenceTitle: "Memoria conversazione",
+    remindMeLater: "Ricordamelo dopo",
+    openEmail: "Apri email",
+    urgencyLabel: "Priorita",
   },
   settingsPage: {
     headingTag: "Impostazioni Handled",

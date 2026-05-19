@@ -23,6 +23,7 @@ import {
 } from "@/lib/email-overrides/client-sync";
 import { fakeEmailsToInboxMessages } from "@/lib/inbox-buckets-mock";
 import { syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
+import { FollowUpsSection } from "@/app/emails/follow-ups-section";
 import { WorkflowModeBanner } from "@/app/emails/workflow-mode-banner";
 import { InboxClutterSection } from "@/app/emails/inbox-clutter-section";
 import { useStableInboxBuckets } from "@/app/emails/use-stable-inbox-buckets";
@@ -45,6 +46,7 @@ type GmailInboxMessage = {
   subject: string;
   snippet: string;
   date: string;
+  internalDateMs?: number;
   category: InboxAiCategory;
   categoryConfidence?: number;
   categorySource?: CategorySource;
@@ -416,6 +418,10 @@ export default function EmailsInboxPage() {
           subject: r.subject,
           snippet: r.snippet,
           date: r.date,
+          internalDateMs:
+            typeof (r as { internalDateMs?: number }).internalDateMs === "number"
+              ? (r as { internalDateMs: number }).internalDateMs
+              : undefined,
           category: normalizeInboxAiCategory(
             typeof r.category === "string" ? r.category : "needs_attention",
           ),
@@ -788,6 +794,10 @@ export default function EmailsInboxPage() {
           ) : inboxMode === "gmail" ? (
             <div className="space-y-10">
               <WorkflowModeBanner mode={workflowMode} />
+              <FollowUpsSection
+                messages={gmailMessages}
+                locale={uiLanguage === "it" ? "it" : "en"}
+              />
               <InboxSyncBar
                 lastSyncedAt={lastSyncedAt}
                 isRefreshing={isRefreshing}
