@@ -1,5 +1,6 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import { hasHighPriorityIntent, requiresHumanReply } from "@/lib/email-intent";
+import { hasMultilingualImportanceSignal } from "@/lib/multilingual-importance";
 import { computeInboxRuleScores, isBillingLikely } from "@/lib/inbox-rule-classify";
 
 const BULK_SENDER =
@@ -56,7 +57,11 @@ export function isTransactionalFyi(row: GmailInboxRow): boolean {
 
 /** True when the email likely needs a real human decision (not just marketing noise). */
 export function hasUrgentHumanSignal(row: GmailInboxRow): boolean {
-  if (hasHighPriorityIntent(row) || requiresHumanReply(row)) {
+  if (
+    hasHighPriorityIntent(row) ||
+    requiresHumanReply(row) ||
+    hasMultilingualImportanceSignal(row)
+  ) {
     return true;
   }
 

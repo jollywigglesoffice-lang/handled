@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
 import {
   type InboxAiCategory,
@@ -10,6 +10,11 @@ import {
 import type { CategorySource } from "@/lib/inbox-ai-categories";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
 import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
+import {
+  clearSenderLearningSuggestion,
+  getSenderLearningSuggestion,
+} from "@/lib/sender-correction-learning";
+import { assignSenderRelationshipPreset } from "@/lib/relationship-intelligence/client-sync";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
@@ -68,6 +73,11 @@ export function GmailInboxCard({
   const [saveStatus, setSaveStatus] = useState<SaveStatusState>("idle");
   const [showCorrection, setShowCorrection] = useState(false);
   const [showRelationship, setShowRelationship] = useState(false);
+  const [learningPrompt, setLearningPrompt] = useState<string | null>(null);
+  const initialLearning = useMemo(
+    () => getSenderLearningSuggestion(message.sender, locale)?.message ?? null,
+    [message.sender, locale],
+  );
   const ui = useUiCopy();
   const guessedRef = useRef(message.category);
   const accent = CATEGORY_ACCENT[message.category];
@@ -107,6 +117,9 @@ export function GmailInboxCard({
         const extra =
           scope === "sender" ? " Matching emails in your inbox were updated." : "";
         setFeedback(`${result.message}${extra}`);
+        if (result.senderLearningSuggestion) {
+          setLearningPrompt(result.senderLearningSuggestion);
+        }
         setSaveStatus(scope === "sender" ? "synced" : "saved");
         guessedRef.current = chosen;
         if (scope === "this_email") {
@@ -146,6 +159,21 @@ export function GmailInboxCard({
     window.setTimeout(() => setSaveStatus("idle"), 2500);
   }, [message.id, onResetOverride]);
 
+  const activeLearningPrompt = learningPrompt ?? initialLearning;
+
+  const acceptLearningPrioritize = useCallback(async () => {
+    setSaveStatus("saving");
+    try {
+      await assignSenderRelationshipPreset(message.sender, "school");
+      await handleApply("needs_attention", "sender");
+      clearSenderLearningSuggestion(message.sender);
+      setLearningPrompt(null);
+    } catch {
+      setFeedback("Could not save — try again.");
+      setSaveStatus("error");
+    }
+  }, [message.sender, handleApply]);
+
   return (
     <div
       className={`rounded-xl border border-[#E2E8F0] p-6 shadow-sm transition-all duration-200 hover:border-[#6366F1]/40 hover:shadow-md ${accent}`}
@@ -167,6 +195,31 @@ export function GmailInboxCard({
             sender={message.sender}
             onDismiss={() => setShowRelationship(false)}
           />
+        ) : null}
+
+        {activeLearningPrompt && !showCorrection && !showRelationship ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3">
+            <p className="text-xs leading-relaxed text-amber-950">{activeLearningPrompt}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void acceptLearningPrioritize()}
+                className="rounded-lg bg-amber-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-900"
+              >
+                {locale === "it" ? "Sì, prioritarizza" : "Yes, prioritize"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearSenderLearningSuggestion(message.sender);
+                  setLearningPrompt(null);
+                }}
+                className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+              >
+                {locale === "it" ? "Non ora" : "Not now"}
+              </button>
+            </div>
+          </div>
         ) : null}
 
         {showCorrection ? (

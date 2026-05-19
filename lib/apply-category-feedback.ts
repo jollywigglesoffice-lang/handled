@@ -10,6 +10,10 @@ import {
 } from "@/lib/inbox-sender-preferences";
 import { applySenderRuleToMessages } from "@/lib/sender-rules/apply-to-messages";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
+import {
+  getSenderLearningSuggestion,
+  recordSenderCategoryCorrection,
+} from "@/lib/sender-correction-learning";
 
 export type CategoryFeedbackInput = {
   emailId: string;
@@ -26,11 +30,19 @@ export type CategoryFeedbackResult = {
   rules?: InboxUserRule[];
   affectedCount?: number;
   learnedSender?: boolean;
+  /** Shown when the user repeatedly corrects the same sender (e.g. school → needs attention). */
+  senderLearningSuggestion?: string;
 };
 
 export async function submitCategoryFeedback(
   input: CategoryFeedbackInput,
 ): Promise<CategoryFeedbackResult> {
+  const learningRecord = recordSenderCategoryCorrection({
+    sender: input.sender,
+    guessedCategory: input.guessedCategory,
+    chosenCategory: input.chosenCategory,
+  });
+
   if (input.scope === "this_email") {
     const now = new Date().toISOString();
     upsertClientEmailOverride({
@@ -104,11 +116,17 @@ export async function submitCategoryFeedback(
     similar: "Handled will match similar subject lines going forward.",
   };
 
+  const senderLearningSuggestion =
+    learningRecord && learningRecord.correctionsToNeedsAttention >= 2
+      ? getSenderLearningSuggestion(input.sender)?.message
+      : undefined;
+
   return {
     message: data.message ?? scopeMessages[input.scope],
     rules: data.rules,
     learnedSender: data.learnedSender ?? input.scope === "sender",
     affectedCount: input.scope === "this_email" ? 1 : undefined,
+    senderLearningSuggestion,
   };
 }
 

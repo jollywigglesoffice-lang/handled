@@ -53,11 +53,18 @@ export function applyRelationshipToCategory(
   }
 
   if (profile.kind === "family" || profile.kind === "school" || profile.kind === "healthcare") {
-    if (category === "promotion" || category === "newsletter") {
+    if (
+      category === "promotion" ||
+      category === "newsletter" ||
+      category === "handled"
+    ) {
       return "needs_attention";
     }
-    if (category === "handled") {
-      return "quick_reply";
+  }
+
+  if (profile.importance === "important") {
+    if (category === "handled" || category === "promotion" || category === "newsletter") {
+      return "needs_attention";
     }
   }
 

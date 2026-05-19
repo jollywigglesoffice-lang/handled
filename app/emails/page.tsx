@@ -437,7 +437,10 @@ export default function EmailsInboxPage() {
             r.categorySource === "ai_coerced" ||
             r.categorySource === "user_rule" ||
             r.categorySource === "sender_rule" ||
-            r.categorySource === "manual_override"
+            r.categorySource === "manual_override" ||
+            r.categorySource === "relationship_rule" ||
+            r.categorySource === "semantic_rule" ||
+            r.categorySource === "multilingual_rule"
               ? r.categorySource
               : undefined,
           hasUnsubscribeSignal: Boolean(r.hasUnsubscribeSignal),

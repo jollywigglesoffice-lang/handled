@@ -16,7 +16,10 @@ export type CategorySource =
   | "ai_coerced"
   | "user_rule"
   | "sender_rule"
-  | "manual_override";
+  | "manual_override"
+  | "relationship_rule"
+  | "semantic_rule"
+  | "multilingual_rule";
 
 /** Section order in the Gmail inbox (most actionable first). */
 export const GMAIL_INBOX_SECTION_ORDER: InboxAiCategory[] = [

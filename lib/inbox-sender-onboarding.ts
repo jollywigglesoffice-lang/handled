@@ -11,5 +11,12 @@ export function suggestSenderAutoRuleMessage(
   locale: "en" | "it" = "en",
 ): string {
   const dest = inboxCategorySectionTitle(category, locale);
-  return `I noticed you consistently move emails from ${senderLabel} into ${dest}. Want me to do that automatically?`;
+  if (category === "needs_attention") {
+    return locale === "it"
+      ? `Prioritizzare sempre le email da ${senderLabel}? Le metterò in ${dest}.`
+      : `Always prioritize emails from ${senderLabel}? I'll put them in ${dest}.`;
+  }
+  return locale === "it"
+    ? `Ho notato che sposti spesso le email da ${senderLabel} in ${dest}. Vuoi che lo faccia automaticamente?`
+    : `I noticed you consistently move emails from ${senderLabel} into ${dest}. Want me to do that automatically?`;
 }

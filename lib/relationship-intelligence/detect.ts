@@ -13,9 +13,9 @@ function haystack(row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">): s
 }
 
 const SCHOOL =
-  /\.edu\b|@.*\.k12\.|school|academy|university|college|teacher|principal|pta|parent.?teacher/i;
+  /\.edu\b|@.*\.k12\.|school|academy|university|college|teacher|principal|pta|parent.?teacher|scuola|scuole|insegnante|insegnanti|maestra|maestro|colloquio|materna|asilo|nido|elementare|segreteria|genitori|classe|compiti/i;
 const HEALTHCARE =
-  /hospital|clinic|healthcare|physician|doctor|dental|pediatric|pharmacy|medical|therapy|nurse/i;
+  /hospital|clinic|healthcare|physician|doctor|dental|pediatric|pharmacy|medical|therapy|nurse|ospedale|pediatra|pediatria|appuntamento\s+medico/i;
 const BILLING = /invoice|receipt|billing|payment due|stripe|paypal|quickbooks|account statement/i;
 const NEWSLETTER =
   /newsletter|substack|digest|unsubscribe|view in browser|mailchimp|beehiiv|constant contact/i;

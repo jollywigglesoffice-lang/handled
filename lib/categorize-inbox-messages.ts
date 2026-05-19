@@ -24,7 +24,9 @@ import {
   hasHighPriorityIntent,
   safetyCategoryWhenUncertain,
 } from "@/lib/email-intent";
+import { detectPersonalImportance } from "@/lib/multilingual-importance";
 import { applyRelationshipToCategory } from "@/lib/relationship-intelligence/effects";
+import { resolveRelationshipCategory } from "@/lib/relationship-intelligence/relationship-category";
 import { resolveSenderRelationship } from "@/lib/relationship-intelligence/resolve";
 import type { SenderRelationship, SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import { applyWorkflowModeToCategory } from "@/lib/workflow-mode-effects";
@@ -226,7 +228,7 @@ function finalizeRow(
 ): GmailInboxRowCategorized {
   const c = Math.round(Math.max(0, Math.min(1, confidence)) * 100) / 100;
   let coerced = coerceNeedsAttentionCategory(row, category);
-  coerced = safetyCategoryWhenUncertain(row, coerced, c);
+  coerced = safetyCategoryWhenUncertain(row, coerced, c, relationship);
   if (relationship) {
     coerced = applyRelationshipToCategory(row, coerced, relationship);
   }
@@ -296,21 +298,31 @@ function correctUrgentAiLabel(
 }
 
 function buildAmbiguousAiPrompt(batchSize: number): string {
-  return `You triage a real inbox. These messages did NOT match deterministic rules.
+  return `You triage a real personal + work inbox. Messages may be in English, Italian, or mixed (EN/IT). These did NOT match deterministic rules.
 
 Use ONLY: needs_attention, quick_reply, newsletter, promotion, handled
 
-PRIORITY (strict):
-1. promotion — marketing, sales, discounts, social app updates (Instagram, etc.), fake urgency in ads
-2. newsletter — digests, list mail, unsubscribe footers, editorial recurring content
-3. handled — receipts, billing, shipping, automated FYI, no decision needed
-4. quick_reply — short acknowledgment suffices
-5. needs_attention — LAST RESORT: a real person expects your decision, approval, or substantive reply
+CULTURAL / PERSONAL PRIORITY (overrides business-startup bias):
+- School / teachers / parents (scuola, insegnante, colloquio, maestra, genitori, PTA, Alexandria-style school names) → needs_attention
+- Family, kids, childcare → needs_attention
+- Healthcare (ospedale, pediatra, appuntamento medico, hospital, pediatric) → needs_attention
+- Scheduling that needs a human decision (riunione, appuntamento, conferma, meeting) → needs_attention or quick_reply if only a short ack is needed
+- Payments/confirmations about school, health, or family → needs_attention (not handled)
 
-NEVER use needs_attention for: newsletters, promotions, billing, receipts, noreply marketing, social notifications.
+COMMERCIAL (only when clearly bulk/marketing):
+- promotion — marketing, sales, discounts, social app notifications
+- newsletter — digests, list mail, unsubscribe footers
+
+LOW-RISK DEFAULT:
+- handled — only for clear automated FYI (receipts, shipping, noreply notifications) with NO personal/school/health context
+- quick_reply — short acknowledgment suffices
+
+SAFETY: When unsure between handled and needs_attention for a plausible human/school/health sender, choose needs_attention. Missing important family or school mail is worse than a false positive.
+
+NEVER use handled for: school mail, teacher/parent messages, Italian urgency words (urgente, colloquio), or a named person writing about appointments.
 
 Return JSON only:
-{"classifications":[{"index":0,"category":"promotion","confidence":0.85},...]}
+{"classifications":[{"index":0,"category":"needs_attention","confidence":0.85},...]}
 
 Exactly ${batchSize} items, indices 0..${batchSize - 1}.`;
 }
@@ -503,7 +515,8 @@ function applyUserPostIfNeeded(
 }
 
 /**
- * Pipeline: manual overrides → sender rules → keyword rules → system rules → AI → fallback → post-rules.
+ * Pipeline: manual overrides → relationship/semantic memory → sender rules → keyword rules
+ * → multilingual importance → system rules → AI → fallback → post-rules.
  */
 export async function categorizeGmailInboxRows(
   rows: GmailInboxRow[],
@@ -540,6 +553,23 @@ export async function categorizeGmailInboxRows(
       continue;
     }
 
+    const relationshipForced = resolveRelationshipCategory(row, senderRelationships);
+    if (relationshipForced) {
+      const relSource: CategorySource =
+        relationshipForced.source === "semantic_memory" ? "semantic_rule" : "relationship_rule";
+      out[i] = applyUserPostIfNeeded(
+        row,
+        i,
+        relationshipForced.category,
+        relSource,
+        0.94,
+        allUserRules,
+        workflowMode,
+        senderRelationships,
+      );
+      continue;
+    }
+
     const senderPre = applyUserRulesPre(row, senderRules);
     const keywordPre = senderPre ? null : applyUserRulesPre(row, userRules);
     const userPre = senderPre ?? keywordPre;
@@ -570,6 +600,21 @@ export async function categorizeGmailInboxRows(
         "handled",
         preSource,
         0.99,
+        allUserRules,
+        workflowMode,
+        senderRelationships,
+      );
+      continue;
+    }
+
+    const importance = detectPersonalImportance(row);
+    if (importance.important) {
+      out[i] = applyUserPostIfNeeded(
+        row,
+        i,
+        importance.suggestedCategory,
+        "multilingual_rule",
+        importance.confidence,
         allUserRules,
         workflowMode,
         senderRelationships,

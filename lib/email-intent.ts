@@ -1,5 +1,7 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { hasMultilingualImportanceSignal } from "@/lib/multilingual-importance";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 
 function emailHaystack(row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">): string {
   return `${row.sender} ${row.subject} ${row.snippet ?? ""}`.toLowerCase();
@@ -174,20 +176,28 @@ export function analyzeEmailIntent(row: GmailInboxRow): EmailIntentAnalysis {
     confidence = Math.max(confidence, 0.75 + Math.min(0.15, qCount * 0.05));
   }
 
+  const multilingualImportant = hasMultilingualImportanceSignal(row);
+  if (multilingualImportant) {
+    kinds.push("scheduling");
+    reasons.push("multilingual_importance");
+    confidence = Math.max(confidence, 0.88);
+  }
+
   const highPriority =
-    kinds.length > 0 &&
-    (kinds.some((k) =>
-      [
-        "pricing_inquiry",
-        "sales_lead",
-        "partnership",
-        "support_request",
-        "scheduling",
-        "decision_required",
-        "deadline",
-      ].includes(k),
-    ) ||
-      (kinds.includes("direct_question") && qCount >= 1 && !isLikelyAutomatedFyi(hay)));
+    multilingualImportant ||
+    (kinds.length > 0 &&
+      (kinds.some((k) =>
+        [
+          "pricing_inquiry",
+          "sales_lead",
+          "partnership",
+          "support_request",
+          "scheduling",
+          "decision_required",
+          "deadline",
+        ].includes(k),
+      ) ||
+        (kinds.includes("direct_question") && qCount >= 1 && !isLikelyAutomatedFyi(hay))));
 
   const requiresReply =
     highPriority &&
@@ -267,20 +277,35 @@ export function applyIntentToCategory(
   return category;
 }
 
+function isImportantRelationship(
+  profile: SenderRelationshipProfile | null | undefined,
+): boolean {
+  if (!profile) return false;
+  if (profile.importance === "vip" || profile.importance === "important") return true;
+  return ["school", "family", "healthcare", "vip_client"].includes(profile.kind);
+}
+
 /** Low confidence → bias toward needs_attention (never miss important mail) */
 export function safetyCategoryWhenUncertain(
   row: GmailInboxRow,
   category: InboxAiCategory,
   confidence: number,
+  relationship?: SenderRelationshipProfile | null,
 ): InboxAiCategory {
+  if (isImportantRelationship(relationship) && category === "handled") {
+    return "needs_attention";
+  }
+  if (hasMultilingualImportanceSignal(row) && category === "handled") {
+    return "needs_attention";
+  }
   if (confidence >= 0.72) {
     return applyIntentToCategory(row, category);
   }
   if (hasHighPriorityIntent(row)) {
     return analyzeEmailIntent(row).suggestedCategory;
   }
-  if (category === "handled" && confidence < 0.65) {
-    if (looksLikePossibleHumanEmail(row)) {
+  if (category === "handled" && confidence < 0.72) {
+    if (looksLikePossibleHumanEmail(row) || isImportantRelationship(relationship)) {
       return "needs_attention";
     }
   }
