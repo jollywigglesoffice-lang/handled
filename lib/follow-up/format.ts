@@ -1,4 +1,4 @@
-import type { ConversationState } from "@/lib/follow-up/types";
+import type { ConversationState, FollowUpDisplayState } from "@/lib/follow-up/types";
 
 export function senderFirstNameFromRow(sender: string): string {
   const name = sender.replace(/<[^>]+>/, "").trim();
@@ -15,6 +15,8 @@ export function conversationStateLabel(state: ConversationState, locale: "en" | 
     pending_scheduling: "Pending scheduling",
     user_commitment_pending: "Your commitment pending",
     conversation_unresolved: "Conversation unresolved",
+    awaiting_approval: "Awaiting approval",
+    pending_payment: "Payment pending",
   };
   const it: Record<ConversationState, string> = {
     awaiting_your_reply: "In attesa della tua risposta",
@@ -23,6 +25,37 @@ export function conversationStateLabel(state: ConversationState, locale: "en" | 
     pending_scheduling: "Da programmare",
     user_commitment_pending: "Impegno da completare",
     conversation_unresolved: "Conversazione aperta",
+    awaiting_approval: "In attesa di approvazione",
+    pending_payment: "Pagamento in sospeso",
+  };
+  return locale === "it" ? it[state] : en[state];
+}
+
+export function followUpDisplayStateLabel(
+  state: FollowUpDisplayState,
+  locale: "en" | "it",
+): string {
+  const en: Record<FollowUpDisplayState, string> = {
+    waiting_on_reply: "Waiting on reply",
+    follow_up_suggested: "Follow-up suggested",
+    recently_active: "Recently active",
+    closed_conversation: "Closed",
+    awaiting_approval: "Awaiting approval",
+    awaiting_your_reply: "Awaiting your reply",
+    pending_scheduling: "Meeting",
+    your_commitment: "Your commitment",
+    pending_payment: "Payment",
+  };
+  const it: Record<FollowUpDisplayState, string> = {
+    waiting_on_reply: "In attesa di risposta",
+    follow_up_suggested: "Follow-up suggerito",
+    recently_active: "Attività recente",
+    closed_conversation: "Chiusa",
+    awaiting_approval: "In attesa di approvazione",
+    awaiting_your_reply: "In attesa della tua risposta",
+    pending_scheduling: "Riunione",
+    your_commitment: "Tuo impegno",
+    pending_payment: "Pagamento",
   };
   return locale === "it" ? it[state] : en[state];
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
 import { useUiCopy } from "@/app/use-ui-copy";
-import { conversationStateLabel } from "@/lib/follow-up/format";
+import { conversationStateLabel, followUpDisplayStateLabel } from "@/lib/follow-up/format";
 import {
   patchFollowUpReminderOnAccount,
   saveFollowUpReminderToAccount,
@@ -76,7 +76,9 @@ export function FollowUpCard({ item, locale, onUpdated }: FollowUpCardProps) {
     }
   }, [draft]);
 
-  const stateLabel = conversationStateLabel(item.state, locale);
+  const stateLabel = item.displayState
+    ? followUpDisplayStateLabel(item.displayState, locale)
+    : conversationStateLabel(item.state, locale);
 
   return (
     <article className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50/60 to-white p-5 shadow-sm">
@@ -85,6 +87,16 @@ export function FollowUpCard({ item, locale, onUpdated }: FollowUpCardProps) {
           <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
             {stateLabel}
           </p>
+          {item.timingSuggestion ? (
+            <p className="text-xs font-medium text-violet-600/90">
+              {item.timingSuggestion.message}
+            </p>
+          ) : null}
+          {item.atRiskOfForgotten ? (
+            <p className="text-[10px] font-medium text-amber-700/90">
+              {locale === "it" ? "Sulla tua lista — senza fretta" : "On your radar — no rush"}
+            </p>
+          ) : null}
           <h3 className="text-base font-medium text-[#0F172A]">{item.headline}</h3>
           <p className="text-sm leading-relaxed text-gray-600">{item.calmPrompt}</p>
           <p className="truncate text-xs text-gray-400">

@@ -5,18 +5,28 @@ import {
   readOpenRouterChatContent,
   REPLY_MODEL,
 } from "@/lib/openrouter-reply";
+import { followUpDraftTone } from "@/lib/follow-up/smart-engine";
 import type { ConversationState } from "@/lib/follow-up/types";
 import { senderFirstNameFromRow } from "@/lib/follow-up/format";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 
 export async function generateFollowUpDraft(input: {
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">;
   state: ConversationState;
   userName?: string;
+  relationship?: SenderRelationshipProfile | null;
 }): Promise<string> {
   const name = senderFirstNameFromRow(input.row.sender);
   const signOff = input.userName?.trim() || "Best";
+  const tone = followUpDraftTone(input.relationship);
 
-  const heuristic = heuristicFollowUpDraft(input.state, name, input.row.subject, signOff);
+  const heuristic = heuristicFollowUpDraft(
+    input.state,
+    name,
+    input.row.subject,
+    signOff,
+    tone.openerExamples[0],
+  );
 
   const apiKey = getAiApiKey();
   if (!apiKey) return heuristic;
@@ -29,6 +39,8 @@ export async function generateFollowUpDraft(input: {
     user_commitment_pending:
       "The user may owe something they promised. Draft a friendly message delivering or acknowledging the commitment.",
     conversation_unresolved: "Draft a clear, calm reply that addresses the open thread.",
+    awaiting_approval: "Draft a clear approval or decline — calm and decisive.",
+    pending_payment: "Draft a brief note acknowledging the invoice or payment — factual, calm.",
   };
 
   try {
@@ -38,7 +50,7 @@ export async function generateFollowUpDraft(input: {
         {
           role: "system",
           content:
-            "You write short, warm professional email follow-ups. Tone: supportive, calm, organized — never pushy or anxiety-inducing. Output ONLY the email body (greeting through sign-off). No markdown.",
+            `You write short email follow-ups. ${tone.style} Never pushy or anxiety-inducing. Prefer openers like: ${tone.openerExamples.join(" / ")}. Output ONLY the email body (greeting through sign-off). No markdown.`,
         },
         {
           role: "user",
@@ -71,15 +83,16 @@ function heuristicFollowUpDraft(
   name: string,
   subject: string,
   signOff: string,
+  opener = "Just checking in regarding",
 ): string {
-  const subj = subject ? ` regarding “${subject}”` : "";
+  const subj = subject ? ` ${subject}` : "";
 
   switch (state) {
     case "waiting_for_response":
     case "follow_up_recommended":
       return `Hi ${name},
 
-Just following up${subj} — wanted to check whether you had a chance to look this over. No rush at all; happy to adjust if timing isn't right.
+${opener}${subj} — any updates when you have a moment? No rush at all.
 
 ${signOff}`;
     case "pending_scheduling":
@@ -92,6 +105,18 @@ ${signOff}`;
       return `Hi ${name},
 
 Thanks for your patience${subj}. I'm putting together what we discussed and will send it shortly. Let me know if anything has changed on your side.
+
+${signOff}`;
+    case "awaiting_approval":
+      return `Hi ${name},
+
+Thank you for your note${subj}. I've reviewed it and will confirm my decision shortly.
+
+${signOff}`;
+    case "pending_payment":
+      return `Hi ${name},
+
+Thanks for sending this${subj}. I'll review the payment details and follow up if anything is needed.
 
 ${signOff}`;
     case "awaiting_your_reply":

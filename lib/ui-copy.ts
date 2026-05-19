@@ -145,7 +145,9 @@ type UiCopy = {
   followUp: {
     sectionTitle: string;
     sectionSubtitle: string;
+    sectionCalmNote: string;
     emptyState: string;
+    atRiskTab: string;
     followUpsTab: string;
     waitingOnTab: string;
     unresolvedTab: string;
@@ -336,7 +338,9 @@ const en: UiCopy = {
     sectionTitle: "Follow-ups & memory",
     sectionSubtitle:
       "Calm reminders for open conversations — nothing urgent unless you want it to be.",
+    sectionCalmNote: "Handled never sends follow-ups for you — only gentle suggestions.",
     emptyState: "No follow-ups right now. Handled will surface open threads when it helps.",
+    atRiskTab: "Easy to forget",
     followUpsTab: "Follow-ups",
     waitingOnTab: "Waiting on",
     unresolvedTab: "Unresolved",
@@ -551,7 +555,9 @@ const it: UiCopy = {
     sectionTitle: "Follow-up e memoria",
     sectionSubtitle:
       "Promemoria calmi per conversazioni aperte — niente urgenza artificiale.",
+    sectionCalmNote: "Handled non invia mai follow-up al posto tuo — solo suggerimenti.",
     emptyState: "Nessun follow-up per ora. Handled segnalera i thread aperti quando serve.",
+    atRiskTab: "Da non dimenticare",
     followUpsTab: "Follow-up",
     waitingOnTab: "In attesa",
     unresolvedTab: "Aperte",

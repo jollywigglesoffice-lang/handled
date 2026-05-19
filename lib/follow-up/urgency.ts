@@ -37,6 +37,8 @@ export function scoreFollowUpUrgency(input: {
   if (BUSINESS_HIGH.test(input.haystack)) score += 12;
 
   if (input.state === "awaiting_your_reply") score += 12;
+  if (input.state === "awaiting_approval") score += 16;
+  if (input.state === "pending_payment") score += 14;
   if (input.state === "user_commitment_pending") score += 18;
   if (input.state === "follow_up_recommended") score += 8;
   if (input.state === "waiting_for_response") score += 5;

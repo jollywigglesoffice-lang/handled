@@ -24,6 +24,8 @@ export function parseConversationState(raw: string): ConversationState {
     "pending_scheduling",
     "user_commitment_pending",
     "conversation_unresolved",
+    "awaiting_approval",
+    "pending_payment",
   ];
   return valid.includes(raw as ConversationState)
     ? (raw as ConversationState)

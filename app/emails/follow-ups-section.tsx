@@ -5,7 +5,7 @@ import { FollowUpCard } from "@/app/emails/follow-up-card";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { syncFollowUpRemindersFromAccount } from "@/lib/follow-up-reminders/client-sync";
 import type { FollowUpInboxItem, FollowUpSectionKey } from "@/lib/follow-up/types";
-import { sectionKeyForState } from "@/lib/follow-up/types";
+import { sectionKeyForItem } from "@/lib/follow-up/types";
 import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
 
 type InboxMessageForAnalyze = {
@@ -25,6 +25,7 @@ type FollowUpsSectionProps = {
 };
 
 const TAB_ORDER: FollowUpSectionKey[] = [
+  "at_risk",
   "follow_ups",
   "waiting_on",
   "pending",
@@ -38,6 +39,7 @@ export function FollowUpsSection({ messages, locale, visible = true }: FollowUps
   const [activeTab, setActiveTab] = useState<FollowUpSectionKey>("follow_ups");
 
   const tabLabels: Record<FollowUpSectionKey, string> = {
+    at_risk: ui.followUp.atRiskTab,
     follow_ups: ui.followUp.followUpsTab,
     waiting_on: ui.followUp.waitingOnTab,
     unresolved: ui.followUp.unresolvedTab,
@@ -89,13 +91,14 @@ export function FollowUpsSection({ messages, locale, visible = true }: FollowUps
 
   const byTab = useMemo(() => {
     const map: Record<FollowUpSectionKey, FollowUpInboxItem[]> = {
+      at_risk: [],
       follow_ups: [],
       waiting_on: [],
       unresolved: [],
       pending: [],
     };
     for (const item of items) {
-      map[sectionKeyForState(item.state)].push(item);
+      map[sectionKeyForItem(item)].push(item);
     }
     return map;
   }, [items]);
@@ -112,6 +115,7 @@ export function FollowUpsSection({ messages, locale, visible = true }: FollowUps
           {ui.followUp.sectionTitle}
         </h2>
         <p className="mt-1 text-sm leading-relaxed text-gray-500">{ui.followUp.sectionSubtitle}</p>
+        <p className="mt-1 text-xs text-gray-400">{ui.followUp.sectionCalmNote}</p>
         {totalCount > 0 ? (
           <p className="mt-2 text-xs font-medium text-violet-700">
             {totalCount} conversation{totalCount === 1 ? "" : "s"} on your radar

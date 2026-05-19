@@ -11,6 +11,12 @@ import {
 import { resolveSenderRelationship } from "@/lib/relationship-intelligence/resolve";
 import type { SenderRelationship } from "@/lib/relationship-intelligence/types";
 import { scoreFollowUpUrgency } from "@/lib/follow-up/urgency";
+import {
+  detectStalledSignals,
+  enrichWithSmartFollowUp,
+  resolveStateWithSmartSignals,
+  shouldSurfaceInFollowUpSection,
+} from "@/lib/follow-up/smart-engine";
 import type { ConversationState, FollowUpAnalysis } from "@/lib/follow-up/types";
 
 function haystack(row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">): string {
@@ -68,6 +74,14 @@ function resolveState(input: {
 
   if (hasSchedulingIntent(input.row) || /schedule|calendar|meet(?:ing)?/i.test(hay)) {
     return "pending_scheduling";
+  }
+
+  if (/awaiting approval|pending approval|need your approval/i.test(hay)) {
+    return "awaiting_approval";
+  }
+
+  if (/payment due|invoice due|pending payment|awaiting payment/i.test(hay)) {
+    return "pending_payment";
   }
 
   if (AWAITING_YOU.test(hay) || intentRequiresReply) {
@@ -133,6 +147,16 @@ function buildHeadlines(
         headline: commitment ?? `You may owe ${name} a follow-up`,
         calmPrompt: "Handled remembered a possible commitment in this thread — only if it still applies.",
       };
+    case "awaiting_approval":
+      return {
+        headline: `Approval may be needed — ${shortSubject}`,
+        calmPrompt: "When you're ready, a clear yes/no helps everyone move forward.",
+      };
+    case "pending_payment":
+      return {
+        headline: `Payment or invoice open — ${shortSubject}`,
+        calmPrompt: "Review when convenient — no need to rush unless a deadline applies.",
+      };
     case "conversation_unresolved":
     default:
       return {
@@ -163,7 +187,8 @@ export function analyzeFollowUp(
   });
 
   const days = daysSince(row.internalDateMs);
-  const state = resolveState({
+  const stalledSignals = detectStalledSignals(row, category);
+  const baseState = resolveState({
     row,
     hay,
     intentRequiresReply: intent.requiresReply,
@@ -171,6 +196,7 @@ export function analyzeFollowUp(
     days,
     category,
   });
+  const state = resolveStateWithSmartSignals(baseState, stalledSignals);
 
   if (!state) return null;
 
@@ -202,8 +228,10 @@ export function analyzeFollowUp(
 
   const reasons = [...intent.reasons];
   if (commitment) reasons.push("commitment_detected");
+  if (stalledSignals.promisedInformationMissing) reasons.push("promised_info_missing");
+  if (stalledSignals.userSentNoReplyHeuristic) reasons.push("user_sent_waiting");
 
-  return {
+  const base: FollowUpAnalysis = {
     emailId: row.id,
     sender: row.sender,
     subject: row.subject,
@@ -218,6 +246,31 @@ export function analyzeFollowUp(
     daysSinceMessage: days,
     suggestedFollowUpDays: state === "waiting_for_response" ? 3 : 2,
     detectedCommitment: commitment,
+    stalledSignals,
+  };
+
+  const smart = enrichWithSmartFollowUp({
+    row,
+    analysis: base,
+    relationship,
+    locale: "en",
+  });
+
+  if (!shouldSurfaceInFollowUpSection(smart, urgencyScore)) {
+    return null;
+  }
+
+  if (smart.displayState === "closed_conversation") {
+    return null;
+  }
+
+  return {
+    ...base,
+    displayState: smart.displayState,
+    timingSuggestion: smart.timing,
+    atRiskOfForgotten: smart.atRiskOfForgotten,
+    recentlyActive: smart.recentlyActive,
+    suggestedFollowUpDays: smart.suggestedFollowUpDays ?? base.suggestedFollowUpDays,
   };
 }
 
