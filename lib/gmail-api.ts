@@ -15,6 +15,7 @@ export type GmailListItem = {
 
 export type GmailInboxRow = {
   id: string;
+  threadId: string;
   sender: string;
   subject: string;
   snippet: string;
@@ -91,6 +92,7 @@ export async function gmailGetMessageMetadata(
 
   const msg = (await res.json()) as {
     id: string;
+    threadId?: string;
     snippet?: string;
     internalDate?: string;
     payload?: { headers?: Array<{ name?: string; value?: string }> };
@@ -108,6 +110,7 @@ export async function gmailGetMessageMetadata(
 
   return {
     id: msg.id,
+    threadId: msg.threadId ?? msg.id,
     sender: from,
     subject,
     snippet: msg.snippet ?? "",

@@ -136,6 +136,7 @@ function RuleTesterPanel({ rules }: { rules: InboxUserRule[] }) {
   const sample = useMemo(
     () => ({
       id: "test",
+      threadId: "test",
       sender: sampleSender,
       subject: sampleSubject,
       snippet: sampleSnippet,

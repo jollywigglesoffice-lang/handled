@@ -4,6 +4,11 @@ import {
   type ActionIntelligenceResult,
 } from "@/lib/action-intelligence";
 import {
+  analyzeTimelineIntelligence,
+  formatTimelineForPrompt,
+} from "@/lib/timeline-intelligence";
+import { toThreadSnapshot } from "@/lib/timeline-intelligence/thread-group";
+import {
   buildCalendarAwareness,
   expectedSchedulingAction,
   schedulingReplyDirective,
@@ -60,6 +65,7 @@ export type ReplyContextAnalysis = {
   relationship?: SenderRelationshipProfile;
   calendarAwareness?: ReturnType<typeof buildCalendarAwareness>;
   actionIntelligence?: ActionIntelligenceResult;
+  timelineIntelligence?: ReturnType<typeof analyzeTimelineIntelligence>;
   logSummary: Record<string, unknown>;
 };
 
@@ -80,6 +86,7 @@ function rowFromEmail(input: {
   const subject = input.subject?.trim() || body.split("\n")[0]?.slice(0, 120) || "";
   return {
     id: "reply-context",
+    threadId: "reply-context",
     sender: input.sender ?? "",
     subject,
     snippet: body.slice(0, 4000),
@@ -249,6 +256,10 @@ export function analyzeReplyContext(input: {
     category: input.category,
     extraBody: input.email,
   });
+  const timelineIntelligence = analyzeTimelineIntelligence({
+    row: toThreadSnapshot(row),
+    extraBody: input.email,
+  });
   const category = input.category ?? "needs_attention";
   const replyNeed = assessReplyNeed({
     row,
@@ -303,6 +314,7 @@ export function analyzeReplyContext(input: {
     relationship: input.relationship ?? undefined,
     calendarAwareness,
     actionIntelligence,
+    timelineIntelligence,
     logSummary: {
       replyNeeded,
       primaryIntent,
@@ -376,5 +388,6 @@ ${
     ? `\n${formatActionIntelligenceForPrompt(ctx.actionIntelligence)}`
     : ""
 }
+${ctx.timelineIntelligence ? `\n${formatTimelineForPrompt(ctx.timelineIntelligence)}` : ""}
 `.trim();
 }

@@ -55,6 +55,7 @@ type GmailInboxMessage = {
   hasUnsubscribeSignal?: boolean;
   needsCalendarContext?: boolean;
   actionIntelligence?: import("@/lib/action-intelligence").ActionIntelligenceSummary;
+  timelineIntelligence?: import("@/lib/timeline-intelligence").TimelineIntelligenceSummary;
   relationship?: SenderRelationshipProfile;
 };
 
@@ -421,6 +422,7 @@ export default function EmailsInboxPage() {
         };
         return {
           id: r.id,
+          threadId: (r as { threadId?: string }).threadId,
           sender: r.sender,
           subject: r.subject,
           snippet: r.snippet,
@@ -451,6 +453,9 @@ export default function EmailsInboxPage() {
           needsCalendarContext: Boolean(r.needsCalendarContext),
           actionIntelligence: (r as { actionIntelligence?: GmailCardMessage["actionIntelligence"] })
             .actionIntelligence,
+          timelineIntelligence: (
+            r as { timelineIntelligence?: GmailCardMessage["timelineIntelligence"] }
+          ).timelineIntelligence,
           relationship:
             (r as { relationship?: SenderRelationshipProfile }).relationship ?? undefined,
         };

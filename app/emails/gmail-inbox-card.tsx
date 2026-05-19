@@ -24,6 +24,8 @@ import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/
 import { ActionLabelChip } from "@/app/components/action-label-chip";
 import { CalendarContextBadge } from "@/app/components/calendar-context-badge";
 import type { ActionLabelId } from "@/lib/action-intelligence";
+import { ConversationStatusChip } from "@/app/components/conversation-status-chip";
+import type { ConversationStatus } from "@/lib/timeline-intelligence";
 import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe";
 import { useUiCopy } from "@/app/use-ui-copy";
 
@@ -42,6 +44,12 @@ export type GmailCardMessage = {
     actionable: boolean;
     primaryLabel: ActionLabelId | null;
     suggestedNextAction: string | null;
+  };
+  timelineIntelligence?: {
+    active: boolean;
+    conversationStatus: ConversationStatus;
+    timelineSummary: string;
+    escalationScore: number;
   };
   relationship?: SenderRelationshipProfile;
 };
@@ -252,7 +260,12 @@ export function GmailInboxCard({
           className="block space-y-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-[#6366F1]"
         >
           <h3 className="text-base font-medium text-[#0F172A]">{message.subject}</h3>
-          {message.actionIntelligence?.suggestedNextAction ? (
+          {message.timelineIntelligence?.active &&
+          message.timelineIntelligence.timelineSummary ? (
+            <p className="text-xs leading-relaxed text-gray-400">
+              {message.timelineIntelligence.timelineSummary}
+            </p>
+          ) : message.actionIntelligence?.suggestedNextAction ? (
             <p className="text-xs leading-relaxed text-gray-400">
               {message.actionIntelligence.suggestedNextAction}
             </p>
@@ -320,6 +333,15 @@ function CardHeader({
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-sm font-medium text-gray-500">{message.sender}</p>
       <div className="flex flex-wrap items-center gap-2">
+        {message.timelineIntelligence?.active &&
+        (message.timelineIntelligence.conversationStatus === "escalating" ||
+          message.timelineIntelligence.conversationStatus === "stalled") ? (
+          <ConversationStatusChip
+            status={message.timelineIntelligence.conversationStatus}
+            locale={locale}
+            compact
+          />
+        ) : null}
         {message.actionIntelligence?.actionable &&
         message.actionIntelligence.primaryLabel ? (
           <ActionLabelChip

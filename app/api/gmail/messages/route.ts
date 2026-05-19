@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { parseWorkflowModeHeader } from "@/lib/workflow-mode-effects";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
 import { enrichMessageWithActionIntelligence } from "@/lib/action-intelligence";
+import { enrichInboxWithTimelineIntelligence } from "@/lib/timeline-intelligence";
 import { enrichMessageWithCalendarAwareness } from "@/lib/calendar-awareness";
 import { hasUnsubscribeSignal } from "@/lib/unsubscribe/detect";
 
@@ -76,14 +77,19 @@ export async function GET(request: Request) {
       );
     }
 
+    const withTimeline = enrichInboxWithTimelineIntelligence(
+      categorized.map((m) => ({ ...m, category: m.category })),
+    );
+
     return NextResponse.json({
-      messages: categorized.map((m) => {
+      messages: withTimeline.map((m) => {
         const withCalendar = enrichMessageWithCalendarAwareness(m);
         const enriched = enrichMessageWithActionIntelligence(withCalendar, {
           category: m.category,
         });
         return {
           ...enriched,
+          timelineIntelligence: m.timelineIntelligence,
           relationship: m.relationship,
           hasUnsubscribeSignal: hasUnsubscribeSignal(
             m.snippet,

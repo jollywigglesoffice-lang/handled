@@ -17,6 +17,8 @@ import {
   resolveStateWithSmartSignals,
   shouldSurfaceInFollowUpSection,
 } from "@/lib/follow-up/smart-engine";
+import { analyzeTimelineIntelligence } from "@/lib/timeline-intelligence";
+import { toThreadSnapshot } from "@/lib/timeline-intelligence/thread-group";
 import type { ConversationState, FollowUpAnalysis } from "@/lib/follow-up/types";
 
 function haystack(row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">): string {
@@ -215,7 +217,13 @@ export function analyzeFollowUp(
       daysSinceMessage: days,
     }) + relationshipUrgencyBoost(relationship);
 
-  urgencyScore = Math.max(0, Math.min(100, urgencyScore));
+  const timeline = analyzeTimelineIntelligence({
+    row: toThreadSnapshot({ ...row, category }),
+  });
+  urgencyScore = Math.max(
+    0,
+    Math.min(100, urgencyScore + timeline.visibilityBoost),
+  );
 
   const name = senderFirstNameFromRow(row.sender);
   const commitment = detectCommitment(hay);

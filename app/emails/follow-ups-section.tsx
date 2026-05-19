@@ -10,6 +10,7 @@ import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
 
 type InboxMessageForAnalyze = {
   id: string;
+  threadId?: string;
   sender: string;
   subject: string;
   snippet: string;

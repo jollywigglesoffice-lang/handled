@@ -45,6 +45,7 @@ export async function POST(request: Request) {
 
   const rows = (body.messages ?? []).map((m) => ({
     id: m.id,
+    threadId: (m as { threadId?: string }).threadId ?? m.id,
     sender: m.sender,
     subject: m.subject,
     snippet: m.snippet ?? "",

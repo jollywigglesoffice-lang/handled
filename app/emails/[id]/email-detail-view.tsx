@@ -7,6 +7,8 @@ import { EmailBody } from "./email-body";
 import { ActionIntelligenceCard } from "@/app/emails/action-intelligence-card";
 import { FollowUpIntelligenceCard } from "@/app/emails/follow-up-intelligence-card";
 import type { ActionIntelligenceResult } from "@/lib/action-intelligence";
+import { TimelineIntelligenceCard } from "@/app/emails/timeline-intelligence-card";
+import type { TimelineIntelligenceResult } from "@/lib/timeline-intelligence";
 import { CalendarContextBadge } from "@/app/components/calendar-context-badge";
 import { RelationshipBadge } from "@/app/emails/relationship-badge";
 import { calendarContextBadgeHint, readCalendarConnectionState } from "@/lib/calendar-awareness";
@@ -39,6 +41,7 @@ export type EmailDetailPayload = FakeEmail & {
   needsCalendarContext?: boolean;
   schedulingIntentDetected?: boolean;
   actionIntelligence?: ActionIntelligenceResult;
+  timelineIntelligence?: TimelineIntelligenceResult;
 };
 
 type EmailDetailViewProps = {
@@ -122,6 +125,13 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
             </p>
             <p className="text-sm leading-relaxed text-gray-500">{email.aiSummary}</p>
           </div>
+
+          {email.timelineIntelligence?.active ? (
+            <TimelineIntelligenceCard
+              analysis={email.timelineIntelligence}
+              locale={categoryLocale}
+            />
+          ) : null}
 
           {email.actionIntelligence ? (
             <ActionIntelligenceCard

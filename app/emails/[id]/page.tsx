@@ -16,6 +16,8 @@ import { isLikelyHtml } from "@/lib/sanitize-email-html";
 import { getEmailById, type InboxSectionTitle } from "@/lib/fake-emails";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { analyzeActionIntelligence } from "@/lib/action-intelligence";
+import { analyzeTimelineIntelligence } from "@/lib/timeline-intelligence";
+import { toThreadSnapshot } from "@/lib/timeline-intelligence/thread-group";
 import { buildCalendarAwareness } from "@/lib/calendar-awareness";
 import { parseWorkflowMode, WORKFLOW_MODE_COOKIE } from "@/lib/workflow-mode";
 
@@ -39,6 +41,7 @@ async function enrichGmailEmail(
 
   const meta = {
     id: msg.id,
+    threadId: msg.id,
     sender: msg.sender,
     subject: msg.subject,
     snippet: msg.snippet,
@@ -79,6 +82,12 @@ async function enrichGmailEmail(
     locale: "en",
   });
 
+  const timelineIntelligence = analyzeTimelineIntelligence({
+    row: toThreadSnapshot({ ...meta, category }),
+    extraBody: displayPlain,
+    locale: "en",
+  });
+
   const unsubscribeAnalysis = analyzeUnsubscribe({
     bodyPlain: displayPlain,
     bodyHtml,
@@ -102,6 +111,7 @@ async function enrichGmailEmail(
     needsCalendarContext: calendarAwareness.needsCalendarContext,
     schedulingIntentDetected: calendarAwareness.schedulingIntent.detected,
     actionIntelligence,
+    timelineIntelligence,
     body: displayPlain,
     bodyHtml: bodyHtml || undefined,
     suggestedReply: "",
