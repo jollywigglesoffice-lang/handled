@@ -21,7 +21,9 @@ import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import { RelationshipAssignPanel } from "@/app/emails/relationship-assign-panel";
 import { RelationshipBadge } from "@/app/emails/relationship-badge";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
+import { ActionLabelChip } from "@/app/components/action-label-chip";
 import { CalendarContextBadge } from "@/app/components/calendar-context-badge";
+import type { ActionLabelId } from "@/lib/action-intelligence";
 import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe";
 import { useUiCopy } from "@/app/use-ui-copy";
 
@@ -36,6 +38,11 @@ export type GmailCardMessage = {
   categorySource?: CategorySource;
   hasUnsubscribeSignal?: boolean;
   needsCalendarContext?: boolean;
+  actionIntelligence?: {
+    actionable: boolean;
+    primaryLabel: ActionLabelId | null;
+    suggestedNextAction: string | null;
+  };
   relationship?: SenderRelationshipProfile;
 };
 
@@ -245,6 +252,11 @@ export function GmailInboxCard({
           className="block space-y-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-[#6366F1]"
         >
           <h3 className="text-base font-medium text-[#0F172A]">{message.subject}</h3>
+          {message.actionIntelligence?.suggestedNextAction ? (
+            <p className="text-xs leading-relaxed text-gray-400">
+              {message.actionIntelligence.suggestedNextAction}
+            </p>
+          ) : null}
           <p className="text-sm leading-relaxed text-gray-500">{message.snippet}</p>
         </Link>
 
@@ -308,6 +320,14 @@ function CardHeader({
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-sm font-medium text-gray-500">{message.sender}</p>
       <div className="flex flex-wrap items-center gap-2">
+        {message.actionIntelligence?.actionable &&
+        message.actionIntelligence.primaryLabel ? (
+          <ActionLabelChip
+            label={message.actionIntelligence.primaryLabel}
+            locale={locale}
+            compact
+          />
+        ) : null}
         {message.needsCalendarContext ? (
           <CalendarContextBadge locale={locale} compact showLink={false} />
         ) : null}

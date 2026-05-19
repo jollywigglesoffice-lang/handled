@@ -1,4 +1,9 @@
 import {
+  analyzeActionIntelligence,
+  formatActionIntelligenceForPrompt,
+  type ActionIntelligenceResult,
+} from "@/lib/action-intelligence";
+import {
   buildCalendarAwareness,
   expectedSchedulingAction,
   schedulingReplyDirective,
@@ -54,6 +59,7 @@ export type ReplyContextAnalysis = {
   };
   relationship?: SenderRelationshipProfile;
   calendarAwareness?: ReturnType<typeof buildCalendarAwareness>;
+  actionIntelligence?: ActionIntelligenceResult;
   logSummary: Record<string, unknown>;
 };
 
@@ -238,6 +244,11 @@ export function analyzeReplyContext(input: {
   const hay = `${row.sender} ${row.subject} ${row.snippet}`.toLowerCase();
   const intent = analyzeEmailIntent(row);
   const calendarAwareness = buildCalendarAwareness(row, input.email);
+  const actionIntelligence = analyzeActionIntelligence({
+    row,
+    category: input.category,
+    extraBody: input.email,
+  });
   const category = input.category ?? "needs_attention";
   const replyNeed = assessReplyNeed({
     row,
@@ -262,6 +273,9 @@ export function analyzeReplyContext(input: {
       calendarAwareness.schedulingIntent,
       readCalendarConnectionState().status,
     );
+  }
+  if (actionIntelligence.suggestedNextAction && actionIntelligence.actionable) {
+    expectedAction = actionIntelligence.suggestedNextAction;
   }
   const forbidsGenericAckOnly =
     hasDirectQuestion ||
@@ -288,6 +302,7 @@ export function analyzeReplyContext(input: {
     extractedFacts,
     relationship: input.relationship ?? undefined,
     calendarAwareness,
+    actionIntelligence,
     logSummary: {
       replyNeeded,
       primaryIntent,
@@ -354,6 +369,11 @@ ${
         ctx.calendarAwareness.schedulingIntent,
         readCalendarConnectionState().status,
       )}`
+    : ""
+}
+${
+  ctx.actionIntelligence
+    ? `\n${formatActionIntelligenceForPrompt(ctx.actionIntelligence)}`
     : ""
 }
 `.trim();

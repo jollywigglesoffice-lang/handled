@@ -15,6 +15,7 @@ import { analyzeUnsubscribe } from "@/lib/unsubscribe/detect";
 import { isLikelyHtml } from "@/lib/sanitize-email-html";
 import { getEmailById, type InboxSectionTitle } from "@/lib/fake-emails";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { analyzeActionIntelligence } from "@/lib/action-intelligence";
 import { buildCalendarAwareness } from "@/lib/calendar-awareness";
 import { parseWorkflowMode, WORKFLOW_MODE_COOKIE } from "@/lib/workflow-mode";
 
@@ -71,6 +72,12 @@ async function enrichGmailEmail(
     }) ?? undefined;
 
   const calendarAwareness = buildCalendarAwareness(meta, displayPlain);
+  const actionIntelligence = analyzeActionIntelligence({
+    row: meta,
+    category,
+    extraBody: displayPlain,
+    locale: "en",
+  });
 
   const unsubscribeAnalysis = analyzeUnsubscribe({
     bodyPlain: displayPlain,
@@ -94,6 +101,7 @@ async function enrichGmailEmail(
     relationship,
     needsCalendarContext: calendarAwareness.needsCalendarContext,
     schedulingIntentDetected: calendarAwareness.schedulingIntent.detected,
+    actionIntelligence,
     body: displayPlain,
     bodyHtml: bodyHtml || undefined,
     suggestedReply: "",
