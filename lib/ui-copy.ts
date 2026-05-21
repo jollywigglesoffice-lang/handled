@@ -155,6 +155,15 @@ type UiCopy = {
     hint: string;
     openEmail: string;
   };
+  dailyWorkspace: {
+    eyebrow: string;
+    sectionTitle: string;
+    sectionSubtitle: string;
+    calmDayMessage: string;
+    emptySection: string;
+    openEmail: string;
+    fullInboxHint: string;
+  };
   dailyBriefing: {
     eyebrow: string;
     sectionTitle: string;
@@ -371,6 +380,17 @@ const en: UiCopy = {
     noResults: "Nothing matched — try different words or a filter.",
     hint: "Search commitments, people, school, invoices, or unresolved threads.",
     openEmail: "Open email",
+  },
+  dailyWorkspace: {
+    eyebrow: "Daily workspace",
+    sectionTitle: "Your day at a glance",
+    sectionSubtitle:
+      "What needs you, what is waiting, and what you can ignore — not an endless scroll.",
+    calmDayMessage:
+      "Nothing pressing in focus right now. Take a breath — Handled is watching the inbox.",
+    emptySection: "Nothing here — a good sign.",
+    openEmail: "Open",
+    fullInboxHint: "Full inbox below when you want every message.",
   },
   dailyBriefing: {
     eyebrow: "Morning digest",
@@ -614,6 +634,17 @@ const it: UiCopy = {
     noResults: "Nessun risultato — prova altre parole o un filtro.",
     hint: "Cerca impegni, persone, scuola, fatture o thread aperti.",
     openEmail: "Apri email",
+  },
+  dailyWorkspace: {
+    eyebrow: "Workspace giornaliero",
+    sectionTitle: "La tua giornata",
+    sectionSubtitle:
+      "Cosa richiede te, cosa e in attesa e cosa puoi ignorare — non uno scroll infinito.",
+    calmDayMessage:
+      "Niente di urgente in focus ora. Respira — Handled osserva la inbox.",
+    emptySection: "Niente qui — buon segno.",
+    openEmail: "Apri",
+    fullInboxHint: "Inbox completa sotto, quando ti serve ogni messaggio.",
   },
   dailyBriefing: {
     eyebrow: "Digest del mattino",

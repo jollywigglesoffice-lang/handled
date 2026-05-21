@@ -26,6 +26,7 @@ import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/
 import { fakeEmailsToInboxMessages } from "@/lib/inbox-buckets-mock";
 import { syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
 import { FollowUpsSection } from "@/app/emails/follow-ups-section";
+import { DailyWorkspacePanel } from "@/app/emails/daily-workspace-panel";
 import { ContextualSearchPanel } from "@/app/emails/contextual-search-panel";
 import { DailyBriefingPanel } from "@/app/emails/daily-briefing-panel";
 import { ProactiveSuggestionsPanel } from "@/app/emails/proactive-suggestions-panel";
@@ -821,6 +822,7 @@ export default function EmailsInboxPage() {
           ) : inboxMode === "gmail" ? (
             <div className="space-y-10">
               <WorkflowModeBanner mode={workflowMode} />
+              <DailyWorkspacePanel messages={messagesWithOverrides} />
               <ContextualSearchPanel messages={messagesWithOverrides} />
               <DailyBriefingPanel messages={messagesWithOverrides} />
               <ProactiveSuggestionsPanel
