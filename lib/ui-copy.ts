@@ -142,6 +142,17 @@ type UiCopy = {
     settingsSubtitle: string;
     emptySettings: string;
   };
+  dailyBriefing: {
+    eyebrow: string;
+    sectionTitle: string;
+    sectionSubtitle: string;
+    sectionCalmNote: string;
+    highlightsLabel: string;
+    insightsLabel: string;
+    groupsLabel: string;
+    openGroup: string;
+    moreInGroup: string;
+  };
   followUp: {
     sectionTitle: string;
     sectionSubtitle: string;
@@ -333,6 +344,18 @@ const en: UiCopy = {
     settingsSubtitle:
       "Teach Handled who matters — family, school, VIP clients, and more.",
     emptySettings: "No relationships saved yet. Mark senders from your inbox.",
+  },
+  dailyBriefing: {
+    eyebrow: "Morning digest",
+    sectionTitle: "Today's briefing",
+    sectionSubtitle:
+      "A calm overview of what matters — no alarms, no guilt, just clarity.",
+    sectionCalmNote: "Nothing is sent or changed without your approval.",
+    highlightsLabel: "At a glance",
+    insightsLabel: "Insights",
+    groupsLabel: "Grouped for you",
+    openGroup: "Open",
+    moreInGroup: "+{count} more",
   },
   followUp: {
     sectionTitle: "Follow-ups & memory",
@@ -550,6 +573,18 @@ const it: UiCopy = {
     settingsSubtitle:
       "Insegna a Handled chi conta — famiglia, scuola, clienti VIP e altro.",
     emptySettings: "Nessuna relazione salvata. Segna i mittenti dalla inbox.",
+  },
+  dailyBriefing: {
+    eyebrow: "Digest del mattino",
+    sectionTitle: "Briefing di oggi",
+    sectionSubtitle:
+      "Panoramica calma di cosa conta — niente allarmi, niente sensi di colpa.",
+    sectionCalmNote: "Nulla viene inviato o modificato senza la tua approvazione.",
+    highlightsLabel: "In sintesi",
+    insightsLabel: "Osservazioni",
+    groupsLabel: "Raggruppati per te",
+    openGroup: "Apri",
+    moreInGroup: "+{count} altre",
   },
   followUp: {
     sectionTitle: "Follow-up e memoria",

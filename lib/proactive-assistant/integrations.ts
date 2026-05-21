@@ -14,7 +14,7 @@ export function listProactiveIntegrations(): ProactiveIntegrationDescriptor[] {
     },
     {
       id: "daily_briefing",
-      status: "planned",
+      status: "available",
       description: "Calm daily summary of what may need attention.",
     },
     {
