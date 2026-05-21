@@ -142,6 +142,19 @@ type UiCopy = {
     settingsSubtitle: string;
     emptySettings: string;
   };
+  contextualSearch: {
+    eyebrow: string;
+    sectionTitle: string;
+    sectionSubtitle: string;
+    inputLabel: string;
+    placeholder: string;
+    filtersLabel: string;
+    answerLabel: string;
+    resultsLabel: string;
+    noResults: string;
+    hint: string;
+    openEmail: string;
+  };
   dailyBriefing: {
     eyebrow: string;
     sectionTitle: string;
@@ -344,6 +357,20 @@ const en: UiCopy = {
     settingsSubtitle:
       "Teach Handled who matters — family, school, VIP clients, and more.",
     emptySettings: "No relationships saved yet. Mark senders from your inbox.",
+  },
+  contextualSearch: {
+    eyebrow: "Memory recall",
+    sectionTitle: "Ask your inbox",
+    sectionSubtitle:
+      "Natural-language search across emails, follow-ups, relationships, and Brain.",
+    inputLabel: "Search inbox memory",
+    placeholder: "e.g. Did Chris reply about pricing?",
+    filtersLabel: "Quick filters",
+    answerLabel: "Handled found",
+    resultsLabel: "Matching memory",
+    noResults: "Nothing matched — try different words or a filter.",
+    hint: "Search commitments, people, school, invoices, or unresolved threads.",
+    openEmail: "Open email",
   },
   dailyBriefing: {
     eyebrow: "Morning digest",
@@ -573,6 +600,20 @@ const it: UiCopy = {
     settingsSubtitle:
       "Insegna a Handled chi conta — famiglia, scuola, clienti VIP e altro.",
     emptySettings: "Nessuna relazione salvata. Segna i mittenti dalla inbox.",
+  },
+  contextualSearch: {
+    eyebrow: "Memoria",
+    sectionTitle: "Chiedi alla inbox",
+    sectionSubtitle:
+      "Ricerca in linguaggio naturale su email, follow-up, relazioni e Brain.",
+    inputLabel: "Cerca nella memoria inbox",
+    placeholder: "es. Chris ha risposto sul pricing?",
+    filtersLabel: "Filtri rapidi",
+    answerLabel: "Handled ha trovato",
+    resultsLabel: "Risultati",
+    noResults: "Nessun risultato — prova altre parole o un filtro.",
+    hint: "Cerca impegni, persone, scuola, fatture o thread aperti.",
+    openEmail: "Apri email",
   },
   dailyBriefing: {
     eyebrow: "Digest del mattino",
