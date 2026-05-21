@@ -8,7 +8,9 @@ import { ActionIntelligenceCard } from "@/app/emails/action-intelligence-card";
 import { FollowUpIntelligenceCard } from "@/app/emails/follow-up-intelligence-card";
 import type { ActionIntelligenceResult } from "@/lib/action-intelligence";
 import { TimelineIntelligenceCard } from "@/app/emails/timeline-intelligence-card";
+import { DecisionAssistanceCard } from "@/app/emails/decision-assistance-card";
 import { ProactiveAssistantCard } from "@/app/emails/proactive-assistant-card";
+import type { DecisionAssistanceResult } from "@/lib/decision-assistance";
 import type { ProactiveAssistantResult } from "@/lib/proactive-assistant";
 import type { TimelineIntelligenceResult } from "@/lib/timeline-intelligence";
 import { CalendarContextBadge } from "@/app/components/calendar-context-badge";
@@ -45,6 +47,7 @@ export type EmailDetailPayload = FakeEmail & {
   actionIntelligence?: ActionIntelligenceResult;
   timelineIntelligence?: TimelineIntelligenceResult;
   proactiveAssistant?: ProactiveAssistantResult;
+  decisionAssistance?: DecisionAssistanceResult;
 };
 
 type EmailDetailViewProps = {
@@ -139,6 +142,13 @@ export function EmailDetailView({ email }: EmailDetailViewProps) {
           {email.proactiveAssistant?.active ? (
             <ProactiveAssistantCard
               analysis={email.proactiveAssistant}
+              locale={categoryLocale}
+            />
+          ) : null}
+
+          {email.decisionAssistance?.active ? (
+            <DecisionAssistanceCard
+              analysis={email.decisionAssistance}
               locale={categoryLocale}
             />
           ) : null}

@@ -4,6 +4,11 @@ import {
   type ActionIntelligenceResult,
 } from "@/lib/action-intelligence";
 import {
+  analyzeDecisionAssistance,
+  formatDecisionAssistanceForPrompt,
+  type DecisionAssistanceResult,
+} from "@/lib/decision-assistance";
+import {
   analyzeProactiveAssistant,
   formatProactiveForPrompt,
   type ProactiveAssistantResult,
@@ -72,6 +77,7 @@ export type ReplyContextAnalysis = {
   actionIntelligence?: ActionIntelligenceResult;
   timelineIntelligence?: ReturnType<typeof analyzeTimelineIntelligence>;
   proactiveAssistant?: ProactiveAssistantResult;
+  decisionAssistance?: DecisionAssistanceResult;
   logSummary: Record<string, unknown>;
 };
 
@@ -278,6 +284,18 @@ export function analyzeReplyContext(input: {
     },
     extraBody: input.email,
   });
+  const decisionAssistance = analyzeDecisionAssistance({
+    row: {
+      id: row.id,
+      threadId: row.threadId,
+      sender: row.sender,
+      subject: row.subject,
+      snippet: row.snippet,
+      internalDateMs: row.internalDateMs,
+      category: input.category,
+    },
+    extraBody: input.email,
+  });
   const category = input.category ?? "needs_attention";
   const replyNeed = assessReplyNeed({
     row,
@@ -334,6 +352,7 @@ export function analyzeReplyContext(input: {
     actionIntelligence,
     timelineIntelligence,
     proactiveAssistant,
+    decisionAssistance,
     logSummary: {
       replyNeeded,
       primaryIntent,
@@ -411,6 +430,11 @@ ${ctx.timelineIntelligence ? `\n${formatTimelineForPrompt(ctx.timelineIntelligen
 ${
   ctx.proactiveAssistant?.active
     ? `\n${formatProactiveForPrompt(ctx.proactiveAssistant.suggestions)}`
+    : ""
+}
+${
+  ctx.decisionAssistance?.active
+    ? `\n${formatDecisionAssistanceForPrompt(ctx.decisionAssistance)}`
     : ""
 }
 `.trim();

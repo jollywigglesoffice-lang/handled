@@ -16,6 +16,7 @@ import { isLikelyHtml } from "@/lib/sanitize-email-html";
 import { getEmailById, type InboxSectionTitle } from "@/lib/fake-emails";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { analyzeActionIntelligence } from "@/lib/action-intelligence";
+import { analyzeDecisionAssistance } from "@/lib/decision-assistance";
 import { analyzeProactiveAssistant } from "@/lib/proactive-assistant";
 import { analyzeTimelineIntelligence } from "@/lib/timeline-intelligence";
 import { toThreadSnapshot } from "@/lib/timeline-intelligence/thread-group";
@@ -96,6 +97,13 @@ async function enrichGmailEmail(
     senderRelationships: rulesCtx.senderRelationships,
   });
 
+  const decisionAssistance = analyzeDecisionAssistance({
+    row: { ...meta, category },
+    extraBody: displayPlain,
+    locale: "en",
+    senderRelationships: rulesCtx.senderRelationships,
+  });
+
   const unsubscribeAnalysis = analyzeUnsubscribe({
     bodyPlain: displayPlain,
     bodyHtml,
@@ -121,6 +129,7 @@ async function enrichGmailEmail(
     actionIntelligence,
     timelineIntelligence,
     proactiveAssistant,
+    decisionAssistance,
     body: displayPlain,
     bodyHtml: bodyHtml || undefined,
     suggestedReply: "",
