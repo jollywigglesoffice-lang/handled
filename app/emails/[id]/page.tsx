@@ -16,6 +16,7 @@ import { isLikelyHtml } from "@/lib/sanitize-email-html";
 import { getEmailById, type InboxSectionTitle } from "@/lib/fake-emails";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { analyzeActionIntelligence } from "@/lib/action-intelligence";
+import { analyzeProactiveAssistant } from "@/lib/proactive-assistant";
 import { analyzeTimelineIntelligence } from "@/lib/timeline-intelligence";
 import { toThreadSnapshot } from "@/lib/timeline-intelligence/thread-group";
 import { buildCalendarAwareness } from "@/lib/calendar-awareness";
@@ -41,7 +42,7 @@ async function enrichGmailEmail(
 
   const meta = {
     id: msg.id,
-    threadId: msg.id,
+    threadId: msg.threadId ?? msg.id,
     sender: msg.sender,
     subject: msg.subject,
     snippet: msg.snippet,
@@ -88,6 +89,13 @@ async function enrichGmailEmail(
     locale: "en",
   });
 
+  const proactiveAssistant = analyzeProactiveAssistant({
+    row: { ...meta, threadId: meta.threadId, category },
+    extraBody: displayPlain,
+    locale: "en",
+    senderRelationships: rulesCtx.senderRelationships,
+  });
+
   const unsubscribeAnalysis = analyzeUnsubscribe({
     bodyPlain: displayPlain,
     bodyHtml,
@@ -112,6 +120,7 @@ async function enrichGmailEmail(
     schedulingIntentDetected: calendarAwareness.schedulingIntent.detected,
     actionIntelligence,
     timelineIntelligence,
+    proactiveAssistant,
     body: displayPlain,
     bodyHtml: bodyHtml || undefined,
     suggestedReply: "",

@@ -126,6 +126,7 @@ export async function gmailGetMessageFull(
   messageId: string,
 ): Promise<{
   id: string;
+  threadId: string;
   sender: string;
   subject: string;
   snippet: string;
@@ -149,6 +150,7 @@ export async function gmailGetMessageFull(
 
   const msg = (await res.json()) as {
     id: string;
+    threadId?: string;
     snippet?: string;
     internalDate?: string;
     payload?: GmailMimePart & {
@@ -173,6 +175,7 @@ export async function gmailGetMessageFull(
 
   return {
     id: msg.id,
+    threadId: msg.threadId ?? msg.id,
     sender,
     subject,
     snippet: msg.snippet ?? "",

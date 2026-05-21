@@ -4,6 +4,11 @@ import {
   type ActionIntelligenceResult,
 } from "@/lib/action-intelligence";
 import {
+  analyzeProactiveAssistant,
+  formatProactiveForPrompt,
+  type ProactiveAssistantResult,
+} from "@/lib/proactive-assistant";
+import {
   analyzeTimelineIntelligence,
   formatTimelineForPrompt,
 } from "@/lib/timeline-intelligence";
@@ -66,6 +71,7 @@ export type ReplyContextAnalysis = {
   calendarAwareness?: ReturnType<typeof buildCalendarAwareness>;
   actionIntelligence?: ActionIntelligenceResult;
   timelineIntelligence?: ReturnType<typeof analyzeTimelineIntelligence>;
+  proactiveAssistant?: ProactiveAssistantResult;
   logSummary: Record<string, unknown>;
 };
 
@@ -260,6 +266,18 @@ export function analyzeReplyContext(input: {
     row: toThreadSnapshot(row),
     extraBody: input.email,
   });
+  const proactiveAssistant = analyzeProactiveAssistant({
+    row: {
+      id: row.id,
+      threadId: row.threadId,
+      sender: row.sender,
+      subject: row.subject,
+      snippet: row.snippet,
+      internalDateMs: row.internalDateMs,
+      category: input.category,
+    },
+    extraBody: input.email,
+  });
   const category = input.category ?? "needs_attention";
   const replyNeed = assessReplyNeed({
     row,
@@ -315,6 +333,7 @@ export function analyzeReplyContext(input: {
     calendarAwareness,
     actionIntelligence,
     timelineIntelligence,
+    proactiveAssistant,
     logSummary: {
       replyNeeded,
       primaryIntent,
@@ -389,5 +408,10 @@ ${
     : ""
 }
 ${ctx.timelineIntelligence ? `\n${formatTimelineForPrompt(ctx.timelineIntelligence)}` : ""}
+${
+  ctx.proactiveAssistant?.active
+    ? `\n${formatProactiveForPrompt(ctx.proactiveAssistant.suggestions)}`
+    : ""
+}
 `.trim();
 }
