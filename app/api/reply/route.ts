@@ -42,6 +42,12 @@ import {
   REPLY_STREAM_SEPARATOR,
   readOpenRouterChatContent,
 } from "@/lib/openrouter-reply";
+import {
+  parseDraftMemoryHeader,
+  resolveDraftStyle,
+} from "@/lib/draft-memory";
+import type { DraftMemoryStore } from "@/lib/draft-memory";
+import { DRAFT_MEMORY_HEADER } from "@/lib/draft-memory/client-storage";
 
 type WorkflowBehaviorPayload = {
   label: string;
@@ -78,6 +84,8 @@ type ReplyRequestBody = {
   replyRecommended?: boolean;
   brain?: HandledBrain;
   identity?: UserIdentity;
+  draftMemory?: DraftMemoryStore;
+  relationshipKind?: string;
 };
 
 async function resolveUserIdentity(
@@ -431,6 +439,7 @@ function createGenerateReplyNdjsonStream(
   brainContext: string,
   category: ReturnType<typeof normalizeInboxAiCategory>,
   userIdentity: UserIdentity,
+  draftMemoryBlock?: string,
 ): Response {
   const identityBlock = formatUserIdentityForPrompt(
     userIdentity,
@@ -441,7 +450,7 @@ function createGenerateReplyNdjsonStream(
 
 ${formatReplyContextForPrompt(replyContext, tone, languageLabel, workflowMode)}
 
-${brainContext ? `${brainContext}\n` : ""}
+${draftMemoryBlock ? `${draftMemoryBlock}\n\n` : ""}${brainContext ? `${brainContext}\n` : ""}
 ${contextBlock}
 
 Write 3 reply variations as plain text (not JSON). Each must address the sender's intent — never generic "looks good to me" unless pure FYI.
@@ -483,6 +492,7 @@ ${email}`;
             category,
             brainContext,
             replyContext,
+            draftMemoryBlock,
           }),
           upstreamSignal,
         );
@@ -575,6 +585,7 @@ ${email}`;
               category,
               brainContext,
               replyContext,
+              draftMemoryBlock,
             }),
             upstreamSignal,
           );
@@ -754,6 +765,21 @@ export async function POST(request: Request) {
   const userIdentity = await resolveUserIdentity(request, email, body.identity, userName);
   const authorName = resolveReplyAuthorName(userIdentity, userName);
 
+  const draftStore =
+    body.draftMemory ?? parseDraftMemoryHeader(request.headers.get(DRAFT_MEMORY_HEADER));
+  const replyLocale =
+    language === "italian" ? ("it" as const) : ("en" as const);
+  const draftResolved = resolveDraftStyle({
+    relationshipKind:
+      (relationship?.kind ?? body.relationshipKind) as import("@/lib/relationship-intelligence/types").RelationshipKind | undefined,
+    relationshipImportance: relationship?.importance,
+    identityCommunicationStyle: userIdentity.communicationStyle,
+    locale: replyLocale,
+    replyLanguage: language,
+    store: draftStore,
+  });
+  const draftMemoryBlock = draftResolved.promptBlock;
+
   if (body.stream === true && mode === "generate") {
     const streamCtx = analyzeReplyContext({
       email,
@@ -777,6 +803,7 @@ export async function POST(request: Request) {
       brainContext,
       category,
       userIdentity,
+      draftMemoryBlock,
     );
   }
 
@@ -800,6 +827,7 @@ export async function POST(request: Request) {
           category,
           brainContext,
           replyContext,
+          draftMemoryBlock,
         })
       : "";
 

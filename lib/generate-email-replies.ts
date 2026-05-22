@@ -26,6 +26,7 @@ export function buildGenerateReplyPrompt(input: {
   category?: InboxAiCategory;
   brainContext?: string;
   replyContext?: ReplyContextAnalysis;
+  draftMemoryBlock?: string;
 }): string {
   const authorName = input.identity
     ? resolveReplyAuthorName(input.identity, input.userName)
@@ -69,7 +70,7 @@ ${identityBlock ? `${identityBlock}\n\n` : ""}${analysisBlock}
 
 ${categoryLine}
 ${modeLine ? `${modeLine}\n` : ""}
-${input.brainContext ? `${input.brainContext}\n\n` : ""}${input.contextBlock}
+${input.draftMemoryBlock ? `${input.draftMemoryBlock}\n\n` : ""}${input.brainContext ? `${input.brainContext}\n\n` : ""}${input.contextBlock}
 ${examples}
 
 Write exactly 3 reply variations:

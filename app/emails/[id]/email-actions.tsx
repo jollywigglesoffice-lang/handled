@@ -34,6 +34,14 @@ import { persistWorkflowModeToBrowser, WORKFLOW_MODE_KEY } from "@/lib/workflow-
 import { getWorkflowModeBehavior } from "@/lib/workflow-mode-config";
 import { saveFollowUpReminderToAccount } from "@/lib/follow-up-reminders/client-sync";
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
+import { DraftMemoryStyleChip } from "@/app/emails/draft-memory-style-chip";
+import {
+  draftMemoryHeaders,
+  learnFromEdit,
+  loadClientDraftMemory,
+  resolveDraftStyle,
+  saveClientDraftMemory,
+} from "@/lib/draft-memory";
 
 type EmailActionsProps = {
   emailId: string;
@@ -398,7 +406,7 @@ export function EmailActions({
   replySuppressedReason,
   suggestedTriageAction,
   followUpAnalysis,
-  relationship: _relationship,
+  relationship,
 }: EmailActionsProps) {
   const ui = useUiCopy();
   const router = useRouter();
@@ -481,6 +489,8 @@ export function EmailActions({
   const closeViewTimerRef = useRef<number | null>(null);
   const routeBackTimerRef = useRef<number | null>(null);
   const [replyCopied, setReplyCopied] = useState(false);
+  const [draftStyleLabel, setDraftStyleLabel] = useState<string | null>(null);
+  const originalAiReplyRef = useRef("");
   const [sendSuccessMessage, setSendSuccessMessage] = useState("");
   const [showSendSuccess, setShowSendSuccess] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -734,6 +744,7 @@ return () => clearTimeout(timeout);
     const text = replyOptions[selectedReplyIndex];
     if (typeof text === "string") {
       setEditedReplyDraft(text);
+      originalAiReplyRef.current = text;
     }
   }, [selectedReplyIndex, replyOptions]);
 
@@ -765,6 +776,7 @@ return () => clearTimeout(timeout);
       });
       const selectedReply = replyOptions[index] ?? "";
       if (!selectedReply) return;
+      originalAiReplyRef.current = selectedReply;
       setReplyOptions((previous) => {
         const base = previous.length > 0 ? previous : [];
         if (selectedReplyIndex === null) {
@@ -837,6 +849,19 @@ return () => clearTimeout(timeout);
 
         const personality = buildPersonality(adjustedTone, "server-classified");
 
+        const draftLocale =
+          language === "italian" ? ("it" as const) : ("en" as const);
+        const draftStore = userId ? loadClientDraftMemory(userId) : null;
+        const draftResolved = resolveDraftStyle({
+          relationshipKind: relationship?.kind,
+          relationshipImportance: relationship?.importance,
+          identityCommunicationStyle: identity?.communicationStyle,
+          locale: draftLocale,
+          replyLanguage: language,
+          store: draftStore,
+        });
+        setDraftStyleLabel(draftResolved.indicatorLabel);
+
         setBrainUsage(
           retrieveBrainUsageDto(
             { emailText: emailContent, subject },
@@ -850,6 +875,7 @@ return () => clearTimeout(timeout);
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              ...draftMemoryHeaders(userId),
             },
             signal: controller.signal,
             body: JSON.stringify({
@@ -870,6 +896,8 @@ return () => clearTimeout(timeout);
               snippet,
               replyRecommended: shouldOfferReplies,
               brain: loadClientHandledBrain(),
+              draftMemory: draftStore,
+              relationshipKind: relationship?.kind,
             }),
           });
         } catch (error) {
@@ -1090,6 +1118,7 @@ return () => clearTimeout(timeout);
         }
 
         setReplyOptions(aiReplies);
+        originalAiReplyRef.current = aiReplies[0] ?? "";
         setStreamedReplies(aiReplies);
         setIsThinking(false);
         setSelectedReplyIndex(0);
@@ -1312,6 +1341,18 @@ return () => clearTimeout(timeout);
     }
 
     markEmailHandled(emailId);
+
+    if (userId && originalAiReplyRef.current.trim()) {
+      const store = loadClientDraftMemory(userId);
+      const next = learnFromEdit(store, {
+        aiDraft: originalAiReplyRef.current,
+        userFinal: text,
+        relationshipKind: relationship?.kind ?? null,
+        locale: workflowReplyLanguage === "italian" ? "it" : "en",
+        replyLanguage: workflowReplyLanguage,
+      });
+      saveClientDraftMemory(userId, next);
+    }
 
     setReplyCopied(true);
     if (copyFeedbackTimerRef.current !== null) {
@@ -1746,9 +1787,10 @@ return () => clearTimeout(timeout);
             {languageChangeHint ? (
               <p className="text-xs leading-relaxed text-gray-500">{languageChangeHint}</p>
             ) : null}
+            {draftStyleLabel ? (
+              <DraftMemoryStyleChip label={draftStyleLabel} />
+            ) : null}
           </div>
-
-      
 
           {isGeneratingReplies ? (
             <div className="space-y-3">
