@@ -21,15 +21,15 @@ export function ProactiveAssistantCard({
 
   const suggestions = useMemo(() => {
     void dismissTick;
-    return filterDismissedSuggestions(analysis.suggestions);
-  }, [analysis.suggestions, dismissTick]);
+    return filterDismissedSuggestions(analysis?.suggestions ?? []);
+  }, [analysis?.suggestions, dismissTick]);
 
   const handleDismiss = useCallback((id: string) => {
     dismissProactiveSuggestion(id);
     setDismissTick((t) => t + 1);
   }, []);
 
-  if (!analysis.active || suggestions.length === 0) return null;
+  if (!analysis?.active || suggestions.length === 0) return null;
 
   return (
     <div className="space-y-3 rounded-xl border border-teal-100 bg-gradient-to-br from-teal-50/30 to-white p-5">

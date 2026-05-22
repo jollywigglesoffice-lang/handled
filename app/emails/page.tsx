@@ -9,6 +9,7 @@ import {
   type InboxSectionTitle,
 } from "@/lib/fake-emails";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { saveGoogleProviderToken } from "@/lib/google-provider-token";
 import { useHandledEmails } from "@/app/handled-emails-context";
 import { AuthNav } from "@/app/components/auth-nav";
 import { useUiCopy } from "@/app/use-ui-copy";
@@ -483,6 +484,9 @@ export default function EmailsInboxPage() {
       const {
         data: { session },
       } = await supabaseBrowser.auth.getSession();
+      if (session?.provider_token) {
+        saveGoogleProviderToken(session.provider_token);
+      }
       const [mode, overrides] = await Promise.all([
         syncWorkflowModeFromAccount(),
         session ? syncEmailOverridesFromAccount() : Promise.resolve(loadClientEmailOverrideMap()),

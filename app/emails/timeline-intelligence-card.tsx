@@ -13,20 +13,30 @@ export function TimelineIntelligenceCard({
   analysis,
   locale,
 }: TimelineIntelligenceCardProps) {
-  if (!analysis.active) return null;
+  if (!analysis?.active) return null;
+
+  const memory = analysis.threadMemory ?? {
+    requestedActions: [],
+    mentionedDeadlines: [],
+    mentionedAttachments: false,
+    unresolvedCommitments: [],
+    followUpCount: 0,
+    userRepliedHeuristic: false,
+    otherRepliedHeuristic: false,
+  };
 
   const memoryBullets: string[] = [];
-  if (analysis.threadMemory.requestedActions[0]) {
-    memoryBullets.push(analysis.threadMemory.requestedActions[0]!);
+  if (memory.requestedActions?.[0]) {
+    memoryBullets.push(memory.requestedActions[0]!);
   }
-  if (analysis.threadMemory.mentionedDeadlines[0]) {
+  if (memory.mentionedDeadlines?.[0]) {
     memoryBullets.push(
       locale === "it"
-        ? `Scadenza: ${analysis.threadMemory.mentionedDeadlines[0]}`
-        : `Deadline: ${analysis.threadMemory.mentionedDeadlines[0]}`,
+        ? `Scadenza: ${memory.mentionedDeadlines[0]}`
+        : `Deadline: ${memory.mentionedDeadlines[0]}`,
     );
   }
-  if (analysis.threadMemory.mentionedAttachments) {
+  if (memory.mentionedAttachments) {
     memoryBullets.push(
       locale === "it" ? "Allegato citato" : "Attachment mentioned",
     );

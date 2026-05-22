@@ -7,6 +7,7 @@ import {
 } from "@/lib/user-identity/client-storage";
 import type { UserIdentity } from "@/lib/user-identity/types";
 import { EMPTY_IDENTITY } from "@/lib/user-identity/types";
+import { hasAuthenticatedSession } from "@/lib/auth/client-session";
 
 export type ReplyTone = "casual" | "professional" | "friendly";
 export type ReplyLanguage =
@@ -110,19 +111,22 @@ export function UserPreferencesProvider({
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/user-identity")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { identity?: UserIdentity } | null) => {
-        if (cancelled || !data?.identity) return;
+    void (async () => {
+      if (!(await hasAuthenticatedSession())) return;
+      try {
+        const res = await fetch("/api/user-identity", { credentials: "same-origin" });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { identity?: UserIdentity };
+        if (!data?.identity) return;
         const cloud = mergeIdentityWithLegacyName(data.identity, legacyName);
         if (cloud.displayName.trim() || cloud.fullName?.trim()) {
           setIdentity(cloud);
           saveClientUserIdentity(cloud);
         }
-      })
-      .catch(() => {
+      } catch {
         // local only
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -142,9 +146,13 @@ export function UserPreferencesProvider({
   }, []);
 
   const saveIdentityToServer = useCallback(async () => {
+    if (!(await hasAuthenticatedSession())) {
+      return { message: "Saved on this device only." };
+    }
     try {
       const res = await fetch("/api/user-identity", {
         method: "PUT",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identity }),
       });

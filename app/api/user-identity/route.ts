@@ -10,35 +10,54 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const SETUP_SQL = "supabase/sql/inbox_personalization_setup.sql";
 
-async function requireUserId(): Promise<{ userId: string } | { error: NextResponse }> {
+async function getSessionUserId(): Promise<string | null> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) {
-    return { error: NextResponse.json({ error: "Server misconfigured" }, { status: 500 }) };
+    console.error("[api/user-identity] server misconfigured");
+    return null;
   }
   const {
     data: { session },
+    error,
   } = await supabase.auth.getSession();
-  if (!session?.user?.id) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  if (error) {
+    console.error("[api/user-identity] getSession error", error.message);
+    return null;
   }
-  return { userId: session.user.id };
+  if (!session?.user?.id) {
+    console.error(
+      "[api/user-identity] no server session — returning EMPTY_IDENTITY (email pages must not depend on this)",
+    );
+    return null;
+  }
+  return session.user.id;
 }
 
 export async function GET() {
-  const auth = await requireUserId();
-  if ("error" in auth) return auth.error;
+  const userId = await getSessionUserId();
+  if (!userId) {
+    return NextResponse.json({
+      identity: EMPTY_IDENTITY,
+      authenticated: false,
+      setupSqlPath: SETUP_SQL,
+    });
+  }
 
-  const identity = await loadUserIdentityForUser(auth.userId);
+  const identity = await loadUserIdentityForUser(userId);
   const hasData = Boolean(identity.displayName.trim());
   return NextResponse.json({
     identity: hasData ? identity : EMPTY_IDENTITY,
+    authenticated: true,
     setupSqlPath: SETUP_SQL,
   });
 }
 
 export async function PUT(request: Request) {
-  const auth = await requireUserId();
-  if ("error" in auth) return auth.error;
+  const userId = await getSessionUserId();
+  if (!userId) {
+    console.error("[api/user-identity] PUT unauthorized");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let body: { identity?: UserIdentity };
   try {
@@ -48,7 +67,7 @@ export async function PUT(request: Request) {
   }
 
   const identity = parseUserIdentityJson(body.identity ?? EMPTY_IDENTITY);
-  const saved = await saveUserIdentityForUser(auth.userId, identity);
+  const saved = await saveUserIdentityForUser(userId, identity);
 
   if (!saved.ok) {
     if (saved.clientLocalOk) {

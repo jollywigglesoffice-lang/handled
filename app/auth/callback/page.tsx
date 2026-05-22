@@ -28,14 +28,10 @@ function AuthCallbackContent() {
       try {
         const code = searchParams.get("code");
 
+        // PKCE ?code= is exchanged in middleware (sets httpOnly cookies for SSR).
         if (code) {
           setStatus("Completing sign-in…");
-          const { error } = await supabaseBrowser.auth.exchangeCodeForSession(code);
-          if (error) {
-            console.error("[auth/callback] exchangeCodeForSession", error);
-            if (!cancelled) router.replace("/login?error=oauth");
-            return;
-          }
+          await new Promise((r) => setTimeout(r, 150));
         } else {
           const fromHash = parseHashTokens();
           if (fromHash) {

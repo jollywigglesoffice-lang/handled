@@ -1092,7 +1092,7 @@ return () => clearTimeout(timeout);
           setIsThinking(false);
           if (result.errorCode === "missing_api_key") {
             setStatusMessage(
-              "AI replies need an API key — add OPENROUTER_API_KEY or OPENAI_API_KEY to .env.local, then restart dev server.",
+              "AI replies need a valid API key — add your full OPENROUTER_API_KEY from openrouter.ai/keys to .env.local (not a placeholder like sk-or-v1-...), then restart the dev server.",
             );
           } else {
             setStatusMessage(formatReplyApiError(result));

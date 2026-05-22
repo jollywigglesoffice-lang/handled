@@ -13,9 +13,23 @@ export type AiChatConfig = {
   keyLabel: string;
 };
 
+/** Reject doc placeholders like `sk-or-v1-...` pasted into .env.local by mistake. */
+export function isPlaceholderApiKey(key: string): boolean {
+  const k = key.trim();
+  if (k.length < 24) return true;
+  if (k.endsWith("...") || k.includes("your-key") || k.includes("paste")) return true;
+  return false;
+}
+
 export function getAiChatConfig(): AiChatConfig | null {
   const openrouter = process.env.OPENROUTER_API_KEY?.trim();
   if (openrouter) {
+    if (isPlaceholderApiKey(openrouter)) {
+      console.error(
+        "[ai-chat-config] OPENROUTER_API_KEY looks like a placeholder — paste your full key from openrouter.ai/keys",
+      );
+      return null;
+    }
     return {
       apiKey: openrouter,
       provider: "openrouter",
@@ -26,6 +40,26 @@ export function getAiChatConfig(): AiChatConfig | null {
   }
 
   const openai = process.env.OPENAI_API_KEY?.trim();
+  // OpenRouter keys are often pasted into OPENAI_API_KEY by mistake (sk-or-v1-…).
+  if (openai?.startsWith("sk-or-")) {
+    if (isPlaceholderApiKey(openai)) {
+      console.error(
+        "[ai-chat-config] OPENAI_API_KEY is a placeholder (sk-or-v1-...) — paste your full OpenRouter key in OPENROUTER_API_KEY",
+      );
+      return null;
+    }
+    console.warn(
+      "[ai-chat-config] OPENAI_API_KEY holds an OpenRouter key — rename to OPENROUTER_API_KEY in .env.local",
+    );
+    return {
+      apiKey: openai,
+      provider: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1/chat/completions",
+      model: process.env.AI_REPLY_MODEL?.trim() || "openai/gpt-4o-mini",
+      keyLabel: "OPENROUTER_API_KEY",
+    };
+  }
+
   if (openai) {
     return {
       apiKey: openai,

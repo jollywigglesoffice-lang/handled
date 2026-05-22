@@ -146,7 +146,7 @@ export function detectDecisionSignals(input: {
 
   if (
     (input.timeline?.threadMemory.followUpCount ?? 0) >= 2 ||
-    input.timeline?.progression.repeatedFollowUps
+    input.timeline?.progression?.repeatedFollowUps
   ) {
     signals.push({
       kind: "potential_risk",

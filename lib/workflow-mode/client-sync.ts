@@ -1,3 +1,4 @@
+import { hasAuthenticatedSession } from "@/lib/auth/client-session";
 import {
   persistWorkflowModeToBrowser,
   readWorkflowModeFromStorage,
@@ -27,6 +28,7 @@ function isWorkflowModeDirty(): boolean {
 }
 
 async function pushWorkflowModeToAccount(mode: WorkflowMode): Promise<boolean> {
+  if (!(await hasAuthenticatedSession())) return false;
   try {
     const res = await fetch("/api/workflow-mode", {
       method: "PUT",
@@ -48,6 +50,7 @@ async function pushWorkflowModeToAccount(mode: WorkflowMode): Promise<boolean> {
 export async function syncWorkflowModeFromAccount(): Promise<WorkflowMode> {
   const local = readWorkflowModeFromStorage();
   if (typeof window === "undefined") return local;
+  if (!(await hasAuthenticatedSession())) return local;
 
   if (isWorkflowModeDirty()) {
     await pushWorkflowModeToAccount(local);

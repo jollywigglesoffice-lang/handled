@@ -4,9 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { saveGoogleProviderToken } from "@/lib/google-provider-token";
-
-/** Google OAuth must return to production only (no localhost / preview URLs). */
-const PRODUCTION_AUTH_ORIGIN = "https://handledemails.com";
+import { getOAuthRedirectOrigin } from "@/lib/auth/app-origin";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -58,7 +56,7 @@ export default function LoginPage() {
     setOauthLoading(true);
 
     try {
-      const redirectTo = `${PRODUCTION_AUTH_ORIGIN}/auth/callback?next=${encodeURIComponent("/emails")}`;
+      const redirectTo = `${getOAuthRedirectOrigin()}/auth/callback?next=${encodeURIComponent(next)}`;
 
       const { error } = await supabaseBrowser.auth.signInWithOAuth({
         provider: "google",

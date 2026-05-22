@@ -188,3 +188,7 @@ export function getInboxSections() {
 export function getEmailById(id: string) {
   return fakeEmails.find((email) => email.id === id);
 }
+
+export function isMockEmailId(id: string): boolean {
+  return fakeEmails.some((email) => email.id === id);
+}

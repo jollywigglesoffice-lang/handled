@@ -34,7 +34,12 @@ export function DecisionAssistanceCard({
   analysis,
   locale,
 }: DecisionAssistanceCardProps) {
-  if (!analysis.active) return null;
+  if (!analysis?.active) return null;
+
+  const insights = analysis.insights ?? [];
+  const opportunities = analysis.opportunities ?? [];
+  const risks = analysis.risks ?? [];
+  const primaryConfidence = analysis.primaryConfidence ?? "low_suggestion";
 
   const title =
     locale === "it" ? "Guida alle decisioni" : "Decision guidance";
@@ -54,17 +59,17 @@ export function DecisionAssistanceCard({
         </p>
         <p className="mt-1 text-xs leading-relaxed text-slate-500">{subtitle}</p>
         <span
-          className={`mt-2 inline-block rounded-full border px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${CONFIDENCE_STYLES[analysis.primaryConfidence]}`}
+          className={`mt-2 inline-block rounded-full border px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${CONFIDENCE_STYLES[primaryConfidence]}`}
         >
-          {confidenceLabel(analysis.primaryConfidence, locale)}
+          {confidenceLabel(primaryConfidence, locale)}
         </span>
       </div>
 
-      {analysis.insights.length > 0 ? (
+      {insights.length > 0 ? (
         <div className="space-y-2">
           <p className="text-xs font-medium text-slate-600">{whyLabel}</p>
           <ul className="space-y-2">
-            {analysis.insights.map((insight) => (
+            {insights.map((insight) => (
               <li
                 key={insight.id}
                 className="rounded-lg border border-slate-100 bg-white/80 px-3 py-2.5"
@@ -86,10 +91,10 @@ export function DecisionAssistanceCard({
         </div>
       ) : null}
 
-      {analysis.opportunities.length > 0 ? (
+      {opportunities.length > 0 ? (
         <div className="space-y-2">
           <p className="text-xs font-medium text-emerald-800/90">{oppLabel}</p>
-          {analysis.opportunities.map((o) => (
+          {opportunities.map((o) => (
             <p
               key={o.id}
               className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 text-sm text-emerald-900"
@@ -100,11 +105,11 @@ export function DecisionAssistanceCard({
         </div>
       ) : null}
 
-      {analysis.risks.length > 0 ? (
+      {risks.length > 0 ? (
         <div className="space-y-2">
           <p className="text-xs font-medium text-slate-600">{riskLabel}</p>
           <ul className="space-y-2">
-            {analysis.risks.map((r) => (
+            {risks.map((r) => (
               <li
                 key={r.id}
                 className="rounded-lg border border-slate-100 bg-white/60 px-3 py-2 text-sm text-slate-700"

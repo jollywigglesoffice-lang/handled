@@ -705,7 +705,8 @@ export async function POST(request: Request) {
     const payload = {
       source: "error" as const,
       errorCode: "missing_api_key",
-      error: "Add OPENROUTER_API_KEY or OPENAI_API_KEY to .env.local (OpenRouter key → openrouter.ai; OpenAI key → api.openai.com).",
+      error:
+        "Add your full OPENROUTER_API_KEY to .env.local (from openrouter.ai/keys). It must be the complete key, not a placeholder like sk-or-v1-...",
     };
     if (mode === "refine") {
       if (noSilentFallback) {

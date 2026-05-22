@@ -33,15 +33,16 @@ export function ActionIntelligenceCard({
   analysis,
   locale,
 }: ActionIntelligenceCardProps) {
-  if (!analysis.actionable || !analysis.primaryLabel) {
+  if (!analysis?.actionable || !analysis?.primaryLabel) {
     return null;
   }
 
-  const secondaryLabels = analysis.labels.filter(
-    (l) => l !== analysis.primaryLabel,
-  ).slice(0, 1) as ActionLabelId[];
+  const labels = analysis.labels ?? [];
+  const secondaryLabels = labels
+    .filter((l) => l !== analysis.primaryLabel)
+    .slice(0, 1) as ActionLabelId[];
 
-  const reminder = analysis.safeReminders[0];
+  const reminder = analysis.safeReminders?.[0];
   const safetyNote =
     locale === "it" ? REMINDER_SAFETY_NOTE_IT : REMINDER_SAFETY_NOTE_EN;
 
@@ -64,9 +65,9 @@ export function ActionIntelligenceCard({
         </p>
       ) : null}
 
-      {analysis.taskAwareness.length > 0 ? (
+      {(analysis.taskAwareness?.length ?? 0) > 0 ? (
         <ul className="space-y-1.5 border-t border-gray-100 pt-3 text-xs text-gray-600">
-          {analysis.taskAwareness.slice(0, 2).map((item, i) => (
+          {(analysis.taskAwareness ?? []).slice(0, 2).map((item, i) => (
             <li key={`${item.kind}-${i}`} className="leading-relaxed">
               <span className="font-medium text-gray-500">
                 {taskKindLabel(item.kind, locale)}:

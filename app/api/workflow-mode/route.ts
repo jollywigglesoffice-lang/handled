@@ -16,9 +16,24 @@ export async function GET() {
 
   const {
     data: { session },
+    error: sessionError,
   } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    console.error("[api/workflow-mode] GET getSession error", sessionError.message);
+  }
+
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    console.error(
+      "[api/workflow-mode] GET no server session — defaulting to assist (email pages must not depend on this)",
+    );
+    const mode = parseWorkflowMode(null);
+    return NextResponse.json({
+      mode,
+      profile: getWorkflowModeProfile(mode),
+      authenticated: false,
+      setupSqlPath: SETUP_SQL,
+    });
   }
 
   const stored = await loadWorkflowModeForUser(session.user.id);
@@ -27,6 +42,7 @@ export async function GET() {
   return NextResponse.json({
     mode,
     profile: getWorkflowModeProfile(mode),
+    authenticated: true,
     setupSqlPath: SETUP_SQL,
   });
 }
@@ -41,6 +57,7 @@ export async function PUT(request: Request) {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) {
+    console.error("[api/workflow-mode] PUT unauthorized");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
