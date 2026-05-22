@@ -6,6 +6,7 @@ import { analyzeUnsubscribe } from "@/lib/unsubscribe/detect";
 import { applyUnsubscribeSenderAction } from "@/lib/unsubscribe/apply-sender-action";
 import type { UnsubscribeAnalysis, UnsubscribeMethod } from "@/lib/unsubscribe/types";
 import type { WorkflowMode } from "@/lib/workflow-mode";
+import { safeParseJsonResponse } from "@/lib/safe-json-response";
 import { shouldShowUnsubscribeIntelligence } from "@/lib/workflow-mode-unsubscribe";
 
 type UnsubscribeIntelligenceCardProps = {
@@ -114,6 +115,7 @@ export function UnsubscribeIntelligenceCard({
       const res = await fetch("/api/unsubscribe/one-click", {
         method: "POST",
         credentials: "same-origin",
+        redirect: "manual",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messageId: emailId,
@@ -121,7 +123,15 @@ export function UnsubscribeIntelligenceCard({
           confirmed: true,
         }),
       });
-      const data = (await res.json()) as { message?: string; error?: string };
+      const parsed = await safeParseJsonResponse<{ message?: string; error?: string }>(
+        res,
+        "/api/unsubscribe/one-click",
+      );
+      if (!parsed.ok) {
+        setStatus(parsed.error);
+        return;
+      }
+      const data = parsed.data;
       if (res.ok) {
         setStatus(data.message ?? "Unsubscribe sent.");
         void handleSenderAction("promotions");

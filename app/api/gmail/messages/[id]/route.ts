@@ -10,6 +10,9 @@ import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 export async function GET(request: Request, context: RouteContext) {
   const { id: rawId } = await context.params;
   const id = decodeURIComponent(rawId ?? "").trim();

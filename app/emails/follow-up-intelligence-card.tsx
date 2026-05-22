@@ -10,6 +10,7 @@ import {
 } from "@/lib/follow-up-reminders/client-sync";
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
+import { safeParseJsonResponse } from "@/lib/safe-json-response";
 
 type FollowUpIntelligenceCardProps = {
   emailId: string;
@@ -41,6 +42,7 @@ export function FollowUpIntelligenceCard({
       const res = await fetch("/api/follow-ups/draft", {
         method: "POST",
         credentials: "same-origin",
+        redirect: "manual",
         headers: { "Content-Type": "application/json", ...inboxFetchHeaders() },
         body: JSON.stringify({
           sender: analysis.sender,
@@ -49,8 +51,13 @@ export function FollowUpIntelligenceCard({
           state: analysis.state,
         }),
       });
-      const data = (await res.json()) as { draft?: string };
-      if (data.draft) setDraft(data.draft);
+      const parsed = await safeParseJsonResponse<{ draft?: string }>(
+        res,
+        "/api/follow-ups/draft",
+      );
+      if (parsed.ok && parsed.data.draft) setDraft(parsed.data.draft);
+    } catch (e) {
+      console.error("[follow-up-intelligence] draft fetch failed", e);
     } finally {
       setDraftBusy(false);
     }

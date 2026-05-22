@@ -22,6 +22,7 @@ import {
   readUsageCountWithDailyReset,
 } from "@/lib/daily-usage";
 import { detectReplyLanguageFromEmail } from "@/lib/detect-reply-language";
+import { safeParseJsonResponse } from "@/lib/safe-json-response";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
@@ -430,15 +431,23 @@ export function EmailActions({
       return;
     }
 
-    void fetch(`/api/get-user?userId=${encodeURIComponent(userId)}`)
-      .then((res) => res.json())
-      .then((data: { isPro?: boolean }) => {
-        setIsPro(Boolean(data.isPro));
-      })
-      .catch((error) => {
+    void (async () => {
+      try {
+        const res = await fetch(`/api/get-user?userId=${encodeURIComponent(userId)}`, {
+          credentials: "same-origin",
+          redirect: "manual",
+        });
+        const parsed = await safeParseJsonResponse<{ isPro?: boolean }>(
+          res,
+          "/api/get-user",
+        );
+        if (parsed.ok) setIsPro(Boolean(parsed.data.isPro));
+        else setIsPro(false);
+      } catch (error) {
         console.error("get-user frontend error", error);
         setIsPro(false);
-      });
+      }
+    })();
   }, [userId]);
 
   const [memoryProfile, setMemoryProfile] = useState<ReplyMemory | null>(null);

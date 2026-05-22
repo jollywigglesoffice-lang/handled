@@ -8,6 +8,7 @@ import {
 import type { UserIdentity } from "@/lib/user-identity/types";
 import { EMPTY_IDENTITY } from "@/lib/user-identity/types";
 import { hasAuthenticatedSession } from "@/lib/auth/client-session";
+import { safeParseJsonResponse } from "@/lib/safe-json-response";
 
 export type ReplyTone = "casual" | "professional" | "friendly";
 export type ReplyLanguage =
@@ -114,9 +115,17 @@ export function UserPreferencesProvider({
     void (async () => {
       if (!(await hasAuthenticatedSession())) return;
       try {
-        const res = await fetch("/api/user-identity", { credentials: "same-origin" });
+        const res = await fetch("/api/user-identity", {
+          credentials: "same-origin",
+          redirect: "manual",
+        });
+        const parsed = await safeParseJsonResponse<{ identity?: UserIdentity }>(
+          res,
+          "/api/user-identity",
+        );
+        if (!parsed.ok || cancelled) return;
         if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { identity?: UserIdentity };
+        const data = parsed.data;
         if (!data?.identity) return;
         const cloud = mergeIdentityWithLegacyName(data.identity, legacyName);
         if (cloud.displayName.trim() || cloud.fullName?.trim()) {
