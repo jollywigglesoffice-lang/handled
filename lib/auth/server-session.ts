@@ -1,4 +1,4 @@
-import type { Session, User } from "@supabase/supabase-js";
+import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type ServerAuthSession = {
@@ -11,7 +11,12 @@ export type ServerAuthSession = {
 export async function getServerAuthSession(): Promise<ServerAuthSession | null> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return null;
+  return getServerAuthSessionFromClient(supabase);
+}
 
+export async function getServerAuthSessionFromClient(
+  supabase: SupabaseClient,
+): Promise<ServerAuthSession | null> {
   const {
     data: { user },
     error: userError,

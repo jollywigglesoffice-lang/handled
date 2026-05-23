@@ -112,7 +112,7 @@ export async function safeFetchJson<T>(
   let res: Response;
   try {
     res = await fetch(url, {
-      credentials: "same-origin",
+      credentials: init.credentials ?? "include",
       redirect: "manual",
       ...init,
     });

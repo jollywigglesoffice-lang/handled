@@ -30,8 +30,15 @@ function createSupabaseMiddlewareClient(
   });
 }
 
+const SKIP_AUTH_REFRESH_PREFIXES = ["/api/stripe-webhook"];
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  if (SKIP_AUTH_REFRESH_PREFIXES.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createSupabaseMiddlewareClient(request, supabaseResponse);
@@ -63,8 +70,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Skip /api/* so route handlers always return JSON (never an HTML auth redirect).
-    // Skip Stripe webhooks: no session cookies.
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Include /api/* so Supabase session cookies refresh before Route Handlers run.
+    // Stripe webhooks are skipped in middleware (no session cookies).
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

@@ -5,7 +5,7 @@ import { EmailDetailView, type EmailDetailPayload } from "./email-detail-view";
 import { EmailDetailAuthVisible } from "./email-detail-auth-visible";
 import { EmailDetailNotFound } from "./email-detail-not-found";
 import { EmailDetailVisibleError } from "./email-detail-visible-error";
-import { supabaseBrowser } from "@/lib/supabase-browser";
+import { ensureApiSessionCookies } from "@/lib/auth/ensure-api-session";
 import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
 import { safeFetchJson } from "@/lib/safe-json-response";
 
@@ -36,22 +36,15 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
     const endpoint = `/api/gmail/messages/${encodeURIComponent(emailId)}`;
 
     try {
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabaseBrowser.auth.getSession();
-
-      if (sessionError) {
-        console.error("[email-detail] getSession error", sessionError);
-      }
-
-      if (!session?.user?.id) {
+      const hasCookies = await ensureApiSessionCookies();
+      if (!hasCookies) {
         setState({ status: "auth", reason: "sign_in" });
         return;
       }
 
       const result = await safeFetchJson<GmailDetailApiBody>(endpoint, {
         label: "[email-detail] gmail message",
+        credentials: "include",
         headers: inboxFetchHeaders(),
       });
 

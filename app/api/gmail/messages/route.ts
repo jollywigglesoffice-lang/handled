@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
 import { gmailGetMessageMetadata, gmailListInboxIds } from "@/lib/gmail-api";
 import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
+import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 import { parseWorkflowModeHeader } from "@/lib/workflow-mode-effects";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
 import { enrichMessageWithActionIntelligence } from "@/lib/action-intelligence";
@@ -11,30 +12,22 @@ import { enrichMessageWithCalendarAwareness } from "@/lib/calendar-awareness";
 import { hasUnsubscribeSignal } from "@/lib/unsubscribe/detect";
 
 export async function GET(request: Request) {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) {
-    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+  const { supabase, applyAuthCookies } = createRouteHandlerSupabase(request);
+
+  const authResult = await requireApiAuth(supabase);
+  if (!authResult.ok) {
+    return applyAuthCookies(authResult.response);
   }
 
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-
-  if (sessionError || !session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { auth } = authResult;
+  const googleAuth = requireGoogleProviderToken(auth, {
+    message: "Sign in with Google to load your Gmail inbox.",
+  });
+  if (!googleAuth.ok) {
+    return applyAuthCookies(googleAuth.response);
   }
 
-  const accessToken = session.provider_token;
-  if (!accessToken) {
-    return NextResponse.json(
-      {
-        error: "missing_google_token",
-        message: "Sign in with Google to load your Gmail inbox.",
-      },
-      { status: 403 },
-    );
-  }
+  const accessToken = auth.providerToken!;
 
   try {
     const ids = await gmailListInboxIds(accessToken, 20);
@@ -43,7 +36,7 @@ export async function GET(request: Request) {
     );
     rows.sort((a, b) => b.internalDateMs - a.internalDateMs);
 
-    const userId = session.user.id;
+    const userId = auth.user.id;
     const rulesCtx = userId
       ? await loadCategorizationContext(userId, request)
       : {
@@ -81,7 +74,8 @@ export async function GET(request: Request) {
       categorized.map((m) => ({ ...m, category: m.category })),
     );
 
-    return NextResponse.json({
+    return applyAuthCookies(
+      NextResponse.json({
       messages: withTimeline.map((m) => {
         const withCalendar = enrichMessageWithCalendarAwareness(m);
         const enriched = enrichMessageWithActionIntelligence(withCalendar, {
@@ -97,10 +91,11 @@ export async function GET(request: Request) {
           ),
         };
       }),
-    });
+    }),
+    );
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Gmail request failed";
     console.error("[api/gmail/messages]", e);
-    return NextResponse.json({ error: message }, { status: 502 });
+    return applyAuthCookies(NextResponse.json({ error: message }, { status: 502 }));
   }
 }

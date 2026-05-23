@@ -8,6 +8,7 @@ import {
   type FakeEmail,
   type InboxSectionTitle,
 } from "@/lib/fake-emails";
+import { ensureApiSessionCookies } from "@/lib/auth/ensure-api-session";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { saveGoogleProviderToken } from "@/lib/google-provider-token";
 import { useHandledEmails } from "@/app/handled-emails-context";
@@ -381,18 +382,16 @@ export default function EmailsInboxPage() {
     setIsRefreshing(true);
     setGmailError("");
 
-    const {
-      data: { session },
-    } = await supabaseBrowser.auth.getSession();
+    const hasSession = await ensureApiSessionCookies();
 
     try {
-      if (!session) {
+      if (!hasSession) {
         setInboxMode("mock");
         return;
       }
 
       const res = await fetch("/api/gmail/messages", {
-        credentials: "same-origin",
+        credentials: "include",
         headers: inboxFetchHeaders(),
       });
       const body = (await res.json()) as {
