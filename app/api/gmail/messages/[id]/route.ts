@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
-import {
-  buildEmailDetailFromGmailMessage,
-  buildEmailDetailFromGmailMetadata,
-  resolveEmailDetailWorkflowMode,
-} from "@/lib/email-detail-from-gmail";
-import { gmailGetMessageFull } from "@/lib/gmail-api";
 import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
-import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
+import { parseWorkflowMode, WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function GET(request: Request, context: RouteContext) {
@@ -22,9 +17,13 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ found: false, error: "Missing id" }, { status: 400 });
   }
 
-  const { supabase, applyAuthCookies } = createRouteHandlerSupabase(request);
+  let applyAuthCookies: (response: NextResponse) => NextResponse = (r) => r;
 
   try {
+    const routeSupabase = createRouteHandlerSupabase(request);
+    applyAuthCookies = routeSupabase.applyAuthCookies;
+    const { supabase } = routeSupabase;
+
     const authResult = await requireApiAuth(request, supabase);
     if (!authResult.ok) {
       return applyAuthCookies(authResult.response);
@@ -37,10 +36,11 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const accessToken = auth.providerToken!;
-    const workflowMode = resolveEmailDetailWorkflowMode(
-      undefined,
-      request.headers.get(WORKFLOW_MODE_HEADER),
-    );
+    const workflowMode = parseWorkflowMode(request.headers.get(WORKFLOW_MODE_HEADER));
+
+    const { gmailGetMessageFull } = await import("@/lib/gmail-api");
+    const { buildEmailDetailFromGmailMessage, buildEmailDetailFromGmailMetadata } =
+      await import("@/lib/email-detail-from-gmail");
 
     let msg;
     try {
@@ -103,10 +103,13 @@ export async function GET(request: Request, context: RouteContext) {
       }
     }
   } catch (error) {
-    console.error("EMAIL DETAIL LOAD ERROR:", error);
+    console.error("[api/gmail/messages/[id]] route error:", error);
     const message = error instanceof Error ? error.message : String(error);
     return applyAuthCookies(
-      NextResponse.json({ found: false, error: message }, { status: 500 }),
+      NextResponse.json(
+        { found: false, error: message, routeError: true },
+        { status: 500 },
+      ),
     );
   }
 }

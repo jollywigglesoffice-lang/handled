@@ -63,8 +63,12 @@ export function createRouteHandlerSupabase(request: Request): RouteHandlerSupaba
   return {
     supabase,
     applyAuthCookies(response: NextResponse) {
-      for (const cookie of cookieCarrier.cookies.getAll()) {
-        response.cookies.set(cookie);
+      try {
+        for (const { name, value } of cookieCarrier.cookies.getAll()) {
+          response.cookies.set(name, value);
+        }
+      } catch (error) {
+        console.error("[route-handler] applyAuthCookies failed", error);
       }
       return response;
     },

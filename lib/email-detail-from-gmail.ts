@@ -11,7 +11,7 @@ import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 import { assessReplyNeed } from "@/lib/reply-necessity";
 import { heuristicEmailSummary } from "@/lib/email-summary";
-import { isLikelyHtml } from "@/lib/sanitize-email-html";
+import { isLikelyHtml } from "@/lib/is-likely-html";
 import type { InboxSectionTitle } from "@/lib/fake-emails";
 import { parseWorkflowMode, type WorkflowMode } from "@/lib/workflow-mode";
 

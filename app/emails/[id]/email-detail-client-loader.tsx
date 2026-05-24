@@ -57,8 +57,19 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
           error: result.error,
           preview: result.preview,
         });
-        if (result.isHtml || result.redirectedTo?.includes("/login")) {
+        if (result.status === 401 || result.status === 403) {
           setState({ status: "auth", reason: "server_session" });
+          return;
+        }
+        if (result.isHtml || result.redirectedTo?.includes("/login")) {
+          setState({
+            status: "error",
+            message:
+              result.status >= 500
+                ? "Email API crashed on the server (500). Deploy fix or check Vercel logs."
+                : "Server returned HTML instead of JSON.",
+            raw: { endpoint, status: result.status, preview: result.preview },
+          });
           return;
         }
         setState({

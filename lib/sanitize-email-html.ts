@@ -1,4 +1,15 @@
-import DOMPurify from "isomorphic-dompurify";
+import type DOMPurifyType from "isomorphic-dompurify";
+
+let purifyInstance: typeof DOMPurifyType | null = null;
+
+function getDOMPurify(): typeof DOMPurifyType {
+  if (!purifyInstance) {
+    // Defer load so API routes that only need isLikelyHtml don't init jsdom on Vercel.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    purifyInstance = require("isomorphic-dompurify").default as typeof DOMPurifyType;
+  }
+  return purifyInstance;
+}
 
 const EMAIL_ALLOWED_TAGS = [
   "a",
@@ -76,7 +87,7 @@ export function sanitizeEmailHtml(rawHtml: string): string {
 
   const preprocessed = preprocessEmailHtml(rawHtml);
 
-  const clean = DOMPurify.sanitize(preprocessed, {
+  const clean = getDOMPurify().sanitize(preprocessed, {
     ALLOWED_TAGS: EMAIL_ALLOWED_TAGS,
     ALLOWED_ATTR: EMAIL_ALLOWED_ATTR,
     ALLOW_DATA_ATTR: false,
@@ -87,11 +98,4 @@ export function sanitizeEmailHtml(rawHtml: string): string {
   return clean;
 }
 
-export function isLikelyHtml(content: string): boolean {
-  const t = content.trim();
-  if (!t) return false;
-  if (t.startsWith("<!DOCTYPE") || t.startsWith("<html")) return true;
-  if (/<\s*(div|table|p|span|body|center|td|tr|tbody|head)\b/i.test(t)) return true;
-  if (/<[a-z][\s\S]*>/i.test(t) && t.includes("</")) return true;
-  return false;
-}
+export { isLikelyHtml } from "@/lib/is-likely-html";
