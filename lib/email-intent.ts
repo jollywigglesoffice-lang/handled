@@ -1,7 +1,12 @@
 import { hasSchedulingIntent } from "@/lib/calendar-awareness";
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
-import { hasMultilingualImportanceSignal } from "@/lib/multilingual-importance";
+import { isPersonalPriorityContext } from "@/lib/categorization-intelligence/priority-signals";
+import {
+  detectPromotionalSignals,
+  isPromotionalDominant,
+} from "@/lib/categorization-intelligence/promotional-signals";
+import { detectRealHumanSignals } from "@/lib/categorization-intelligence/real-human-signals";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 
 function emailHaystack(row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">): string {
@@ -178,16 +183,21 @@ export function analyzeEmailIntent(row: GmailInboxRow): EmailIntentAnalysis {
     confidence = Math.max(confidence, 0.75 + Math.min(0.15, qCount * 0.05));
   }
 
-  const multilingualImportant = hasMultilingualImportanceSignal(row);
+  const multilingualImportant = isPersonalPriorityContext(row);
   if (multilingualImportant) {
     kinds.push("scheduling");
     reasons.push("multilingual_importance");
     confidence = Math.max(confidence, 0.88);
   }
 
-  const highPriority =
-    multilingualImportant ||
+  const promo = detectPromotionalSignals(row);
+  const realHuman = detectRealHumanSignals(row, promo);
+  const promotionalDominant = isPromotionalDominant(row, realHuman.score);
+
+  let highPriority =
+    (multilingualImportant && !promotionalDominant) ||
     (kinds.length > 0 &&
+      !promotionalDominant &&
       (kinds.some((k) =>
         [
           "pricing_inquiry",
@@ -200,6 +210,13 @@ export function analyzeEmailIntent(row: GmailInboxRow): EmailIntentAnalysis {
         ].includes(k),
       ) ||
         (kinds.includes("direct_question") && qCount >= 1 && !isLikelyAutomatedFyi(hay))));
+
+  if (realHuman.hasHardPersonalBlock) {
+    highPriority = true;
+  }
+  if (promotionalDominant && !realHuman.hasHardPersonalBlock) {
+    highPriority = false;
+  }
 
   const requiresReply =
     highPriority &&
@@ -297,7 +314,7 @@ export function safetyCategoryWhenUncertain(
   if (isImportantRelationship(relationship) && category === "handled") {
     return "needs_attention";
   }
-  if (hasMultilingualImportanceSignal(row) && category === "handled") {
+  if (isPersonalPriorityContext(row) && category === "handled" && !isPromotionalDominant(row, detectRealHumanSignals(row).score)) {
     return "needs_attention";
   }
   if (confidence >= 0.72) {

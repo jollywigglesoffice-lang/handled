@@ -149,36 +149,36 @@ function RuleTesterPanel({ rules }: { rules: InboxUserRule[] }) {
   const preview = useMemo(() => previewInboxTriage(sample, rules), [sample, rules]);
 
   return (
-    <div className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 p-4 space-y-4">
+    <div className="rounded-xl border border-dashed border-accent/20 bg-accent-muted/50 p-4 space-y-4">
       <div>
-        <p className="text-sm font-medium text-indigo-900">Try a sample email</p>
-        <p className="text-xs text-indigo-800/80 mt-1">
+        <p className="text-sm font-medium text-accent">Try a sample email</p>
+        <p className="text-xs text-accent/80 mt-1">
           Shows your rules <em>and</em> Handled&apos;s built-in sorting (Instagram → Promotions,
           etc.).
         </p>
       </div>
       <input
-        className="w-full rounded-lg border border-indigo-100 bg-white px-3 py-2 text-sm"
+        className="w-full rounded-lg border border-accent/15 bg-white px-3 py-2 text-sm"
         value={sampleSender}
         onChange={(e) => setSampleSender(e.target.value)}
         placeholder="From"
       />
       <input
-        className="w-full rounded-lg border border-indigo-100 bg-white px-3 py-2 text-sm"
+        className="w-full rounded-lg border border-accent/15 bg-white px-3 py-2 text-sm"
         value={sampleSubject}
         onChange={(e) => setSampleSubject(e.target.value)}
         placeholder="Subject"
       />
       <textarea
-        className="w-full rounded-lg border border-indigo-100 bg-white px-3 py-2 text-sm"
+        className="w-full rounded-lg border border-accent/15 bg-white px-3 py-2 text-sm"
         value={sampleSnippet}
         onChange={(e) => setSampleSnippet(e.target.value)}
         placeholder="Preview text"
         rows={2}
       />
 
-      <div className="rounded-lg border border-indigo-100 bg-white p-3 space-y-2 text-sm">
-        <p className="font-semibold text-indigo-950">
+      <div className="rounded-lg border border-accent/15 bg-white p-3 space-y-2 text-sm">
+        <p className="font-semibold text-foreground">
           Final result: {preview.finalLabel}
         </p>
         {preview.userRuleMatches.length > 0 ? (
@@ -203,7 +203,7 @@ function RuleTesterPanel({ rules }: { rules: InboxUserRule[] }) {
 
       <button
         type="button"
-        className="text-xs font-medium text-indigo-700 underline"
+        className="text-xs font-medium text-accent underline"
         onClick={() => {
           setSampleSender("Instagram <notification@mail.instagram.com>");
           setSampleSubject("You have 3 new notifications");
@@ -374,7 +374,7 @@ export function InboxPrioritySettings() {
               type="button"
               disabled={saving}
               onClick={() => addTemplateLocal(t.id)}
-              className="rounded-xl border border-[#E2E8F0] bg-white p-4 text-left transition hover:border-[#6366F1]/40 hover:shadow-sm active:scale-[0.99] disabled:opacity-50"
+              className="rounded-xl border border-[#E2E8F0] bg-white p-4 text-left transition hover:border-accent/40 hover:shadow-sm active:scale-[0.99] disabled:opacity-50"
             >
               <span className="text-xl">{t.emoji}</span>
               <p className="mt-2 text-sm font-medium text-[#0F172A]">{t.title}</p>
@@ -434,13 +434,13 @@ export function InboxPrioritySettings() {
           type="button"
           disabled={saving}
           onClick={() => void handleSave()}
-          className="rounded-lg bg-[#6366F1] px-4 py-2 text-sm font-medium text-white hover:bg-[#5558E3] disabled:opacity-50"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save rules"}
         </button>
       </div>
 
-      {message ? <p className="text-sm text-[#6366F1]">{message}</p> : null}
+      {message ? <p className="text-sm text-accent">{message}</p> : null}
     </section>
   );
 }

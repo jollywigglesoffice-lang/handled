@@ -5,7 +5,7 @@ import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/
 
 const TONE_CLASS: Record<ReturnType<typeof relationshipLabelTone>, string> = {
   warm: "border-rose-200 bg-rose-50 text-rose-900",
-  professional: "border-indigo-200 bg-indigo-50 text-indigo-900",
+  professional: "border-accent/20 bg-accent-muted text-accent",
   calm: "border-teal-200 bg-teal-50 text-teal-900",
   muted: "border-slate-200 bg-slate-50 text-slate-600",
 };

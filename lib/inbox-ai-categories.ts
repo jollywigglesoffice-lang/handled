@@ -19,7 +19,8 @@ export type CategorySource =
   | "manual_override"
   | "relationship_rule"
   | "semantic_rule"
-  | "multilingual_rule";
+  | "multilingual_rule"
+  | "intelligence_rule";
 
 /** Section order in the Gmail inbox (most actionable first). */
 export const GMAIL_INBOX_SECTION_ORDER: InboxAiCategory[] = [

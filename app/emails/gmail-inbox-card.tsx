@@ -55,7 +55,7 @@ export type GmailCardMessage = {
 };
 
 const CATEGORY_ACCENT: Record<InboxAiCategory, string> = {
-  needs_attention: "border-l-4 border-l-[#6366F1] bg-[#EEF2FF]/25",
+  needs_attention: "border-l-4 border-l-accent bg-accent-muted/25",
   quick_reply: "border-l-4 border-l-teal-500 bg-teal-50/40",
   handled: "border-l-4 border-l-emerald-500 bg-emerald-50/30",
   newsletter: "border-l-4 border-l-slate-400 bg-slate-50/50",
@@ -193,7 +193,7 @@ export function GmailInboxCard({
 
   return (
     <div
-      className={`rounded-xl border border-[#E2E8F0] p-6 shadow-sm transition-all duration-200 hover:border-[#6366F1]/40 hover:shadow-md ${accent}`}
+      className={`rounded-xl border border-[#E2E8F0] p-6 shadow-sm transition-all duration-200 hover:border-accent/40 hover:shadow-md ${accent}`}
     >
       <article className="space-y-3">
         <CardHeader
@@ -257,7 +257,7 @@ export function GmailInboxCard({
 
         <Link
           href={`/emails/${encodeURIComponent(message.id)}`}
-          className="block space-y-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-[#6366F1]"
+          className="block space-y-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <h3 className="text-base font-medium text-[#0F172A]">{message.subject}</h3>
           {message.timelineIntelligence?.active &&
@@ -278,7 +278,7 @@ export function GmailInboxCard({
             <button
               type="button"
               onClick={() => setShowCorrection(true)}
-              className="text-xs font-medium text-indigo-600 hover:underline"
+              className="text-xs font-medium text-accent hover:underline"
             >
               Change category or teach Handled…
             </button>
@@ -374,7 +374,7 @@ function CardHeader({
         ) : null}
         {learnedApplied ? (
           <span
-            className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700"
+            className="rounded-full border border-accent/20 bg-accent-muted px-2 py-0.5 text-[10px] font-medium text-accent"
             title="A learned sender rule set this category"
           >
             Rule applied
@@ -383,7 +383,7 @@ function CardHeader({
         <button
           type="button"
           onClick={onOpenCorrection}
-          className="max-w-[11rem] rounded-full border border-[#E2E8F0] bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#6366F1] hover:bg-indigo-50"
+          className="max-w-[11rem] rounded-full border border-[#E2E8F0] bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent hover:bg-accent-muted"
           aria-label={`Category: ${catLabel}. Click to change.`}
         >
           {catLabel} ▼

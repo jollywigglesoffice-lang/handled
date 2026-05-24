@@ -17,10 +17,10 @@ const signOffOptions: SignOffStyle[] = [
 const styleOptions: CommunicationStyle[] = ["balanced", "professional", "casual"];
 
 const inputClass =
-  "w-full rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-3 py-2.5 text-sm text-[#0F172A] outline-none transition-all duration-200 placeholder:text-gray-400 focus:border-[#6366F1]";
+  "w-full rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-3 py-2.5 text-sm text-[#0F172A] outline-none transition-all duration-200 placeholder:text-gray-400 focus:border-accent";
 
 const selectClass =
-  "w-full rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-3 py-2.5 text-sm text-[#0F172A] outline-none transition-all duration-200 focus:border-[#6366F1]";
+  "w-full rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-3 py-2.5 text-sm text-[#0F172A] outline-none transition-all duration-200 focus:border-accent";
 
 export function IdentitySettings() {
   const ui = useUiCopy();
@@ -175,7 +175,7 @@ export function IdentitySettings() {
           type="checkbox"
           checked={identity.includeSignOffInReplies}
           onChange={(e) => patchIdentity({ includeSignOffInReplies: e.target.checked })}
-          className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          className="mt-1 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent/30"
         />
         <span className="text-sm text-[#0F172A]">
           <span className="font-medium">{ui.identity.includeSignOffLabel}</span>
@@ -186,9 +186,9 @@ export function IdentitySettings() {
       </label>
 
       {previewSignOff && identity.includeSignOffInReplies ? (
-        <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-3">
-          <p className="text-xs font-medium text-indigo-900">{ui.identity.previewLabel}</p>
-          <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-indigo-950">
+        <div className="rounded-xl border border-accent/15 bg-accent-muted/50 px-4 py-3">
+          <p className="text-xs font-medium text-accent">{ui.identity.previewLabel}</p>
+          <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-foreground">
             {previewSignOff}
           </pre>
         </div>

@@ -33,7 +33,7 @@ export function EmailBody({ bodyHtml, bodyPlain }: EmailBodyProps) {
   if (mode === "html") {
     return (
       <div
-        className="email-body-readable max-w-none overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white p-6 text-[15px] leading-relaxed text-[#334155] shadow-inner [&_a]:text-[#6366F1] [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-[#E2E8F0] [&_blockquote]:pl-4 [&_blockquote]:text-gray-600 [&_h1]:mb-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_img]:max-h-64 [&_img]:max-w-full [&_img]:rounded-lg [&_p]:mb-3 [&_table]:w-full [&_td]:p-2 [&_th]:p-2"
+        className="email-body-readable max-w-none overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white p-6 text-[15px] leading-relaxed text-[#334155] shadow-inner [&_a]:text-accent [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-[#E2E8F0] [&_blockquote]:pl-4 [&_blockquote]:text-gray-600 [&_h1]:mb-3 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_img]:max-h-64 [&_img]:max-w-full [&_img]:rounded-lg [&_p]:mb-3 [&_table]:w-full [&_td]:p-2 [&_th]:p-2"
         dangerouslySetInnerHTML={{ __html: content }}
       />
     );

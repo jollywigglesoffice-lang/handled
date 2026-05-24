@@ -45,7 +45,7 @@ export function PersonalizationSettings() {
             onChange={(event) =>
               setReplyLanguage(event.target.value as ReplyLanguage)
             }
-            className="mt-1 w-full min-h-[2.75rem] rounded-lg border border-[#CBD5E1] bg-[#FFFFFF] px-3 py-2.5 text-base font-medium text-[#0F172A] shadow-sm outline-none transition-all duration-200 focus:border-[#6366F1] focus:ring-2 focus:ring-[#C7D2FE]/60"
+            className="mt-1 w-full min-h-[2.75rem] rounded-lg border border-[#CBD5E1] bg-[#FFFFFF] px-3 py-2.5 text-base font-medium text-[#0F172A] shadow-sm outline-none transition-all duration-200 focus:border-accent focus:ring-2 focus:ring-accent/20/60"
           >
             {languageOptions.map((language) => (
               <option key={language} value={language}>
@@ -65,7 +65,7 @@ export function PersonalizationSettings() {
           aria-label="Tone for replies"
           value={tone}
           onChange={(event) => setTone(event.target.value as ReplyTone)}
-          className="w-full rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-3 py-2.5 text-sm text-[#0F172A] outline-none transition-all duration-200 focus:border-[#6366F1]"
+          className="w-full rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-3 py-2.5 text-sm text-[#0F172A] outline-none transition-all duration-200 focus:border-accent"
         >
           {toneOptions.map((toneOption) => (
             <option key={toneOption} value={toneOption}>

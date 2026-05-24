@@ -4,7 +4,7 @@ export function EmailDetailNotFound({ emailId }: { emailId: string }) {
   return (
     <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto w-full max-w-lg space-y-4">
-        <Link href="/emails" className="text-sm font-medium text-[#6366F1]">
+        <Link href="/emails" className="text-sm font-medium text-accent">
           ← Back to inbox
         </Link>
         <section className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">

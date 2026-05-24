@@ -9,7 +9,7 @@ import {
 import type { SenderRelationship } from "@/lib/relationship-intelligence/types";
 import { useUiCopy } from "@/app/use-ui-copy";
 
-export function SenderRelationshipsSettings() {
+export function SenderRelationshipsSettings({ embedded = false }: { embedded?: boolean }) {
   const ui = useUiCopy();
   const [relationships, setRelationships] = useState<SenderRelationship[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,13 +60,19 @@ export function SenderRelationshipsSettings() {
   }
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-gray-900">{ui.relationship.settingsTitle}</h2>
-      <p className="mt-2 text-sm text-gray-500">{ui.relationship.settingsSubtitle}</p>
-      <p className="mt-1 text-xs text-gray-400">
-        Contacts and CRM sync coming later — relationships already shape triage, replies, and
-        follow-ups.
-      </p>
+    <section className={embedded ? "space-y-3" : "rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"}>
+      {!embedded ? (
+        <>
+          <h2 className="text-lg font-semibold text-gray-900">{ui.relationship.settingsTitle}</h2>
+          <p className="mt-2 text-sm text-gray-500">{ui.relationship.settingsSubtitle}</p>
+        </>
+      ) : null}
+      {!embedded ? (
+        <p className="mt-1 text-xs text-gray-400">
+          Contacts and CRM sync coming later — relationships already shape triage, replies, and
+          follow-ups.
+        </p>
+      ) : null}
 
       {loading ? (
         <p className="mt-4 text-sm text-gray-400">Loading…</p>

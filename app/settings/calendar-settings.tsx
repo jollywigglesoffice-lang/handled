@@ -11,7 +11,7 @@ import {
   type CalendarConnectionState,
 } from "@/lib/calendar-awareness";
 
-export function CalendarSettings() {
+export function CalendarSettings({ embedded = false }: { embedded?: boolean }) {
   const [connection, setConnection] = useState<CalendarConnectionState>(() =>
     readCalendarConnectionState(),
   );
@@ -50,21 +50,29 @@ export function CalendarSettings() {
   return (
     <section
       id="calendar"
-      className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+      className={embedded ? "space-y-4" : "rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"}
     >
-      <h2 className="text-lg font-semibold text-gray-900">Google Calendar</h2>
-      <p className="mt-2 text-sm leading-relaxed text-gray-500">
-        Handled will use your calendar to draft replies when someone asks about availability —
-        never to book or confirm meetings without your approval.
-      </p>
-
-      <div className="mt-4 rounded-xl border border-sky-100 bg-sky-50/60 p-4">
-        <p className="text-sm font-semibold text-sky-900">Coming soon</p>
-        <p className="mt-1 text-xs leading-relaxed text-sky-800">
-          OAuth connection to Google Calendar is in development. Scheduling intent detection and
-          safe draft wording already work in your inbox and replies.
+      {!embedded ? (
+        <>
+          <h2 className="text-lg font-semibold text-gray-900">Google Calendar</h2>
+          <p className="mt-2 text-sm leading-relaxed text-gray-500">
+            Draft availability replies from your calendar — you always approve before sending.
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-secondary">
+          Calendar connection coming soon. Scheduling hints already work in your inbox.
         </p>
-      </div>
+      )}
+
+      {!embedded ? (
+        <div className="mt-4 rounded-xl border border-sky-100 bg-sky-50/60 p-4">
+          <p className="text-sm font-semibold text-sky-900">Coming soon</p>
+          <p className="mt-1 text-xs leading-relaxed text-sky-800">
+            OAuth connection to Google Calendar is in development.
+          </p>
+        </div>
+      ) : null}
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <span
@@ -86,7 +94,7 @@ export function CalendarSettings() {
           type="button"
           disabled={connected}
           onClick={() => void handleConnect()}
-          className="rounded-lg bg-[#6366F1] px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           Connect Google Calendar
         </button>
@@ -110,21 +118,24 @@ export function CalendarSettings() {
       <SaveStatus status={status} className="mt-3 block" />
       {message ? <p className="mt-2 text-xs text-gray-600">{message}</p> : null}
 
-      <div className="mt-6 rounded-xl border border-amber-100 bg-amber-50/80 p-4">
-        <p className="text-sm font-semibold text-amber-900">Safety</p>
-        <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-amber-950/90">
-          {CALENDAR_SAFETY_RULES}
-        </p>
-      </div>
+      {!embedded ? (
+        <>
+          <div className="mt-6 rounded-xl border border-amber-100 bg-amber-50/80 p-4">
+            <p className="text-sm font-semibold text-amber-900">Safety</p>
+            <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-amber-950/90">
+              {CALENDAR_SAFETY_RULES}
+            </p>
+          </div>
 
-      <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs text-gray-600">
-        <p className="font-medium text-gray-800">Future behavior</p>
-        <p className="mt-1 leading-relaxed">
-          When someone asks &ldquo;Are you available?&rdquo;, Handled will read your Google
-          Calendar (with permission), suggest draft times in a reply, and wait for you to edit and
-          send. No automatic invites or confirmations.
-        </p>
-      </div>
+          <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs text-gray-600">
+            <p className="font-medium text-gray-800">Future behavior</p>
+            <p className="mt-1 leading-relaxed">
+              When someone asks about availability, Handled suggests draft times — you edit and
+              send. No automatic invites.
+            </p>
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }

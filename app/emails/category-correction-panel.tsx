@@ -56,12 +56,12 @@ export function CategoryCorrectionPanel({
     <div
       className={
         compact
-          ? "rounded-xl border border-indigo-200 bg-indigo-50/50 p-4"
-          : "rounded-2xl border border-indigo-200 bg-gradient-to-br from-[#EEF2FF] to-white p-6 shadow-sm"
+          ? "rounded-xl border border-accent/20 bg-accent-muted/50 p-4"
+          : "rounded-2xl border border-accent/20 bg-gradient-to-br from-[#EEF2FF] to-white p-6 shadow-sm"
       }
     >
       {!compact ? (
-        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent">
           Train Handled
         </p>
       ) : null}
@@ -94,7 +94,7 @@ export function CategoryCorrectionPanel({
       {step === "pick_scope" && chosen ? (
         <div className="mt-4 space-y-3">
           <p className="text-sm font-medium text-[#0F172A]">
-            Move to <span className="text-indigo-600">{inboxCategorySectionTitle(chosen, "en")}</span> — how
+            Move to <span className="text-accent">{inboxCategorySectionTitle(chosen, "en")}</span> — how
             should Handled apply this?
           </p>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -157,13 +157,13 @@ function CategoryPickGrid({
           onClick={() => onSelect(cat)}
           className={`rounded-lg border px-3 py-2.5 text-left text-sm transition ${
             cat === guessed
-              ? "border-indigo-300 bg-white font-medium text-indigo-900 ring-1 ring-indigo-200"
-              : "border-[#E2E8F0] bg-white text-[#0F172A] hover:border-indigo-200 hover:bg-indigo-50/30"
+              ? "border-accent/30 bg-white font-medium text-accent ring-1 ring-accent/20"
+              : "border-[#E2E8F0] bg-white text-[#0F172A] hover:border-accent/20 hover:bg-accent-muted/30"
           }`}
         >
           {inboxCategorySectionTitle(cat, "en")}
           {cat === guessed ? (
-            <span className="ml-1 text-xs text-indigo-500">(current guess)</span>
+            <span className="ml-1 text-xs text-accent/80">(current guess)</span>
           ) : null}
         </button>
       ))}
@@ -191,14 +191,14 @@ function ScopeButton({
       onClick={onClick}
       className={`flex-1 rounded-lg border px-4 py-3 text-left transition disabled:opacity-50 ${
         primary
-          ? "border-indigo-300 bg-indigo-600 text-white hover:bg-indigo-700"
+          ? "border-accent/30 bg-accent text-white hover:bg-accent-hover"
           : "border-[#E2E8F0] bg-white hover:bg-[#F8FAFC]"
       }`}
     >
       <span className={`block text-sm font-medium ${primary ? "text-white" : "text-[#0F172A]"}`}>
         {title}
       </span>
-      <span className={`mt-0.5 block text-xs ${primary ? "text-indigo-100" : "text-gray-500"}`}>
+      <span className={`mt-0.5 block text-xs ${primary ? "text-white/90" : "text-gray-500"}`}>
         {description}
       </span>
     </button>

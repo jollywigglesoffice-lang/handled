@@ -20,11 +20,15 @@ import {
   type InboxUserRule,
 } from "@/lib/inbox-user-rules";
 import {
+  analyzeCategorizationIntelligence,
+  mustNotAutoHandle,
+  type CategorizationIntelligenceResult,
+} from "@/lib/categorization-intelligence";
+import {
   analyzeEmailIntent,
   hasHighPriorityIntent,
   safetyCategoryWhenUncertain,
 } from "@/lib/email-intent";
-import { detectPersonalImportance } from "@/lib/multilingual-importance";
 import { applyRelationshipToCategory } from "@/lib/relationship-intelligence/effects";
 import { resolveRelationshipCategory } from "@/lib/relationship-intelligence/relationship-category";
 import { resolveSenderRelationship } from "@/lib/relationship-intelligence/resolve";
@@ -32,10 +36,53 @@ import type { SenderRelationship, SenderRelationshipProfile } from "@/lib/relati
 import { applyWorkflowModeToCategory } from "@/lib/workflow-mode-effects";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
+function mustNotAutoHandleRow(row: GmailInboxRow): boolean {
+  return mustNotAutoHandle(row);
+}
+
+function senderRulesForIntelligence(rules: InboxUserRule[]) {
+  return rules
+    .filter((r) => r.action.type === "force_category")
+    .map((r) => {
+      if (r.action.type !== "force_category") return null;
+      const match = r.match;
+      if (match.type === "sender_email") {
+        return { senderEmail: match.value, targetCategory: r.action.category };
+      }
+      if (match.type === "sender_domain") {
+        return { senderDomain: match.value, targetCategory: r.action.category };
+      }
+      if (match.type === "sender_contains") {
+        return { senderEmail: match.value, targetCategory: r.action.category };
+      }
+      return null;
+    })
+    .filter(Boolean) as Array<{
+    senderEmail?: string;
+    senderDomain?: string;
+    targetCategory: InboxAiCategory;
+  }>;
+}
+
+function runIntelligence(
+  row: GmailInboxRow,
+  senderRules: InboxUserRule[],
+  relationship?: SenderRelationshipProfile | null,
+): CategorizationIntelligenceResult {
+  return analyzeCategorizationIntelligence(row, {
+    senderRules: senderRulesForIntelligence(senderRules),
+    relationshipKind: relationship?.kind ?? null,
+    relationshipImportance: relationship?.importance ?? null,
+  });
+}
+
 export type GmailInboxRowCategorized = GmailInboxRow & {
   category: InboxAiCategory;
   categoryConfidence: number;
   categorySource: CategorySource;
+  /** Internal explainability — not rendered in UI yet */
+  categoryReasons?: string[];
+  categoryReasonLabels?: string[];
   relationship?: SenderRelationshipProfile;
 };
 
@@ -182,7 +229,8 @@ export function intelligentFallbackCategory(row: GmailInboxRow): {
   if (
     /order confirmed|payment received|receipt|tracking number|your shipment|has shipped|invoice|charged|subscription renewed|amount due/i.test(
       hay,
-    )
+    ) &&
+    !mustNotAutoHandleRow(row)
   ) {
     return { category: "handled", confidence: 0.7 };
   }
@@ -225,12 +273,39 @@ function finalizeRow(
   source: CategorySource,
   confidence: number,
   relationship?: SenderRelationshipProfile | null,
+  intelligence?: CategorizationIntelligenceResult,
 ): GmailInboxRowCategorized {
   const c = Math.round(Math.max(0, Math.min(1, confidence)) * 100) / 100;
   let coerced = coerceNeedsAttentionCategory(row, category);
   coerced = safetyCategoryWhenUncertain(row, coerced, c, relationship);
+
+  if (intelligence?.forcePromotional) {
+    coerced = intelligence.suggestedCategory;
+  }
+
+  if (intelligence?.blockLowPriorityCategories && !intelligence.forcePromotional && (coerced === "handled" || coerced === "promotion" || coerced === "newsletter")) {
+    coerced = intelligence.suggestedCategory;
+  }
+
+  if (intelligence?.forceNeedsAttention && !intelligence?.forcePromotional && (coerced === "handled" || coerced === "promotion" || coerced === "newsletter")) {
+    coerced = "needs_attention";
+  }
+
   if (relationship) {
     coerced = applyRelationshipToCategory(row, coerced, relationship);
+  }
+
+  const reasons = intelligence?.reasonCodes ?? [];
+  const reasonLabels = intelligence?.reasonLabels ?? [];
+
+  if (reasons.length) {
+    console.log("CATEGORIZATION INTELLIGENCE:", {
+      subject: row.subject?.slice(0, 100),
+      reasons: reasonLabels,
+      priorityScore: intelligence?.priorityScore,
+      suggested: intelligence?.suggestedCategory,
+      final: coerced,
+    });
   }
 
   console.log("FINAL CATEGORY:", coerced, {
@@ -242,11 +317,21 @@ function finalizeRow(
     relationship: relationship?.kind,
   });
 
+  let finalConfidence = coerced !== category ? Math.max(c, 0.75) : c;
+  if (intelligence?.forceNeedsAttention && coerced === "needs_attention") {
+    finalConfidence = Math.max(finalConfidence, intelligence.confidence);
+  }
+  if (intelligence && (reasonLabels.includes("Mixed personal and marketing signals") || reasons.includes("ambiguous_unknown_sender"))) {
+    finalConfidence = Math.min(finalConfidence, 0.68);
+  }
+
   return {
     ...row,
     category: coerced,
-    categoryConfidence: coerced !== category ? Math.max(c, 0.75) : c,
-    categorySource: coerced !== category ? "heuristic" : source,
+    categoryConfidence: finalConfidence,
+    categorySource: coerced !== category ? "intelligence_rule" : source,
+    categoryReasons: reasons.length ? reasons : undefined,
+    categoryReasonLabels: reasonLabels.length ? reasonLabels : undefined,
     relationship: relationship ?? undefined,
   };
 }
@@ -489,6 +574,7 @@ function applyUserPostIfNeeded(
   userRules: InboxUserRule[],
   workflowMode: WorkflowMode,
   senderRelationships: SenderRelationship[],
+  intelligence?: CategorizationIntelligenceResult,
 ): GmailInboxRowCategorized {
   const post = applyUserRulesPost(row, category, userRules);
   const afterUser = post
@@ -504,6 +590,10 @@ function applyUserPostIfNeeded(
     afterUser.source,
   );
 
+  const intel =
+    intelligence ??
+    runIntelligence(row, userRules, relationship);
+
   return finalizeRow(
     row,
     rowIndex,
@@ -511,6 +601,7 @@ function applyUserPostIfNeeded(
     modeAdjusted.source,
     afterUser.confidence,
     relationship,
+    intel,
   );
 }
 
@@ -607,17 +698,34 @@ export async function categorizeGmailInboxRows(
       continue;
     }
 
-    const importance = detectPersonalImportance(row);
-    if (importance.important) {
+    const importance = runIntelligence(row, senderRules);
+
+    if (importance.forcePromotional) {
       out[i] = applyUserPostIfNeeded(
         row,
         i,
         importance.suggestedCategory,
-        "multilingual_rule",
+        "intelligence_rule",
         importance.confidence,
         allUserRules,
         workflowMode,
         senderRelationships,
+        importance,
+      );
+      continue;
+    }
+
+    if (importance.forceNeedsAttention || importance.blockLowPriorityCategories) {
+      out[i] = applyUserPostIfNeeded(
+        row,
+        i,
+        importance.suggestedCategory,
+        "intelligence_rule",
+        importance.confidence,
+        allUserRules,
+        workflowMode,
+        senderRelationships,
+        importance,
       );
       continue;
     }

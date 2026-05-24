@@ -11,6 +11,7 @@ import {
   isCommercialBulk,
   isTransactionalFyi,
 } from "@/lib/inbox-triage-signals";
+import { mustNotAutoHandle } from "@/lib/categorization-intelligence";
 
 /** Score to hard-lock and skip AI. */
 export const RULE_LOCK_SCORE = 2;
@@ -234,7 +235,7 @@ export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
 
   const scores = computeInboxRuleScores(row);
 
-  if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row)) {
+  if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row) && !mustNotAutoHandle(row)) {
     return { category: "handled", confidence: 0.9, scores, matchType: "hard" };
   }
 
@@ -251,13 +252,13 @@ export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
     };
   }
 
-  if (isBillingLikely(row)) {
+  if (isBillingLikely(row) && !mustNotAutoHandle(row)) {
     return { category: "handled", confidence: 0.93, scores, matchType: "hard" };
   }
 
   const { promotion, newsletter, handled } = scores;
 
-  if (handled >= RULE_LOCK_SCORE && handled >= promotion && handled >= newsletter) {
+  if (handled >= RULE_LOCK_SCORE && handled >= promotion && handled >= newsletter && !mustNotAutoHandle(row)) {
     return {
       category: "handled",
       confidence: scoreToConfidence(handled),
@@ -338,12 +339,15 @@ export function hardPostAiCategory(row: GmailInboxRow): InboxAiCategory | null {
   if (hasHighPriorityIntent(row)) {
     return analyzeEmailIntent(row).suggestedCategory;
   }
+  if (mustNotAutoHandle(row)) {
+    return analyzeEmailIntent(row).suggestedCategory;
+  }
   if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row)) return "handled";
   if (isCommercialBulk(row) && !hasUrgentHumanSignal(row)) {
     const scores = computeInboxRuleScores(row);
     return scores.newsletter > scores.promotion ? "newsletter" : "promotion";
   }
-  if (isBillingLikely(row)) return "handled";
+  if (isBillingLikely(row) && !mustNotAutoHandle(row)) return "handled";
 
   const scores = computeInboxRuleScores(row);
   const hay = emailHaystack(row);
@@ -386,6 +390,9 @@ export function coerceNeedsAttentionCategory(
   if (category !== "needs_attention" && category !== "quick_reply") {
     return category;
   }
+  if (mustNotAutoHandle(row)) {
+    return analyzeEmailIntent(row).suggestedCategory;
+  }
   if (hasUrgentHumanSignal(row)) {
     return category;
   }
@@ -399,5 +406,6 @@ export function coerceNeedsAttentionCategory(
   const lean = commercialLeanCategory(row);
   if (lean) return lean;
   if (isCommercialBulk(row)) return "promotion";
+  if (mustNotAutoHandle(row)) return "needs_attention";
   return "handled";
 }

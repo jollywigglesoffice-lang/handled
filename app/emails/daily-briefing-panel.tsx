@@ -23,7 +23,7 @@ const TONE_STYLES: Record<
   quiet: "text-slate-600 bg-slate-50 border-slate-100",
   positive: "text-emerald-800 bg-emerald-50/80 border-emerald-100",
   neutral: "text-slate-700 bg-slate-50/90 border-slate-100",
-  gentle_attention: "text-indigo-800 bg-indigo-50/60 border-indigo-100",
+  gentle_attention: "text-accent bg-accent-muted/60 border-accent/15",
 };
 
 export function DailyBriefingPanel({ messages }: DailyBriefingPanelProps) {

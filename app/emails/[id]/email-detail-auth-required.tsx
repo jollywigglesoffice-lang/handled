@@ -25,7 +25,7 @@ export function EmailDetailAuthRequired({
       <div className="mx-auto w-full max-w-lg space-y-6">
         <Link
           href="/emails"
-          className="text-sm font-medium text-[#6366F1] transition hover:opacity-90"
+          className="text-sm font-medium text-accent transition hover:opacity-90"
         >
           ← Back to inbox
         </Link>
@@ -37,7 +37,7 @@ export function EmailDetailAuthRequired({
           </p>
           <Link
             href={loginHref}
-            className="inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
+            className="inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover"
           >
             {reason === "connect_gmail" ? "Continue with Google" : "Sign in"}
           </Link>

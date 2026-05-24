@@ -3,19 +3,27 @@
 :root {
   --background: #f8fafc;
   --card: #ffffff;
-  --accent: #6366f1;
   --foreground: #0f172a;
   --secondary: #64748b;
   --border: #e2e8f0;
+
+  /* Handled brand — calm intelligence, not visual noise */
+  --accent: #9733ff;
+  --accent-hover: #822ce0;
+  --accent-muted: #f9f6ff;
+  --accent-subtle: rgba(151, 51, 255, 0.06);
+  --accent-ring: rgba(151, 51, 255, 0.2);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-card: var(--card);
-  --color-accent: var(--accent);
   --color-foreground: var(--foreground);
   --color-secondary: var(--secondary);
   --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-muted: var(--accent-muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -24,6 +32,51 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+@layer components {
+  /* Primary actions */
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary-sm {
+    @apply inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Secondary / ghost actions */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-accent/30 hover:bg-accent-muted/40 active:scale-[0.98];
+  }
+
+  /* Text links */
+  .link-accent {
+    @apply text-sm font-medium text-accent transition-colors hover:text-accent-hover;
+  }
+
+  /* Form focus */
+  .input-handled {
+    @apply w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-gray-400 focus:border-accent focus:ring-2 focus:ring-accent/15 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* AI suggestion / recommended chip */
+  .chip-ai {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-accent/15 bg-accent-muted px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent;
+  }
+
+  /* Selected reply / option */
+  .surface-selected {
+    @apply bg-accent-muted/60 ring-1 ring-accent/25;
+  }
+
+  /* Trust indicator — one line, no heavy card */
+  .trust-line {
+    @apply text-xs leading-relaxed text-secondary;
+  }
+
+  .trust-line strong {
+    @apply font-medium text-accent;
+  }
 }
 
 @keyframes subtle-shimmer {
@@ -64,4 +117,3 @@ body {
     transform: translateY(0);
   }
 }
-

@@ -35,11 +35,11 @@ export function InboxSyncBar({
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+    <div className="-mt-2 flex flex-wrap items-center justify-between gap-3 text-sm">
       <div className="flex items-center gap-2 text-sm text-gray-600">
         {isRefreshing ? (
           <span
-            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#6366F1] border-t-transparent"
+            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent"
             aria-hidden
           />
         ) : (
@@ -56,7 +56,7 @@ export function InboxSyncBar({
         type="button"
         onClick={onRefresh}
         disabled={isRefreshing}
-        className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-sm font-medium text-[#6366F1] transition hover:bg-[#EEF2FF] disabled:cursor-not-allowed disabled:opacity-50"
+        className="text-xs font-medium text-accent transition hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
         Refresh inbox
       </button>

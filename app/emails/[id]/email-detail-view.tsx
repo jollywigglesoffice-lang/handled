@@ -4,35 +4,26 @@ import { useState } from "react";
 import Link from "next/link";
 import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
-import { ActionIntelligenceCard } from "@/app/emails/action-intelligence-card";
-import { FollowUpIntelligenceCard } from "@/app/emails/follow-up-intelligence-card";
-import type { ActionIntelligenceResult } from "@/lib/action-intelligence";
-import { TimelineIntelligenceCard } from "@/app/emails/timeline-intelligence-card";
-import { DecisionAssistanceCard } from "@/app/emails/decision-assistance-card";
-import { ProactiveAssistantCard } from "@/app/emails/proactive-assistant-card";
-import type { DecisionAssistanceResult } from "@/lib/decision-assistance";
-import type { ProactiveAssistantResult } from "@/lib/proactive-assistant";
-import type { TimelineIntelligenceResult } from "@/lib/timeline-intelligence";
-import { CalendarContextBadge } from "@/app/components/calendar-context-badge";
+import { EmailDetailInsights } from "./email-detail-insights";
 import { RelationshipBadge } from "@/app/emails/relationship-badge";
-import { calendarContextBadgeHint, readCalendarConnectionState } from "@/lib/calendar-awareness";
-import { UnsubscribeIntelligenceCard } from "@/app/emails/unsubscribe-intelligence-card";
-import type { FollowUpAnalysis } from "@/lib/follow-up/types";
-import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
-import type { UnsubscribeAnalysis } from "@/lib/unsubscribe/types";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import type { FakeEmail } from "@/lib/fake-emails";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
-import { IntelligenceFallbackNote } from "@/app/emails/intelligence-fallback-note";
 import { uiLocaleFromLanguage } from "@/lib/ui-copy";
+import type { ActionIntelligenceResult } from "@/lib/action-intelligence";
+import type { DecisionAssistanceResult } from "@/lib/decision-assistance";
+import type { ProactiveAssistantResult } from "@/lib/proactive-assistant";
+import type { TimelineIntelligenceResult } from "@/lib/timeline-intelligence";
+import type { FollowUpAnalysis } from "@/lib/follow-up/types";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
+import type { UnsubscribeAnalysis } from "@/lib/unsubscribe/types";
 
 export type EmailDetailPayload = FakeEmail & {
   bodyPlain?: string;
   bodyHtml?: string;
-  /** Rich plain-text context for reply generation (From/Subject/Body). */
   replyContext?: string;
   inboxCategory?: InboxAiCategory;
   replyRecommended?: boolean;
@@ -50,17 +41,33 @@ export type EmailDetailPayload = FakeEmail & {
   timelineIntelligence?: TimelineIntelligenceResult;
   proactiveAssistant?: ProactiveAssistantResult;
   decisionAssistance?: DecisionAssistanceResult;
-  /** Steps that failed during server enrichment (logged; page still renders). */
   enrichmentWarnings?: string[];
 };
 
 type EmailDetailViewProps = {
   email: EmailDetailPayload;
-  /** Incremental restore: step 2 hid reply panel; step 3+ shows EmailActions. */
   showActions?: boolean;
-  /** Step 4 enables server enrichment; until then intelligence cards use placeholders. */
   enrichmentEnabled?: boolean;
 };
+
+function primaryActionLine(
+  email: EmailDetailPayload,
+  locale: "en" | "it",
+): string | null {
+  const action = email.actionIntelligence;
+  if (action?.suggestedNextAction?.trim()) {
+    return action.suggestedNextAction.trim();
+  }
+  if (email.suggestedTriageAction?.trim()) {
+    return email.suggestedTriageAction.trim();
+  }
+  if (action?.actionable && action.primaryLabel) {
+    return locale === "it"
+      ? `Azione suggerita: ${action.primaryLabel.replace(/_/g, " ")}`
+      : `Suggested: ${action.primaryLabel.replace(/_/g, " ")}`;
+  }
+  return null;
+}
 
 export function EmailDetailView({
   email,
@@ -72,233 +79,86 @@ export function EmailDetailView({
   );
   const ui = useUiCopy();
   const { uiLanguage } = useUserPreferences();
-  const uiLocale = uiLocaleFromLanguage(uiLanguage);
-  const categoryLocale = uiLocale === "it" ? "it" : "en";
+  const categoryLocale = uiLocaleFromLanguage(uiLanguage) === "it" ? "it" : "en";
   const workflowMode = readWorkflowModeFromStorage();
 
-  const noTimeline =
-    categoryLocale === "it"
-      ? "Nessun contesto timeline disponibile."
-      : "No timeline context available.";
-  const noDecision =
-    categoryLocale === "it"
-      ? "Nessun insight decisionale disponibile."
-      : "No decision insights available.";
-  const noProactive =
-    categoryLocale === "it"
-      ? "Nessun suggerimento proattivo per ora."
-      : "No proactive suggestions right now.";
-  const noAction =
-    categoryLocale === "it"
-      ? "Nessuna azione suggerita per questo messaggio."
-      : "No suggested actions for this message.";
-  const noFollowUp =
-    categoryLocale === "it"
-      ? "Nessun follow-up necessario."
-      : "No follow-up needed.";
-  const timeline = email.timelineIntelligence;
-  const decision = email.decisionAssistance;
-  const proactive = email.proactiveAssistant;
-  const action = email.actionIntelligence;
+  const summary =
+    email.aiSummary?.trim() ||
+    (categoryLocale === "it" ? "Nessun riepilogo disponibile." : "No summary available.");
+  const actionLine = primaryActionLine(email, categoryLocale);
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
-        <div className="space-y-3">
-          <Link
-            href="/emails"
-            className="text-sm font-medium text-[#6366F1] transition-all duration-200 hover:opacity-90 active:scale-95"
-          >
-            {ui.common.backToInbox}
-          </Link>
-          {!enrichmentEnabled ? (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              {showActions ? (
-                <>
-                  Step 3/4: <strong>EmailActions</strong> enabled (replies, tone, usage). Server
-                  enrichment (timeline, decision, proactive) is still off.
-                </>
-              ) : (
-                <>
-                  Step 2/4: <strong>EmailDetailView</strong> enabled. Reply panel and server
-                  enrichment are still off.
-                </>
-              )}
-            </p>
-          ) : null}
-        </div>
+    <main className="min-h-screen bg-white">
+      <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-8 sm:px-6 sm:pt-12">
+        <Link
+          href="/emails"
+          className="text-sm text-gray-500 transition-colors hover:text-gray-900"
+        >
+          {ui.common.backToInbox}
+        </Link>
 
-        <section className="space-y-8 rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm">
-          <div className="space-y-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-5">
-            <p className="flex items-center gap-2 text-sm text-gray-500">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#6366F1]" />
-              {ui.emailDetail.sender}
-            </p>
-            <p className="text-lg font-medium text-[#0F172A]">{email.sender}</p>
-            <div className="flex flex-wrap items-center gap-2 pt-2">
-              {email.relationship ? (
-                <RelationshipBadge relationship={email.relationship} />
-              ) : null}
-              {email.needsCalendarContext ? (
-                <CalendarContextBadge locale={categoryLocale} />
-              ) : null}
-            </div>
-          </div>
+        <header className="mt-8 space-y-5">
+          <p className="text-sm text-gray-500">{email.sender}</p>
 
-          {email.needsCalendarContext ? (
-            <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-4 text-sm text-sky-900">
-              <p className="font-medium">
-                {categoryLocale === "it"
-                  ? "Programmazione rilevata"
-                  : "Scheduling detected"}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-sky-800">
-                {calendarContextBadgeHint(
-                  readCalendarConnectionState().status,
-                  categoryLocale,
-                )}
-              </p>
-            </div>
-          ) : null}
+          <h1 className="text-2xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-3xl">
+            {email.subject}
+          </h1>
 
-          <div className="space-y-2 border-t border-gray-200 pt-8">
-            <p className="flex items-center gap-2 text-sm text-gray-500">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#6366F1]" />
-              {ui.emailDetail.subject}
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight text-[#0F172A]">
-              {email.subject}
-            </h1>
+          <div className="flex flex-wrap items-center gap-2">
             {email.inboxCategory ? (
-              <p className="mt-2 inline-block rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-medium text-[#6366F1]">
+              <span className="text-xs font-medium text-gray-600">
                 {inboxCategorySectionTitle(email.inboxCategory, categoryLocale)}
-              </p>
+              </span>
+            ) : null}
+            {email.relationship ? (
+              <RelationshipBadge relationship={email.relationship} />
             ) : null}
           </div>
 
-          <div className="space-y-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-6">
-            <p className="flex items-center gap-2 text-sm font-medium text-[#0F172A]">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#6366F1]" />
-              {ui.emailDetail.aiSummary}
-            </p>
-            <p className="text-sm leading-relaxed text-gray-500">
-              {email.aiSummary?.trim() ||
-                (categoryLocale === "it"
-                  ? "Riepilogo non disponibile."
-                  : "Summary unavailable.")}
-            </p>
-          </div>
+          <p className="text-[15px] leading-relaxed text-gray-600">{summary}</p>
 
-          <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-              {categoryLocale === "it" ? "Memoria conversazione" : "Conversation memory"}
+          {actionLine ? (
+            <p className="text-sm leading-relaxed text-gray-700">
+              <span className="font-medium text-accent">Suggested · </span>
+              {actionLine}
             </p>
-            {timeline?.active ? (
-              <TimelineIntelligenceCard analysis={timeline} locale={categoryLocale} />
-            ) : (
-              <IntelligenceFallbackNote message={noTimeline} />
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-              {categoryLocale === "it" ? "Suggerimenti" : "Suggestions"}
-            </p>
-            {proactive?.active && (proactive.suggestions?.length ?? 0) > 0 ? (
-              <ProactiveAssistantCard analysis={proactive} locale={categoryLocale} />
-            ) : (
-              <IntelligenceFallbackNote message={noProactive} />
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-              {categoryLocale === "it" ? "Guida decisioni" : "Decision guidance"}
-            </p>
-            {decision?.active &&
-            ((decision.insights?.length ?? 0) > 0 ||
-              (decision.opportunities?.length ?? 0) > 0 ||
-              (decision.risks?.length ?? 0) > 0) ? (
-              <DecisionAssistanceCard analysis={decision} locale={categoryLocale} />
-            ) : (
-              <IntelligenceFallbackNote message={noDecision} />
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-              {categoryLocale === "it" ? "Azioni" : "Actions"}
-            </p>
-            {action?.actionable && action?.primaryLabel ? (
-              <ActionIntelligenceCard analysis={action} locale={categoryLocale} />
-            ) : (
-              <IntelligenceFallbackNote message={noAction} />
-            )}
-          </div>
-
-          {email.followUpAnalysis ? (
-            <FollowUpIntelligenceCard
-              emailId={email.id}
-              analysis={email.followUpAnalysis}
-              locale={categoryLocale}
-            />
-          ) : (
-            <IntelligenceFallbackNote message={noFollowUp} />
-          )}
-
-          {email.enrichmentWarnings && email.enrichmentWarnings.length > 0 ? (
-            <IntelligenceFallbackNote
-              message={
-                categoryLocale === "it"
-                  ? "Alcuni dati opzionali non sono stati caricati — il messaggio resta utilizzabile."
-                  : "Some optional data did not load — this email is still usable."
-              }
-            />
           ) : null}
-
-          <UnsubscribeIntelligenceCard
-            emailId={email.id}
-            sender={email.sender}
-            subject={email.subject}
-            snippet={email.summary}
-            bodyPlain={email.body}
-            bodyHtml={email.bodyHtml}
-            listUnsubscribe={email.listUnsubscribe}
-            listUnsubscribePost={email.listUnsubscribePost}
-            inboxCategory={email.inboxCategory}
-            initialAnalysis={email.unsubscribeAnalysis}
-            workflowMode={workflowMode}
-            onUseReplyDraft={(text) => setReplyDraftOverride(text)}
-          />
-
-          <div className="space-y-3 border-t border-gray-200 pt-8">
-            <p className="flex items-center gap-2 text-sm font-medium text-[#0F172A]">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#6366F1]" />
-              {ui.emailDetail.fullEmailBody}
-            </p>
-            <EmailBody
-              bodyHtml={email.bodyHtml}
-              bodyPlain={email.bodyPlain ?? email.body}
-            />
-          </div>
-        </section>
+        </header>
 
         {showActions ? (
-          <EmailActions
-            emailId={email.id}
-            emailContent={email.replyContext ?? email.body}
-            senderName={email.sender}
-            subject={email.subject}
-            snippet={email.summary}
-            suggestedReply={replyDraftOverride || email.suggestedReply}
-            inboxCategory={email.inboxCategory}
-            replyRecommended={email.replyRecommended ?? true}
-            replySuppressedReason={email.replySuppressedReason}
-            suggestedTriageAction={email.suggestedTriageAction}
-            followUpAnalysis={email.followUpAnalysis}
-            relationship={email.relationship}
-          />
+          <section className="mt-10">
+            <EmailActions
+              calmLayout
+              emailId={email.id}
+              emailContent={email.replyContext ?? email.body}
+              senderName={email.sender}
+              subject={email.subject}
+              snippet={email.summary}
+              suggestedReply={replyDraftOverride || email.suggestedReply}
+              inboxCategory={email.inboxCategory}
+              replyRecommended={email.replyRecommended ?? true}
+              replySuppressedReason={email.replySuppressedReason}
+              suggestedTriageAction={email.suggestedTriageAction}
+              followUpAnalysis={email.followUpAnalysis}
+              relationship={email.relationship}
+            />
+          </section>
         ) : null}
+
+        <article className="mt-12 border-t border-gray-100 pt-10">
+          <h2 className="mb-4 text-xs font-medium uppercase tracking-wide text-gray-400">
+            {ui.emailDetail.fullEmailBody}
+          </h2>
+          <EmailBody bodyHtml={email.bodyHtml} bodyPlain={email.bodyPlain ?? email.body} />
+        </article>
+
+        <EmailDetailInsights
+          email={email}
+          locale={categoryLocale}
+          enrichmentEnabled={enrichmentEnabled}
+          workflowMode={workflowMode}
+          onUseReplyDraft={(text) => setReplyDraftOverride(text)}
+        />
       </div>
     </main>
   );

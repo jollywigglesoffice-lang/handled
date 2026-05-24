@@ -37,6 +37,7 @@ import { getWorkflowModeBehavior } from "@/lib/workflow-mode-config";
 import { saveFollowUpReminderToAccount } from "@/lib/follow-up-reminders/client-sync";
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import { DraftMemoryStyleChip } from "@/app/emails/draft-memory-style-chip";
+import { CalmCollapsible } from "@/app/components/calm-collapsible";
 import {
   draftMemoryHeaders,
   learnFromEdit,
@@ -58,6 +59,8 @@ type EmailActionsProps = {
   suggestedTriageAction?: string;
   followUpAnalysis?: FollowUpAnalysis;
   relationship?: import("@/lib/relationship-intelligence/types").SenderRelationshipProfile;
+  /** Calmer layout: fewer cards, progressive disclosure, no confidence bars. */
+  calmLayout?: boolean;
 };
 
 const FETCH_REPLY_TIMEOUT_MS = 28_000;
@@ -409,6 +412,7 @@ export function EmailActions({
   suggestedTriageAction,
   followUpAnalysis,
   relationship,
+  calmLayout = false,
 }: EmailActionsProps) {
   const ui = useUiCopy();
   const router = useRouter();
@@ -1568,6 +1572,69 @@ return () => clearTimeout(timeout);
         ? []
         : emergencyReplies.slice(0, workflowBehavior.replyCount);
 
+  const toneSliderInput = (
+    <>
+      <div className={`relative w-full ${isSnapping ? "scale-[1.01]" : ""} transition-all duration-150`}>
+        <div className="absolute top-1/2 -translate-y-1/2 h-2 w-full rounded-full bg-gray-200" />
+        <div
+          className={`absolute top-1/2 -translate-y-1/2 h-2 rounded-full transition-all duration-200 ${
+            liveTone < 30 ? "bg-gray-400" : liveTone < 70 ? "bg-gray-500" : "bg-gray-600"
+          }`}
+          style={{ width: `${liveTone}%` }}
+        />
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={liveTone}
+          onChange={(e) => {
+            const raw = Number(e.target.value);
+            trackEvent("tone_changed", { value: raw });
+            setLiveTone(raw);
+            const delta = raw - tone;
+            const speed = Math.abs(delta);
+            const intent = speed > 12 ? "dramatic" : speed > 5 ? "adjust" : "precision";
+            if (intent === "dramatic") {
+              setTone(raw);
+            } else if (intent === "adjust") {
+              setTone((prev) => Math.round((prev + raw) / 2));
+            } else {
+              setTone((prev) => Math.round(prev + (raw - prev) * 0.2));
+            }
+            const closest = SNAP_POINTS.reduce((prev, curr) =>
+              Math.abs(curr - raw) < Math.abs(prev - raw) ? curr : prev,
+            );
+            const distance = Math.abs(raw - closest);
+            if (distance < 6) {
+              setTone(closest);
+              setLiveTone(closest);
+              setIsSnapping(true);
+              setTimeout(() => setIsSnapping(false), 120);
+            }
+          }}
+          onInput={() => generateReplyOptions()}
+          onMouseUp={() => {
+            setTone(liveTone);
+            setTimeout(() => generateReplyOptions(), 120);
+          }}
+          onTouchEnd={() => {
+            setTimeout(() => generateReplyOptions(), 120);
+          }}
+          className="relative z-10 w-full cursor-pointer appearance-none bg-transparent
+            [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4
+            [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full
+            [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-gray-400
+            [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-sm"
+        />
+      </div>
+      <div className="flex justify-between text-[10px] text-gray-400">
+        <span>Direct</span>
+        <span>Casual</span>
+        <span>Friendly</span>
+      </div>
+    </>
+  );
+
   if (!authUser) {
     const nextPath =
       typeof window !== "undefined"
@@ -1591,7 +1658,7 @@ return () => clearTimeout(timeout);
 
         <a
           href={`/login?next=${encodeURIComponent(nextPath)}`}
-          className="inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
+          className="inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover"
         >
           Sign in
         </a>
@@ -1599,163 +1666,221 @@ return () => clearTimeout(timeout);
     );
   }
 
-  return (
-    <div
-      className={`space-y-5 rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 shadow-sm transition-all duration-500 ${
-        isClosingView ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
-      }`}
-    >
-      <h2 className="flex items-center gap-2 text-lg font-medium text-[#0F172A]">
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 20 20"
-          className="h-4 w-4 text-[#6366F1]"
-          fill="none"
-        >
-          <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
-          <path
-            d="M6.7 10h6.6M10 6.7v6.6"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-        {ui.emailActions.actionsTitle}
-      </h2>
-
-      <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs leading-relaxed text-emerald-800">
-        <div className="flex items-start gap-2">
-          <span className="mt-0.5">🔒</span>
-          <div>
-            <p className="font-semibold">You stay in control.</p>
-            <p className="mt-1">{TRUST_COPY.neverSend}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-1 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-        <p className="text-sm font-semibold text-indigo-600">
+  const accountMetaBlock = (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-gray-600">
           {isPro
             ? "Unlimited replies"
             : `${Math.max(0, FREE_LIMIT - usageCount)} replies left today`}
         </p>
-        <Link
-          href="/settings"
-          className="text-xs font-medium text-indigo-600 hover:underline"
-        >
-          Settings & Billing
+        <Link href="/settings" className="text-xs text-gray-500 hover:text-gray-800">
+          Settings
         </Link>
       </div>
-
-      <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-              Workflow mode
-            </p>
-            <p className="text-sm font-semibold text-gray-900">{workflowBehavior.label}</p>
-            <p className="mt-0.5 text-xs font-medium italic text-gray-600">
-              {workflowBehavior.tagline}
-            </p>
-          </div>
-
-          <Link
-            href="/settings"
-            className="text-xs font-medium text-indigo-600 hover:underline"
-          >
-            Change
-          </Link>
-        </div>
-
-        <p className="mt-1 text-xs text-gray-500">{workflowBehavior.status}</p>
-
-        {workflowBehavior.emphasizeApproval ? (
-          <div className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[11px] leading-relaxed text-indigo-900">
-            {workflowMode === "assist"
-              ? "Here's what I recommend — review each option and approve before sending."
-              : "This is already prepared — you approve before anything sends."}
-          </div>
-        ) : null}
-
-        <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] leading-relaxed text-emerald-800">
-          Handled never sends email without your explicit approval.
-        </div>
-
+      <div className="mt-3 space-y-1 text-sm text-gray-600">
+        <p className="font-medium text-gray-800">{workflowBehavior.label}</p>
+        <p className="text-xs text-gray-500">{workflowBehavior.status}</p>
         {followUpAnalysis ? (
-          <p className="mt-2 rounded-lg border border-violet-100 bg-violet-50/80 px-3 py-2 text-[11px] leading-relaxed text-violet-900">
-            {followUpAnalysis.calmPrompt}
-          </p>
-        ) : workflowBehavior.showFollowUpReminders && replyRecommendedProp ? (
-          <p className="mt-2 text-[11px] text-violet-800">
-            When you&apos;re ready, Handled can remember to nudge this thread — no pressure.
-          </p>
+          <p className="pt-2 text-xs text-gray-500">{followUpAnalysis.calmPrompt}</p>
         ) : null}
       </div>
-
       {!isPro ? (
-        <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
-          Coming soon: connect multiple inboxes and manage all your email accounts in one
-          place.
-          <button
-            type="button"
-            onClick={() => setShowUpgrade(true)}
-            className="ml-1 font-semibold underline"
-          >
-            Pro users get early access.
-          </button>
-        </div>
-      ) : (
-        <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
-          Coming soon: multiple inboxes. As a Pro user, you&apos;ll be first in line for early
-          access.
-        </div>
-      )}
-
+        <button
+          type="button"
+          onClick={() => setShowUpgrade(true)}
+          className="mt-3 text-xs text-accent hover:underline"
+        >
+          Upgrade for unlimited replies
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={() => void handleLogout()}
-        className="text-left text-[10px] text-gray-400 hover:text-gray-600"
+        className="mt-4 text-xs text-gray-400 hover:text-gray-600"
       >
         Sign out
       </button>
-      <div className="flex flex-wrap gap-4">
-        <button
-          type="button"
-          onClick={() => replyDraftTextareaRef.current?.focus()}
-          disabled={
-            visibleReplies.length === 0 || isGeneratingReplies || isThinking
+    </>
+  );
+
+  const secondaryActionsRow = (
+    <div className="flex flex-wrap gap-3">
+      <button
+        type="button"
+        onClick={() => replyDraftTextareaRef.current?.focus()}
+        disabled={visibleReplies.length === 0 || isGeneratingReplies || isThinking}
+        className="text-sm text-gray-600 hover:text-gray-900 disabled:opacity-40"
+      >
+        {ui.emailActions.editReplyButton}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (followUpAnalysis) {
+            void saveFollowUpReminderToAccount(followUpAnalysis).then(() => {
+              setStatusMessage(ui.followUp.savedReminder);
+              window.dispatchEvent(new Event("handled-follow-ups-changed"));
+            });
+          } else {
+            setStatusMessage(ui.emailActions.statusReminderSaved);
           }
-          className="rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#0F172A] transition-all duration-200 hover:bg-[#F1F5F9] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {ui.emailActions.editReplyButton}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (followUpAnalysis) {
-              void saveFollowUpReminderToAccount(followUpAnalysis).then(() => {
-                setStatusMessage(ui.followUp.savedReminder);
-                window.dispatchEvent(new Event("handled-follow-ups-changed"));
-              });
-            } else {
-              setStatusMessage(ui.emailActions.statusReminderSaved);
-            }
-          }}
-          className="rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#0F172A] transition-all duration-200 hover:bg-[#F1F5F9] active:scale-95"
-        >
-          {ui.emailActions.remindLaterButton}
-        </button>
-        <button
-          type="button"
-          onClick={() => setStatusMessage(ui.emailActions.statusIgnored)}
-          className="rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#0F172A] transition-all duration-200 hover:bg-[#F1F5F9] active:scale-95"
-        >
-          {ui.emailActions.ignoreButton}
-        </button>
-      </div>
+        }}
+        className="text-sm text-gray-600 hover:text-gray-900"
+      >
+        {ui.emailActions.remindLaterButton}
+      </button>
+      <button
+        type="button"
+        onClick={() => setStatusMessage(ui.emailActions.statusIgnored)}
+        className="text-sm text-gray-600 hover:text-gray-900"
+      >
+        {ui.emailActions.ignoreButton}
+      </button>
+    </div>
+  );
+
+  return (
+    <div
+      className={`transition-all duration-500 ${
+        calmLayout
+          ? `space-y-6 ${isClosingView ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"}`
+          : `space-y-5 rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 shadow-sm ${
+              isClosingView ? "translate-y-2 opacity-0" : "translate-y-0 opacity-100"
+            }`
+      }`}
+    >
+      {calmLayout ? (
+        <h2 className="text-sm font-medium text-gray-900">
+          {ui.emailActions.chooseReplyTitle}
+        </h2>
+      ) : (
+        <>
+          <h2 className="flex items-center gap-2 text-lg font-medium text-[#0F172A]">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              className="h-4 w-4 text-accent"
+              fill="none"
+            >
+              <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
+              <path
+                d="M6.7 10h6.6M10 6.7v6.6"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            {ui.emailActions.actionsTitle}
+          </h2>
+
+          <div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs leading-relaxed text-emerald-800">
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5">🔒</span>
+              <div>
+                <p className="font-semibold">You stay in control.</p>
+                <p className="mt-1">{TRUST_COPY.neverSend}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-1 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+            <p className="text-sm font-semibold text-accent">
+              {isPro
+                ? "Unlimited replies"
+                : `${Math.max(0, FREE_LIMIT - usageCount)} replies left today`}
+            </p>
+            <Link
+              href="/settings"
+              className="text-xs font-medium text-accent hover:underline"
+            >
+              Settings & Billing
+            </Link>
+          </div>
+
+          <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                  Workflow mode
+                </p>
+                <p className="text-sm font-semibold text-gray-900">{workflowBehavior.label}</p>
+                <p className="mt-0.5 text-xs font-medium italic text-gray-600">
+                  {workflowBehavior.tagline}
+                </p>
+              </div>
+
+              <Link
+                href="/settings"
+                className="text-xs font-medium text-accent hover:underline"
+              >
+                Change
+              </Link>
+            </div>
+
+            <p className="mt-1 text-xs text-gray-500">{workflowBehavior.status}</p>
+
+            {workflowBehavior.emphasizeApproval ? (
+              <div className="mt-2 rounded-lg border border-accent/15 bg-accent-muted px-3 py-2 text-[11px] leading-relaxed text-accent">
+                {workflowMode === "assist"
+                  ? "Here's what I recommend — review each option and approve before sending."
+                  : "This is already prepared — you approve before anything sends."}
+              </div>
+            ) : null}
+
+            <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] leading-relaxed text-emerald-800">
+              Handled never sends email without your explicit approval.
+            </div>
+
+            {followUpAnalysis ? (
+              <p className="mt-2 rounded-lg border border-violet-100 bg-violet-50/80 px-3 py-2 text-[11px] leading-relaxed text-violet-900">
+                {followUpAnalysis.calmPrompt}
+              </p>
+            ) : workflowBehavior.showFollowUpReminders && replyRecommendedProp ? (
+              <p className="mt-2 text-[11px] text-violet-800">
+                When you&apos;re ready, Handled can remember to nudge this thread — no pressure.
+              </p>
+            ) : null}
+          </div>
+
+          {!isPro ? (
+            <div className="mb-4 rounded-xl border border-accent/15 bg-accent-muted px-3 py-2 text-xs text-accent">
+              Coming soon: connect multiple inboxes and manage all your email accounts in one
+              place.
+              <button
+                type="button"
+                onClick={() => setShowUpgrade(true)}
+                className="ml-1 font-semibold underline"
+              >
+                Pro users get early access.
+              </button>
+            </div>
+          ) : (
+            <div className="mb-4 rounded-xl border border-accent/15 bg-accent-muted px-3 py-2 text-xs text-accent">
+              Coming soon: multiple inboxes. As a Pro user, you&apos;ll be first in line for early
+              access.
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void handleLogout()}
+            className="text-left text-[10px] text-gray-400 hover:text-gray-600"
+          >
+            Sign out
+          </button>
+          {secondaryActionsRow}
+        </>
+      )}
 
       {!shouldOfferReplies ? (
-        <div className="space-y-4 border-t border-gray-200 pt-5 rounded-xl border border-slate-200 bg-slate-50 p-5">
+        <div
+          className={
+            calmLayout
+              ? "space-y-3 py-2"
+              : "space-y-4 border-t border-gray-200 pt-5 rounded-xl border border-slate-200 bg-slate-50 p-5"
+          }
+        >
           <p className="text-sm font-semibold text-[#0F172A]">No reply recommended</p>
           <p className="mt-2 text-sm leading-relaxed text-gray-600">
             {replySuppressedReason ??
@@ -1773,7 +1898,8 @@ return () => clearTimeout(timeout);
           ) : null}
         </div>
       ) : (
-      <div className="space-y-4 border-t border-gray-200 pt-5">
+      <div className={calmLayout ? "space-y-5" : "space-y-4 border-t border-gray-200 pt-5"}>
+          {!calmLayout ? (
           <div className="max-w-md space-y-2">
             <label
               htmlFor="workflow-reply-language"
@@ -1789,7 +1915,7 @@ return () => clearTimeout(timeout);
                 handleWorkflowLanguageChange(event.target.value as ReplyLanguage)
               }
               disabled={isGeneratingReplies || isRefining || isClosingView}
-              className="w-full rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-3 py-2.5 text-sm text-[#0F172A] outline-none transition-all duration-200 focus:border-[#6366F1] disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-3 py-2.5 text-sm text-[#0F172A] outline-none transition-all duration-200 focus:border-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               {workflowLanguageOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1804,6 +1930,7 @@ return () => clearTimeout(timeout);
               <DraftMemoryStyleChip label={draftStyleLabel} />
             ) : null}
           </div>
+          ) : null}
 
           {isGeneratingReplies ? (
             <div className="space-y-3">
@@ -1817,38 +1944,96 @@ return () => clearTimeout(timeout);
           ) : null}
 
           <div className="space-y-3">
-          <p className="text-xs font-medium uppercase tracking-[0.08em] text-gray-500">
-            {contextHint}
-          </p>
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-[#0F172A]">
-              {ui.emailActions.chooseReplyTitle}
-            </p>
-            <p className="text-sm text-gray-500">
-              {ui.emailActions.chooseReplyDescription}
-            </p>
-          </div>
-          <p className="text-xs text-gray-500">
-  Adjust how your reply sounds
-</p>
-<p className="text-xs text-indigo-500 font-medium mb-1">
-Recommended: {recommendedTone}
-</p>
-<p className="mt-2 text-sm font-semibold text-indigo-600">
-  {isPro
-    ? "Unlimited replies"
-    : `${Math.max(0, FREE_LIMIT - usageCount)} replies left today`}
-</p>
-{!isPro && usageCount >= FREE_LIMIT - 2 && usageCount < FREE_LIMIT ? (
-  <p className="mt-1 text-[11px] text-orange-500">
-    Almost out — consider upgrading soon
-  </p>
-) : null}
-{!isPro && usageCount === FREE_LIMIT - 1 ? (
-  <p className="mt-1 text-[11px] text-red-500">
-    Last free reply — upgrade next
-  </p>
-) : null}
+          {!calmLayout ? (
+            <>
+              <p className="text-xs font-medium uppercase tracking-[0.08em] text-gray-500">
+                {contextHint}
+              </p>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-[#0F172A]">
+                  {ui.emailActions.chooseReplyTitle}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {ui.emailActions.chooseReplyDescription}
+                </p>
+              </div>
+              <p className="text-xs text-gray-500">Adjust how your reply sounds</p>
+              <p className="text-xs font-medium text-accent/80">
+                Recommended: {recommendedTone}
+              </p>
+              <p className="mt-2 text-sm font-semibold text-accent">
+                {isPro
+                  ? "Unlimited replies"
+                  : `${Math.max(0, FREE_LIMIT - usageCount)} replies left today`}
+              </p>
+              {!isPro && usageCount >= FREE_LIMIT - 2 && usageCount < FREE_LIMIT ? (
+                <p className="mt-1 text-[11px] text-orange-500">
+                  Almost out — consider upgrading soon
+                </p>
+              ) : null}
+              {!isPro && usageCount === FREE_LIMIT - 1 ? (
+                <p className="mt-1 text-[11px] text-red-500">
+                  Last free reply — upgrade next
+                </p>
+              ) : null}
+            </>
+          ) : null}
+
+          {calmLayout ? (
+            <CalmCollapsible
+              title="Tone & language"
+              summary={`${mapTone(tone)} · ${ui.personalization.languages[workflowReplyLanguage]}`}
+            >
+              <div className="max-w-md space-y-4 pt-1">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="workflow-reply-language-calm"
+                    className="block text-xs font-medium text-gray-500"
+                  >
+                    {ui.emailActions.replyLanguageLabel}
+                  </label>
+                  <select
+                    id="workflow-reply-language-calm"
+                    aria-label="Reply Language"
+                    value={workflowReplyLanguage}
+                    onChange={(event) =>
+                      handleWorkflowLanguageChange(event.target.value as ReplyLanguage)
+                    }
+                    disabled={isGeneratingReplies || isRefining || isClosingView}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 disabled:opacity-50"
+                  >
+                    {workflowLanguageOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {ui.personalization.languages[option.value]}
+                      </option>
+                    ))}
+                  </select>
+                  {languageChangeHint ? (
+                    <p className="text-xs text-gray-500">{languageChangeHint}</p>
+                  ) : null}
+                  {draftStyleLabel ? <DraftMemoryStyleChip label={draftStyleLabel} /> : null}
+                </div>
+                <div className="space-y-2 pt-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-gray-500">Tone</label>
+                    <span className="text-xs font-medium capitalize text-gray-600">
+                      {mapTone(tone)}
+                    </span>
+                  </div>
+                  {mapTone(tone) !== recommendedTone ? (
+                    <button
+                      type="button"
+                      onClick={() => setTone(toneToValue(recommendedTone))}
+                      className="text-[11px] text-gray-500 hover:text-gray-800"
+                    >
+                      Use recommended: {recommendedTone}
+                    </button>
+                  ) : null}
+                  {toneSliderInput}
+                </div>
+              </div>
+            </CalmCollapsible>
+          ) : (
           <div className="space-y-2 p-3 rounded-xl border border-gray-200 bg-white">
   <div className="flex items-center justify-between">
     <label className="text-xs font-medium text-gray-500">
@@ -1860,7 +2045,7 @@ Recommended: {recommendedTone}
     liveTone < 30
       ? "text-red-500"
       : liveTone < 70
-      ? "text-indigo-500"
+      ? "text-accent/80"
       : "text-green-500"
   }`}
 >
@@ -1881,7 +2066,7 @@ Recommended: {recommendedTone}
   <button
     type="button"
     onClick={() => setTone(toneToValue(recommendedTone))}
-    className="text-[11px] text-indigo-500 mt-1 hover:underline transition-all duration-200 hover:scale-105 active:scale-95"
+    className="text-[11px] text-accent/80 mt-1 hover:underline transition-all duration-200 hover:scale-105 active:scale-95"
   >
     ⚡ Apply recommended: {recommendedTone}
   </button>
@@ -1899,7 +2084,7 @@ Recommended: {recommendedTone}
     liveTone < 30
 ? "bg-red-500"
 : liveTone < 70
-? "bg-indigo-500"
+? "bg-accent"
 : "bg-green-500"
   }`}
   style={{ width: `${liveTone}%` }}/>
@@ -1970,7 +2155,7 @@ if (distance < 6) {
   [&::-webkit-slider-thumb]:rounded-full
   [&::-webkit-slider-thumb]:bg-white
   [&::-webkit-slider-thumb]:border-2
-  [&::-webkit-slider-thumb]:border-indigo-500
+  [&::-webkit-slider-thumb]:border-accent
   [&::-webkit-slider-thumb]:shadow-md
   [&::-webkit-slider-thumb]:transition-all
   [&::-webkit-slider-thumb]:duration-200
@@ -1988,7 +2173,15 @@ if (distance < 6) {
     <span>Friendly</span>
   </div>
 </div>
-          <BrainUsagePanel usage={brainUsage} className="mb-1" />
+          )}
+
+          {calmLayout && brainUsage?.active ? (
+            <CalmCollapsible title="Context used" summary="Handled Brain">
+              <BrainUsagePanel usage={brainUsage} className="mt-2 border-0 bg-transparent" />
+            </CalmCollapsible>
+          ) : !calmLayout ? (
+            <BrainUsagePanel usage={brainUsage} className="mb-1" />
+          ) : null}
           <div
             className="space-y-3"
             role="radiogroup"
@@ -2001,7 +2194,7 @@ if (distance < 6) {
               </p>
             ) : null}
             {!isPro && usageCount >= FREE_LIMIT ? (
-              <div className="mb-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-700">
+              <div className="mb-2 rounded-lg border border-accent/20 bg-accent-muted p-3 text-sm text-accent">
                 {"You're out of free replies for today."}
               </div>
             ) : null}
@@ -2029,10 +2222,10 @@ if (distance < 6) {
                   className="space-y-1 opacity-0 translate-y-2 animate-[fadeInUp_0.35s_ease-out_forwards]"
                   style={{ animationDelay: `${index * 60}ms` }}
                 >
-                  {isRecommended ? (
+                  {isRecommended && !calmLayout ? (
   <div className="mb-2">
-    <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-[#EEF2FF] border border-[#6366F1]/20">
-      <span className="text-[10px] font-semibold text-[#6366F1] uppercase tracking-wide">
+    <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-accent-muted border border-accent/20">
+      <span className="text-[10px] font-semibold text-accent uppercase tracking-wide">
         {workflowBehavior.recommendationLabel}
         {memoryProfile ? (
           <span className="ml-2 text-[9px] font-normal normal-case text-gray-400">(learned)</span>
@@ -2040,22 +2233,30 @@ if (distance < 6) {
       </span>
     </div>
   </div>
+) : isRecommended && calmLayout ? (
+  <p className="mb-1">
+    <span className="chip-ai normal-case">{workflowBehavior.recommendationLabel}</span>
+  </p>
 ) : null}
                   <button
                     type="button"
                     onClick={() => selectReplyOption(index)}
                     aria-pressed={isSelected}
-                    className={`w-full rounded-xl border p-4 text-left text-sm leading-relaxed ${
-                      isSelected
-                        ? "border-[#6366F1] bg-[#EEF2FF] shadow-md ring-2 ring-indigo-200 scale-[1.01] transition-all duration-200"
-                        : "border-[#E2E8F0] bg-white text-gray-500 hover:border-[#6366F1] hover:bg-[#F8FAFF] hover:shadow-md transition-all duration-200"
+                    className={`w-full rounded-lg p-4 text-left text-sm leading-relaxed transition-colors ${
+                      calmLayout
+                        ? isSelected
+                          ? "surface-selected text-gray-900"
+                          : "text-gray-600 hover:bg-accent-muted/40"
+                        : isSelected
+                          ? "border border-accent bg-accent-muted shadow-md ring-2 ring-accent/20 scale-[1.01] transition-all duration-200"
+                          : "border border-[#E2E8F0] bg-white text-gray-500 hover:border-accent hover:bg-accent-muted hover:shadow-md transition-all duration-200"
                     }`}
                   >
                     <div className="flex items-start gap-3">
                       <span
                         className={`mt-1 inline-block h-3 w-3 shrink-0 rounded-full border ${
                           isSelected
-                            ? "border-[#6366F1] bg-[#6366F1]"
+                            ? "border-accent bg-accent"
                             : "border-[#CBD5E1] bg-transparent"
                         }`}
                         aria-hidden="true"
@@ -2075,7 +2276,7 @@ if (distance < 6) {
                             ) : null}
                           </span>
                         </span>
-                        {isRecommended ? (
+                        {isRecommended && !calmLayout ? (
                           <div className="mt-2">
                             <div className="mb-1 flex items-center justify-between text-[10px] text-gray-400">
                               <span>Confidence</span>
@@ -2083,7 +2284,7 @@ if (distance < 6) {
                             </div>
                             <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
                               <div
-                                className="h-full bg-indigo-500 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                                className="h-full bg-accent transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
                                 style={{ width: `${confidence}%` }}
                               />
                             </div>
@@ -2170,7 +2371,7 @@ if (distance < 6) {
                 isRefining ||
                 isClosingView
               }
-              className="rounded-lg bg-[#6366F1] px-4 py-2 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-[#585BE0] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-accent-hover active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
             >
               {ui.emailActions.sendButton}
             </button>
@@ -2200,15 +2401,23 @@ if (distance < 6) {
         </p>
       ) : null}
 
-      <button
-        type="button"
-        onClick={() =>
-          console.log(JSON.parse(localStorage.getItem("analytics") || "[]"))
-        }
-        className="mt-2 text-[10px] text-gray-400"
-      >
-        View analytics
-      </button>
+      {!calmLayout ? (
+        <button
+          type="button"
+          onClick={() =>
+            console.log(JSON.parse(localStorage.getItem("analytics") || "[]"))
+          }
+          className="mt-2 text-[10px] text-gray-400"
+        >
+          View analytics
+        </button>
+      ) : (
+        <>
+          <p className="text-xs text-gray-400">{TRUST_COPY.neverSend}</p>
+          <CalmCollapsible title="Other actions">{secondaryActionsRow}</CalmCollapsible>
+          <CalmCollapsible title="Account & workflow">{accountMetaBlock}</CalmCollapsible>
+        </>
+      )}
 
       {showUpgrade ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
@@ -2223,14 +2432,14 @@ if (distance < 6) {
               }
             </p>
 
-            <div className="mb-4 rounded-lg border border-gray-200 bg-indigo-50 p-4">
+            <div className="mb-4 rounded-lg border border-gray-200 bg-accent-muted p-4">
               <p className="text-sm font-semibold text-gray-700">{PRICING.pro.name}</p>
 
-              <span className="mt-0.5 block text-[10px] font-medium text-indigo-500">
+              <span className="mt-0.5 block text-[10px] font-medium text-accent/80">
                 Most popular
               </span>
 
-              <p className="text-xl font-bold text-indigo-600">
+              <p className="text-xl font-bold text-accent">
                 {PRICING.pro.price}
                 <span className="text-sm text-gray-500">{PRICING.pro.period}</span>
               </p>
@@ -2249,7 +2458,7 @@ if (distance < 6) {
 
             <button
               type="button"
-              className="w-full rounded-lg bg-indigo-600 py-2 font-medium text-white shadow-md transition hover:bg-indigo-700"
+              className="w-full rounded-lg bg-accent py-2 font-medium text-white shadow-md transition hover:bg-accent-hover"
               onClick={async () => {
                 trackEvent("upgrade_clicked");
 

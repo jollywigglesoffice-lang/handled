@@ -4,18 +4,11 @@ import Link from "next/link";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 import { getWorkflowModeProfile } from "@/lib/workflow-mode/profiles";
 
-const ACCENT_STYLES: Record<
-  ReturnType<typeof getWorkflowModeProfile>["accent"],
-  string
-> = {
-  indigo: "border-indigo-200 bg-indigo-50 text-indigo-950",
-  emerald: "border-emerald-200 bg-emerald-50 text-emerald-950",
-  violet: "border-violet-200 bg-violet-50 text-violet-950",
-};
+const BANNER_STYLE = "border-accent/20 bg-accent-muted/50 text-foreground";
 
 export function WorkflowModeBanner({ mode }: { mode: WorkflowMode }) {
   const profile = getWorkflowModeProfile(mode);
-  const accent = ACCENT_STYLES[profile.accent];
+  const accent = BANNER_STYLE;
 
   return (
     <div

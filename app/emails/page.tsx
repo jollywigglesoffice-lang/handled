@@ -27,16 +27,11 @@ import { syncSenderRelationshipsFromAccount } from "@/lib/relationship-intellige
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import { fakeEmailsToInboxMessages } from "@/lib/inbox-buckets-mock";
 import { syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
-import { FollowUpsSection } from "@/app/emails/follow-ups-section";
-import { DailyWorkspacePanel } from "@/app/emails/daily-workspace-panel";
-import { ContextualSearchPanel } from "@/app/emails/contextual-search-panel";
-import { DailyBriefingPanel } from "@/app/emails/daily-briefing-panel";
-import { ProactiveSuggestionsPanel } from "@/app/emails/proactive-suggestions-panel";
-import { WorkflowModeBanner } from "@/app/emails/workflow-mode-banner";
+import { InboxSecondaryTools } from "@/app/emails/inbox-secondary-tools";
+import { getWorkflowModeProfile } from "@/lib/workflow-mode/profiles";
 import { InboxClutterSection } from "@/app/emails/inbox-clutter-section";
 import { useStableInboxBuckets } from "@/app/emails/use-stable-inbox-buckets";
 import { GmailInboxCard, type GmailCardMessage } from "@/app/emails/gmail-inbox-card";
-import { InboxTrainingBanner } from "@/app/emails/inbox-training-banner";
 import { InboxSyncBar } from "@/app/emails/inbox-sync-bar";
 import {
   type CategorySource,
@@ -80,7 +75,7 @@ function SectionIcon({ title }: { title: InboxSectionTitle }) {
       <svg
         aria-hidden="true"
         viewBox="0 0 20 20"
-        className="h-4 w-4 text-[#6366F1]"
+        className="h-4 w-4 text-accent"
         fill="none"
       >
         <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
@@ -100,7 +95,7 @@ function SectionIcon({ title }: { title: InboxSectionTitle }) {
       <svg
         aria-hidden="true"
         viewBox="0 0 20 20"
-        className="h-4 w-4 text-[#6366F1]"
+        className="h-4 w-4 text-accent"
         fill="none"
       >
         <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
@@ -119,7 +114,7 @@ function SectionIcon({ title }: { title: InboxSectionTitle }) {
     <svg
       aria-hidden="true"
       viewBox="0 0 20 20"
-      className="h-4 w-4 text-[#6366F1]"
+      className="h-4 w-4 text-accent"
       fill="none"
     >
       <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
@@ -151,7 +146,7 @@ function formatInboxDate(iso: string): string {
 }
 
 function GmailSectionLeadingIcon({ category }: { category: InboxAiCategory }) {
-  const common = "h-5 w-5 shrink-0 text-[#6366F1]";
+  const common = "h-5 w-5 shrink-0 text-accent";
   if (category === "needs_attention") {
     return (
       <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
@@ -225,26 +220,27 @@ function GmailCategorySectionHeader({
   count: number;
 }) {
   const subtitle = inboxCategorySectionSubtitle(category, locale);
+  const isPrimary =
+    category === "needs_attention" ||
+    category === "quick_reply" ||
+    category === "handled";
+
   return (
-    <div className="border-b border-[#E2E8F0] pb-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]">
-            <GmailSectionLeadingIcon category={category} />
-          </span>
-          <div className="min-w-0 space-y-1">
-            <h2 className="text-lg font-semibold tracking-tight text-[#0F172A]">
-              {inboxCategorySectionTitle(category, locale)}
-            </h2>
-            {subtitle ? (
-              <p className="text-sm leading-relaxed text-gray-500">{subtitle}</p>
-            ) : null}
-          </div>
+    <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        {isPrimary ? (
+          <GmailSectionLeadingIcon category={category} />
+        ) : null}
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-gray-900">
+            {inboxCategorySectionTitle(category, locale)}
+          </h2>
+          {subtitle && isPrimary ? (
+            <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>
+          ) : null}
         </div>
-        <span className="rounded-full border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-1 text-xs font-medium tabular-nums text-gray-600">
-          {count}
-        </span>
       </div>
+      <span className="text-xs tabular-nums text-gray-400">{count}</span>
     </div>
   );
 }
@@ -262,8 +258,8 @@ function MockEmailCard({
       href={`/emails/${id}`}
       className={`block rounded-xl border p-6 shadow-sm transition-all duration-200 hover:scale-[1.01] hover:shadow-md ${
         highlighted
-          ? "border-[#C7D2FE] bg-[#EEF2FF]/40 hover:border-[#A5B4FC]"
-          : "border-[#E2E8F0] bg-[#FFFFFF] hover:border-[#6366F1]/40"
+          ? "border-[#C7D2FE] bg-accent-muted/40 hover:border-[#A5B4FC]"
+          : "border-[#E2E8F0] bg-[#FFFFFF] hover:border-accent/40"
       }`}
     >
       <article className="space-y-3">
@@ -669,110 +665,71 @@ export default function EmailsInboxPage() {
       ? `1 ${ui.home.attentionCountSingle}`
       : `${todayAttentionCount} ${ui.home.attentionCountPlural}`;
 
-  return (
-    <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
-        {inboxLoading ? (
-          <section className="mb-8 mt-6 flex min-h-48 items-center justify-center rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] px-6 py-12 shadow-sm">
-            <div className="space-y-2 text-center">
-              <h2 className="text-2xl font-medium text-gray-500">
-                {ui.home.organizingInbox}
-              </h2>
-              <p
-                className={`text-sm text-gray-500 transition-opacity duration-500 ${
-                  showMicroMessage ? "opacity-100" : "opacity-0"
-                }`}
-              >
-                {loadingMicroMessages[messageIndex]}
-              </p>
-            </div>
-          </section>
-        ) : (
-          <section
-            className={`mb-8 space-y-2 rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 text-left shadow-sm transition-opacity duration-500 sm:p-7 ${
-              showContent ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <h2 className="text-2xl font-semibold tracking-tight text-[#0F172A] sm:text-3xl">
-                {ui.home.todayTitle}
-              </h2>
-              <div className="w-full max-w-[220px] space-y-1 sm:w-auto">
-                <label
-                  htmlFor="app-language"
-                  className="block text-xs font-medium uppercase tracking-[0.08em] text-gray-500"
-                >
-                  {ui.home.appLanguageLabel}
-                </label>
-                <select
-                  id="app-language"
-                  value={uiLanguage}
-                  onChange={(event) => setUiLanguage(event.target.value as "en" | "it")}
-                  className="w-full rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-3 py-2 text-sm text-[#0F172A] outline-none transition-all duration-200 focus:border-[#6366F1]"
-                >
-                  <option value="en">{ui.home.appLanguageEnglish}</option>
-                  <option value="it">{ui.home.appLanguageItalian}</option>
-                </select>
-              </div>
-            </div>
-            <p className="flex flex-wrap items-baseline gap-2 text-base font-medium text-[#0F172A]">
-              {isCountsPending && inboxMode === "gmail" ? (
-                <span className="inline-flex items-center gap-1.5 text-sm font-normal text-gray-400">
-                  <span
-                    className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[#6366F1] border-t-transparent"
-                    aria-hidden
-                  />
-                  Updating counts…
-                </span>
-              ) : null}
-              <span className={isCountsPending && inboxMode === "gmail" ? "opacity-70" : ""}>
-                {importantEmailLabel}
-              </span>
-            </p>
-            <p className="text-sm text-gray-500">{ui.home.everythingHandled}</p>
-            {inboxMode === "gmail" && (
-              <p className="text-xs text-gray-400">
-                Inbox synced from Gmail (read-only). Sections use AI triage (sender, subject, and
-                snippet only).
-              </p>
-            )}
-          </section>
-        )}
+  const workflowProfile = getWorkflowModeProfile(workflowMode);
 
+  return (
+    <main className="min-h-screen bg-white px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto flex w-full max-w-2xl flex-col">
         <header
-          className={`rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm transition-opacity duration-500 ${
+          className={`flex flex-wrap items-start justify-between gap-4 transition-opacity duration-500 ${
             showContent ? "opacity-100" : "opacity-0"
           }`}
         >
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-gray-500">
-                {ui.home.brandTag}
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <AuthNav />
-                <Link
-                  href="/settings"
-                  className="rounded-lg border border-[#E2E8F0] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#6366F1] transition-all duration-200 hover:bg-[#F8FAFC] active:scale-95"
-                >
-                  {ui.home.settingsButton}
-                </Link>
-              </div>
-            </div>
-            <p className="text-sm font-semibold tracking-[0.01em] text-[#4F46E5] [text-shadow:0_1px_0_rgba(255,255,255,0.8),0_6px_16px_rgba(79,70,229,0.14)]">
-              {ui.home.quickTopLine}
-            </p>
-            <h1 className="text-3xl font-semibold text-[#0F172A]">
-              {ui.home.heroTitle}
+          <div className="min-w-0 space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+              {ui.home.todayTitle}
             </h1>
-            <p className="max-w-2xl text-sm leading-relaxed text-gray-500">
-              {ui.home.heroDescription}
-            </p>
+            {!inboxLoading ? (
+              <p className="text-sm text-gray-500">
+                {isCountsPending && inboxMode === "gmail" ? (
+                  <span className="mr-2 inline-flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-accent border-t-transparent"
+                      aria-hidden
+                    />
+                  </span>
+                ) : null}
+                <span className="font-medium text-gray-700">{importantEmailLabel}</span>
+                <span className="text-gray-400"> · {workflowProfile.label}</span>
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500">{ui.home.organizingInbox}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="app-language" className="sr-only">
+              {ui.home.appLanguageLabel}
+            </label>
+            <select
+              id="app-language"
+              value={uiLanguage}
+              onChange={(event) => setUiLanguage(event.target.value as "en" | "it")}
+              className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-accent"
+            >
+              <option value="en">{ui.home.appLanguageEnglish}</option>
+              <option value="it">{ui.home.appLanguageItalian}</option>
+            </select>
+            <AuthNav />
+            <Link href="/settings" className="link-accent text-xs">
+              {ui.home.settingsButton}
+            </Link>
           </div>
         </header>
 
+        {inboxLoading ? (
+          <section className="mt-12 flex min-h-40 items-center justify-center">
+            <p
+              className={`text-sm text-gray-400 transition-opacity duration-500 ${
+                showMicroMessage ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              {loadingMicroMessages[messageIndex]}
+            </p>
+          </section>
+        ) : null}
+
         <section
-          className={`space-y-8 transition-opacity duration-500 ${
+          className={`mt-10 space-y-12 transition-opacity duration-500 ${
             inboxLoading ? "opacity-100" : showContent ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -797,7 +754,7 @@ export default function EmailsInboxPage() {
               </p>
               <Link
                 href="/login"
-                className="mt-4 inline-flex rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                className="mt-4 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover"
               >
                 Continue with Google
               </Link>
@@ -823,50 +780,23 @@ export default function EmailsInboxPage() {
               <p className="text-sm text-gray-500">No messages in your Gmail inbox.</p>
             </div>
           ) : inboxMode === "gmail" ? (
-            <div className="space-y-10">
-              <WorkflowModeBanner mode={workflowMode} />
-              <DailyWorkspacePanel messages={messagesWithOverrides} />
-              <ContextualSearchPanel messages={messagesWithOverrides} />
-              <DailyBriefingPanel messages={messagesWithOverrides} />
-              <ProactiveSuggestionsPanel
-                messages={messagesWithOverrides}
-                locale={uiLanguage === "it" ? "it" : "en"}
-              />
-              <FollowUpsSection
-                messages={gmailMessages}
-                locale={uiLanguage === "it" ? "it" : "en"}
-              />
+            <div className="space-y-12">
               <InboxSyncBar
                 lastSyncedAt={lastSyncedAt}
                 isRefreshing={isRefreshing}
                 onRefresh={() => void loadInbox({ silent: true })}
               />
-              <InboxTrainingBanner
-                messages={gmailBuckets.allVisible as GmailCardMessage[]}
-                onCategoryChange={handleCategoryChange}
-              />
-              {gmailBuckets.showClutterSection ? (
-                <InboxClutterSection
-                  messages={gmailBuckets.clutterEmails as GmailCardMessage[]}
-                  locale={uiLanguage === "it" ? "it" : "en"}
-                  onCategoryChange={handleCategoryChange}
-                  defaultCollapsed
-                />
-              ) : null}
               {gmailBuckets.categoryOrder.map((category) => {
                 const list = gmailBuckets.byCategory[category];
                 if (!list.length) return null;
                 return (
-                  <div
-                    key={category}
-                    className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm transition-all duration-200"
-                  >
+                  <section key={category} className="space-y-3">
                     <GmailCategorySectionHeader
                       category={category}
                       locale={uiLanguage}
                       count={gmailBuckets.counts[category]}
                     />
-                    <div className="mt-6 space-y-4">
+                    <div className="space-y-2">
                       {list.map((message) => (
                         <div
                           key={message.id}
@@ -883,22 +813,33 @@ export default function EmailsInboxPage() {
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </section>
                 );
               })}
+              {gmailBuckets.showClutterSection ? (
+                <InboxClutterSection
+                  messages={gmailBuckets.clutterEmails as GmailCardMessage[]}
+                  locale={uiLanguage === "it" ? "it" : "en"}
+                  onCategoryChange={handleCategoryChange}
+                  defaultCollapsed
+                />
+              ) : null}
+              <InboxSecondaryTools
+                messages={messagesWithOverrides as GmailCardMessage[]}
+                gmailMessages={gmailMessages as GmailCardMessage[]}
+                allVisible={gmailBuckets.allVisible as GmailCardMessage[]}
+                locale={uiLanguage === "it" ? "it" : "en"}
+                onCategoryChange={handleCategoryChange}
+              />
             </div>
           ) : (
-            inboxSections.map((section, index) => (
-              <div
-                key={section.title}
-                className={index > 0 ? "border-t border-gray-200 pt-8" : undefined}
-              >
-                <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm transition-all duration-200">
-                  <h2 className="mb-5 flex items-center gap-2 text-lg font-medium text-[#0F172A]">
+            inboxSections.map((section) => (
+              <section key={section.title} className="space-y-3">
+                  <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
                     <SectionIcon title={section.title} />
                     {getSectionLabel(section.title, ui)}
                   </h2>
-                  <div className="space-y-4">
+                  <div className="space-y-2">
                     {section.title === "Needs Your Attention" &&
                     section.emails.length === 0 ? (
                       <EmptyNeedsAttentionState show={showContent} />
@@ -924,8 +865,7 @@ export default function EmailsInboxPage() {
                       ))
                     )}
                   </div>
-                </div>
-              </div>
+              </section>
             ))
           )}
         </section>

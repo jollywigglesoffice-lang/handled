@@ -44,7 +44,7 @@ function SyncStatusBar({
     status === "saved"
       ? "border-emerald-200 bg-emerald-50 text-emerald-900"
       : status === "syncing"
-        ? "border-indigo-200 bg-indigo-50 text-indigo-900"
+        ? "border-accent/20 bg-accent-muted text-accent"
         : status === "offline_cached"
           ? "border-amber-200 bg-amber-50 text-amber-900"
           : status === "error"
@@ -55,7 +55,7 @@ function SyncStatusBar({
     <div className={`flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3 text-sm ${tone}`}>
       {status === "syncing" ? (
         <span
-          className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"
+          className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent"
           aria-hidden
         />
       ) : null}
@@ -91,7 +91,7 @@ function BrainEntryCard({
       <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-indigo-700 ring-1 ring-indigo-100">
+            <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-accent ring-1 ring-accent/15">
               {BRAIN_CATEGORY_LABELS[entry.category]}
             </span>
             <h3 className="mt-2 text-sm font-semibold text-[#0F172A]">
@@ -130,7 +130,7 @@ function BrainEntryCard({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/30 p-4 ring-1 ring-indigo-100">
+    <div className="space-y-3 rounded-xl border border-accent/20 bg-accent-muted/30 p-4 ring-1 ring-accent/15">
       <select
         value={entry.category}
         onChange={(e) => onChange({ category: e.target.value as BrainEntryCategory })}
@@ -161,7 +161,7 @@ function BrainEntryCard({
           type="button"
           disabled={isSaving}
           onClick={onSaveEdit}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
         >
           {isSaving ? "Saving…" : "Save entry"}
         </button>
@@ -335,9 +335,9 @@ export function HandledBrainSettings() {
         </Link>
       </div>
 
-      <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 text-sm text-indigo-900">
+      <div className="rounded-xl border border-accent/15 bg-accent-muted/50 p-4 text-sm text-accent">
         <p className="font-medium">More sources coming soon</p>
-        <p className="mt-1 text-xs text-indigo-800">
+        <p className="mt-1 text-xs text-accent">
           Contacts, Docs, and Drive will plug into the same knowledge pipeline as Handled Brain.
         </p>
       </div>
@@ -362,7 +362,7 @@ export function HandledBrainSettings() {
           <button
             type="button"
             onClick={addEntry}
-            className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
           >
             Add your first entry
           </button>
@@ -389,7 +389,7 @@ export function HandledBrainSettings() {
         <button
           type="button"
           onClick={addEntry}
-          className="text-sm font-medium text-indigo-600 hover:underline"
+          className="text-sm font-medium text-accent hover:underline"
         >
           + Add knowledge
         </button>
@@ -400,7 +400,7 @@ export function HandledBrainSettings() {
           type="button"
           disabled={syncStatus === "syncing"}
           onClick={() => void syncNow()}
-          className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          className="rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
         >
           {syncStatus === "syncing" ? "Syncing…" : "Sync now"}
         </button>

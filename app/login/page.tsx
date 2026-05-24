@@ -184,7 +184,7 @@ export default function LoginPage() {
     <main className="min-h-screen bg-[#F8FAFC] flex items-center justify-center px-4">
       <section className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">
             Handled
           </p>
           <h1 className="mt-1 text-2xl font-semibold text-gray-900">
@@ -200,7 +200,7 @@ export default function LoginPage() {
         </div>
 
         {authNotice && (
-          <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-semibold leading-relaxed text-indigo-700">
+          <div className="rounded-xl border border-accent/20 bg-accent-muted px-4 py-3 text-sm font-semibold leading-relaxed text-accent">
             {authNotice}
           </div>
         )}
@@ -312,7 +312,7 @@ export default function LoginPage() {
             type="button"
             onClick={handleAuthSubmit}
             disabled={isSubmitting || oauthLoading}
-            className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+            className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:opacity-60"
           >
             {isSubmitting
               ? "Please wait..."

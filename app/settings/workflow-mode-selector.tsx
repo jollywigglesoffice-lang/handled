@@ -4,23 +4,11 @@ import type { WorkflowMode } from "@/lib/workflow-mode";
 import { WORKFLOW_MODES } from "@/lib/workflow-mode";
 import { getWorkflowModeProfile } from "@/lib/workflow-mode/profiles";
 
-const ACCENT_SELECTED: Record<
-  ReturnType<typeof getWorkflowModeProfile>["accent"],
-  string
-> = {
-  indigo: "border-indigo-400 bg-indigo-50/80 ring-2 ring-indigo-200",
-  emerald: "border-emerald-400 bg-emerald-50/80 ring-2 ring-emerald-200",
-  violet: "border-violet-400 bg-violet-50/80 ring-2 ring-violet-200",
-};
+/** Selected mode: restrained accent ring — not a full purple fill. */
+const MODE_SELECTED =
+  "border-accent/35 bg-accent-muted/40 ring-1 ring-accent/20 shadow-sm";
 
-const ACCENT_IDLE: Record<
-  ReturnType<typeof getWorkflowModeProfile>["accent"],
-  string
-> = {
-  indigo: "border-[#E2E8F0] bg-white hover:border-indigo-300",
-  emerald: "border-[#E2E8F0] bg-white hover:border-emerald-300",
-  violet: "border-[#E2E8F0] bg-white hover:border-violet-300",
-};
+const MODE_IDLE = "border-border bg-white hover:border-accent/20";
 
 const FEATURES: Record<WorkflowMode, string[]> = {
   assist: [
@@ -58,7 +46,7 @@ export function WorkflowModeSelector({ value, onChange }: WorkflowModeSelectorPr
             type="button"
             onClick={() => onChange(id)}
             className={`w-full rounded-2xl border p-5 text-left transition-all duration-200 hover:shadow-sm active:scale-[0.99] ${
-              selected ? ACCENT_SELECTED[profile.accent] : ACCENT_IDLE[profile.accent]
+              selected ? MODE_SELECTED : MODE_IDLE
             }`}
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -69,7 +57,7 @@ export function WorkflowModeSelector({ value, onChange }: WorkflowModeSelectorPr
                 </p>
               </div>
               {selected ? (
-                <span className="rounded-full bg-[#0F172A] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                <span className="rounded-full bg-accent px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                   Active
                 </span>
               ) : null}

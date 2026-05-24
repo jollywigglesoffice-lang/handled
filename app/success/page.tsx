@@ -83,18 +83,18 @@ export default function SuccessPage() {
 
   return (
     <main className="min-h-screen bg-[#F8FAFC] px-4 py-10">
-      <section className="mx-auto w-full max-w-3xl rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 shadow-sm">
-        <p className="mb-4 rounded-full bg-indigo-600 px-3 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-white">
+      <section className="mx-auto w-full max-w-3xl rounded-3xl border border-accent/20 bg-gradient-to-br from-accent-muted/40 via-white to-white p-6 shadow-sm">
+        <p className="mb-4 rounded-full bg-accent px-3 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-white">
           SUCCESS_PAGE_V2_ACTIVE
         </p>
 
         <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-2xl text-white shadow-md">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent text-2xl text-white shadow-md">
             ✨
           </div>
 
           <div className="flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+            <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">
               Upgrade successful
             </p>
 
@@ -114,13 +114,13 @@ export default function SuccessPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-indigo-100 bg-white/80 p-5">
+        <div className="mt-6 rounded-2xl border border-accent/15 bg-white/80 p-5">
           <h2 className="text-lg font-semibold text-gray-900">
             What’s included in Pro
           </h2>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl bg-indigo-50 p-4">
+            <div className="rounded-xl bg-accent-muted p-4">
               <p className="text-sm font-semibold text-gray-900">
                 Unlimited AI replies
               </p>
@@ -129,7 +129,7 @@ export default function SuccessPage() {
               </p>
             </div>
 
-            <div className="rounded-xl bg-indigo-50 p-4">
+            <div className="rounded-xl bg-accent-muted p-4">
               <p className="text-sm font-semibold text-gray-900">
                 Smarter workflow modes
               </p>
@@ -138,7 +138,7 @@ export default function SuccessPage() {
               </p>
             </div>
 
-            <div className="rounded-xl bg-indigo-50 p-4">
+            <div className="rounded-xl bg-accent-muted p-4">
               <p className="text-sm font-semibold text-gray-900">
                 Faster email decisions
               </p>
@@ -147,7 +147,7 @@ export default function SuccessPage() {
               </p>
             </div>
 
-            <div className="rounded-xl bg-indigo-50 p-4">
+            <div className="rounded-xl bg-accent-muted p-4">
               <p className="text-sm font-semibold text-gray-900">
                 Early access
               </p>
@@ -199,7 +199,7 @@ export default function SuccessPage() {
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Link
             href={`/emails?upgraded=true${checkoutSessionQuery}`}
-            className="inline-flex flex-1 items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
+            className="inline-flex flex-1 items-center justify-center rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:bg-accent-hover"
           >
             Return to emails
           </Link>

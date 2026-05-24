@@ -25,7 +25,7 @@ export function EmailDetailAuthVisible({
   return (
     <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto w-full max-w-lg space-y-4">
-        <Link href="/emails" className="text-sm font-medium text-[#6366F1]">
+        <Link href="/emails" className="text-sm font-medium text-accent">
           ← Back to inbox
         </Link>
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-8 shadow-sm space-y-3">
@@ -36,7 +36,7 @@ export function EmailDetailAuthVisible({
           </p>
           <Link
             href={`/login?next=${encodeURIComponent(`/emails/${encodeURIComponent(emailId)}`)}`}
-            className="inline-flex rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"
+            className="inline-flex rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white"
           >
             Go to sign in (optional)
           </Link>

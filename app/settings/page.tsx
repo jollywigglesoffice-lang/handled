@@ -8,6 +8,7 @@ import { FREE_LIMIT, readUsageCountWithDailyReset } from "@/lib/daily-usage";
 import { WORKFLOW_MODE_KEY, type WorkflowMode } from "@/lib/workflow-mode";
 import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
 import { persistWorkflowModeToAccount, syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
+import { CalmCollapsible } from "@/app/components/calm-collapsible";
 import { WorkflowModeSelector } from "./workflow-mode-selector";
 import { CalendarSettings } from "./calendar-settings";
 import { HandledBrainSettings } from "./handled-brain-settings";
@@ -16,6 +17,8 @@ import { SenderRelationshipsSettings } from "./sender-relationships-settings";
 import { SenderRulesSettings } from "./sender-rules-settings";
 import { IdentitySettings } from "./identity-settings";
 import { PersonalizationSettings } from "./personalization-settings";
+import { ReplyToneSettings } from "./reply-tone-settings";
+import { SettingsSection } from "./settings-section";
 import { useUiCopy } from "@/app/use-ui-copy";
 
 export default function SettingsPage() {
@@ -344,7 +347,7 @@ export default function SettingsPage() {
 
           <a
             href="/login?next=/settings"
-            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
+            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:bg-accent-hover"
           >
             Sign in
           </a>
@@ -356,40 +359,27 @@ export default function SettingsPage() {
   const repliesLeft = Math.max(0, FREE_LIMIT - usageCount);
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] px-4 py-8">
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+    <main className="min-h-screen bg-white px-4 py-8 sm:py-12">
+      <div className="mx-auto w-full max-w-2xl">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
-              Handled
-            </p>
-            <h1 className="mt-1 text-3xl font-semibold text-[#0F172A]">Settings</h1>
-            <p className="mt-2 text-sm text-gray-500">
-              Manage your account, plan, billing, and preferences.
-            </p>
-            <p className="text-[10px] text-gray-400">
-              Auth debug:{" "}
-              {authUser?.email ? `signed in as ${authUser.email}` : "not signed in"}
-            </p>
+            <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
+            <p className="mt-1 text-sm text-secondary">{authUser.email}</p>
           </div>
-
-          <Link
-            href="/emails"
-            className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
-          >
+          <Link href="/emails" className="link-accent">
             Back to inbox
           </Link>
         </header>
 
         {showProCelebration && (
-          <section className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 shadow-sm">
+          <section className="rounded-3xl border border-accent/20 bg-gradient-to-br from-accent-muted/40 via-white to-white p-6 shadow-sm">
             <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-2xl text-white shadow-md">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent text-2xl text-white shadow-md">
                 ✨
               </div>
 
               <div className="flex-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
+                <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">
                   Upgrade successful
                 </p>
 
@@ -401,7 +391,7 @@ export default function SettingsPage() {
                 </p>
 
                 {activationMessage && (
-                  <p className="mt-4 rounded-xl border border-indigo-100 bg-white px-4 py-3 text-sm font-medium text-indigo-700">
+                  <p className="mt-4 rounded-xl border border-accent/15 bg-white px-4 py-3 text-sm font-medium text-accent">
                     {activationMessage}
                   </p>
                 )}
@@ -409,21 +399,21 @@ export default function SettingsPage() {
             </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4">
+              <div className="rounded-2xl border border-accent/15 bg-white/80 p-4">
                 <p className="text-sm font-semibold text-gray-900">Unlimited replies</p>
                 <p className="mt-1 text-xs leading-relaxed text-gray-500">
                   Generate, refine, and adjust replies without daily limits.
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4">
+              <div className="rounded-2xl border border-accent/15 bg-white/80 p-4">
                 <p className="text-sm font-semibold text-gray-900">Smarter workflows</p>
                 <p className="mt-1 text-xs leading-relaxed text-gray-500">
                   Use Assist Me, Clean My Inbox, and Handle It For Me with more freedom.
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-indigo-100 bg-white/80 p-4">
+              <div className="rounded-2xl border border-accent/15 bg-white/80 p-4">
                 <p className="text-sm font-semibold text-gray-900">Early access</p>
                 <p className="mt-1 text-xs leading-relaxed text-gray-500">
                   Pro users get first access to multiple inboxes and upcoming AI features.
@@ -474,7 +464,7 @@ export default function SettingsPage() {
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <a
                 href="/emails"
-                className="inline-flex flex-1 items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                className="inline-flex flex-1 items-center justify-center rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:bg-accent-hover"
               >
                 Start using Pro
               </a>
@@ -489,39 +479,56 @@ export default function SettingsPage() {
           </section>
         )}
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Account</h2>
-              <p className="mt-1 text-sm text-gray-500">Signed in as</p>
-              <p className="mt-1 break-all text-sm font-medium text-gray-900">
-                {authUser.email}
-              </p>
-            </div>
-
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                isPro ? "bg-indigo-50 text-indigo-600" : "bg-gray-100 text-gray-500"
-              }`}
-            >
-              {isPro ? "Pro" : "Free"}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void handleLogout()}
-            className="mt-5 rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-500 transition hover:bg-gray-50"
+        <div className="mt-10 divide-y divide-gray-100">
+          <SettingsSection
+            title="Workflow mode"
+            description="How Handled triages and suggests replies."
+            className="pb-8"
           >
-            Sign out
-          </button>
-        </section>
+            <WorkflowModeSelector value={workflowMode} onChange={updateWorkflowMode} />
+            <SaveStatus status={workflowModeSaveStatus} className="mt-2 block" />
+          </SettingsSection>
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">Plan & Billing</h2>
-          <p className="mt-1 text-sm text-gray-500">Choose the plan that fits your workflow.</p>
+          <SettingsSection title="Reply tone" className="py-8">
+            <ReplyToneSettings />
+          </SettingsSection>
 
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <SettingsSection
+            title="Important people"
+            description="Senders Handled should treat with extra care."
+            className="py-8"
+          >
+            <SenderRelationshipsSettings embedded />
+          </SettingsSection>
+
+          <SettingsSection title="Connected apps" className="py-8">
+            <CalendarSettings embedded />
+          </SettingsSection>
+
+          <SettingsSection title="Account" className="py-8">
+            <div className="flex items-center justify-between gap-3">
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  isPro ? "bg-accent-muted text-accent" : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {isPro ? "Pro" : "Free"}
+              </span>
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                className="text-sm text-secondary hover:text-foreground"
+              >
+                Sign out
+              </button>
+            </div>
+            <p className="trust-line mt-4">
+              <strong>You approve every send.</strong> Handled never emails without you.
+            </p>
+          </SettingsSection>
+
+          <SettingsSection title="Plan" className="pb-8 pt-8">
+          <div className="grid gap-4 md:grid-cols-2">
             <article className="rounded-2xl border border-gray-200 bg-gray-50 p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -550,7 +557,7 @@ export default function SettingsPage() {
               )}
             </article>
 
-            <article className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5">
+            <article className="rounded-2xl border border-accent/20 bg-accent-muted p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">Handled Pro</h3>
@@ -559,7 +566,7 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-indigo-700">€9</p>
+                  <p className="text-2xl font-bold text-accent">€9</p>
                   <p className="text-xs text-gray-500">/month</p>
                 </div>
               </div>
@@ -572,14 +579,14 @@ export default function SettingsPage() {
               </ul>
               {isPro ? (
                 <div className="mt-4 space-y-3">
-                  <span className="inline-flex rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-700">
+                  <span className="inline-flex rounded-full border border-accent/20 bg-white px-3 py-1 text-xs font-semibold text-accent">
                     Current plan
                   </span>
                   <button
                     type="button"
                     onClick={() => void handleManageBilling()}
                     disabled={billingLoading}
-                    className="w-full rounded-xl border border-indigo-200 bg-white px-4 py-3 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-60"
+                    className="w-full rounded-xl border border-accent/20 bg-white px-4 py-3 text-sm font-semibold text-accent transition hover:bg-accent-muted disabled:opacity-60"
                   >
                     {billingLoading ? "Opening billing..." : "Manage Billing"}
                   </button>
@@ -590,7 +597,7 @@ export default function SettingsPage() {
                     type="button"
                     onClick={handleUpgrade}
                     disabled={checkoutLoading}
-                    className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                    className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:opacity-60"
                   >
                     {checkoutLoading ? "Opening checkout..." : "Upgrade to Pro — €9/month"}
                   </button>
@@ -602,7 +609,7 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     onClick={() => void refreshPlanStatus()}
-                    className="mt-3 text-xs font-medium text-indigo-600 hover:underline"
+                    className="mt-3 text-xs font-medium text-accent hover:underline"
                   >
                     Refresh plan status
                   </button>
@@ -611,137 +618,34 @@ export default function SettingsPage() {
             </article>
           </div>
 
-          <p className="mt-4 text-xs text-gray-500">
-            Handled never sends emails without your approval.
-          </p>
-        </section>
+          </SettingsSection>
+        </div>
 
-        <section className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">
-                Coming soon
-              </p>
-
-              <h2 className="mt-1 text-lg font-semibold text-gray-900">
-                Multiple email accounts
-              </h2>
-
-              <p className="mt-2 text-sm leading-relaxed text-gray-500">
-                Soon you&apos;ll be able to connect more than one inbox and manage your work,
-                personal, and business emails from one calm place.
-              </p>
+        <section className="mt-10 border-t border-gray-100 pt-2">
+          <CalmCollapsible
+            title="Advanced settings"
+            summary="Brain, rules, language, usage, and more"
+          >
+            <div className="mt-4 space-y-8">
+              <PersonalizationSettings />
+              <HandledBrainSettings />
+              <SenderRulesSettings />
+              <InboxPrioritySettings />
+              <IdentitySettings />
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Usage today</h3>
+                <p className="text-sm text-secondary">
+                  {isPro
+                    ? "Unlimited replies"
+                    : `${usageCount} used · ${repliesLeft} left (limit ${FREE_LIMIT})`}
+                </p>
+              </section>
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground">Multiple inboxes</h3>
+                <p className="text-sm text-secondary">Coming soon — Pro gets early access.</p>
+              </section>
             </div>
-
-            <span className="rounded-full border border-indigo-100 bg-white px-3 py-1 text-[10px] font-semibold text-indigo-600">
-              In progress
-            </span>
-          </div>
-
-          <div className="mt-4 grid gap-2 text-sm text-gray-600 sm:grid-cols-3">
-            <div className="rounded-xl border border-indigo-50 bg-white/70 p-3">
-              ✔ Unified inbox
-            </div>
-            <div className="rounded-xl border border-indigo-50 bg-white/70 p-3">
-              ✔ Separate identities
-            </div>
-            <div className="rounded-xl border border-indigo-50 bg-white/70 p-3">
-              ✔ AI triage
-            </div>
-          </div>
-
-          <p className="mt-4 text-xs text-gray-400">
-            Pro users will get early access when this feature launches.
-          </p>
-
-          <p className="mt-3 text-xs leading-relaxed text-gray-400">
-            Future Gmail integration will focus on drafting and organizing first. Sending will
-            always require your approval.
-          </p>
-        </section>
-
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">Usage</h2>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-gray-50 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                Replies used today
-              </p>
-              <p className="mt-1 text-xl font-semibold text-gray-900">
-                {isPro ? "Unlimited" : usageCount}
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-gray-50 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                Replies left today
-              </p>
-              <p className="mt-1 text-xl font-semibold text-indigo-600">
-                {isPro ? "Unlimited" : repliesLeft}
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-gray-50 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                Daily free limit
-              </p>
-              <p className="mt-1 text-xl font-semibold text-gray-900">
-                {isPro ? "Unlimited" : FREE_LIMIT}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">Workflow modes</h2>
-          <p className="mt-2 text-sm text-gray-500">
-            Each mode changes categorization, replies, and inbox layout. Synced to your account.
-          </p>
-          <div className="mt-5">
-            <WorkflowModeSelector value={workflowMode} onChange={updateWorkflowMode} />
-            <SaveStatus status={workflowModeSaveStatus} className="mt-3 block" />
-          </div>
-        </section>
-
-        <CalendarSettings />
-        <HandledBrainSettings />
-        <SenderRulesSettings />
-        <SenderRelationshipsSettings />
-        <InboxPrioritySettings />
-        <IdentitySettings />
-        <PersonalizationSettings />
-
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">Trust &amp; Safety</h2>
-
-          <div className="mt-4 space-y-3">
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-              <p className="text-sm font-semibold text-emerald-800">You approve every reply</p>
-              <p className="mt-1 text-sm leading-relaxed text-emerald-700">
-                Handled never sends emails without your approval. It helps you draft, refine, and
-                decide faster.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-              <p className="text-sm font-semibold text-gray-800">
-                Your preferences improve your experience
-              </p>
-              <p className="mt-1 text-sm leading-relaxed text-gray-500">
-                Your workflow mode, tone settings, and reply habits help Handled make better
-                suggestions for you.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4">
-              <p className="text-sm font-semibold text-indigo-800">Gmail connection is coming</p>
-              <p className="mt-1 text-sm leading-relaxed text-indigo-700">
-                When inbox connection launches, Handled will help you manage multiple email
-                accounts from one calm place.
-              </p>
-            </div>
-          </div>
+          </CalmCollapsible>
         </section>
       </div>
     </main>

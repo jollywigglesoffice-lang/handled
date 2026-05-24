@@ -17,7 +17,7 @@ type DailyWorkspacePanelProps = {
 };
 
 const SECTION_ACCENT: Record<string, string> = {
-  todays_focus: "border-l-indigo-400",
+  todays_focus: "border-l-accent",
   waiting_on: "border-l-slate-400",
   suggested_actions: "border-l-teal-400",
 };
@@ -44,7 +44,7 @@ export function DailyWorkspacePanel({ messages }: DailyWorkspacePanelProps) {
   return (
     <section className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 shadow-sm">
       <header className="border-b border-slate-100 pb-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-indigo-600/90">
+        <p className="text-xs font-medium uppercase tracking-wide text-accent/90">
           {copy.eyebrow}
         </p>
         <h2 className="mt-1 text-xl font-semibold tracking-tight text-[#0F172A]">
@@ -137,7 +137,7 @@ function WorkspaceItemRow({
       ) : null}
       <Link
         href={`/emails/${encodeURIComponent(item.emailId)}`}
-        className="mt-2 inline-block text-xs font-medium text-indigo-700 hover:text-indigo-900"
+        className="mt-2 inline-block text-xs font-medium text-accent hover:text-accent"
       >
         {openLabel}
       </Link>

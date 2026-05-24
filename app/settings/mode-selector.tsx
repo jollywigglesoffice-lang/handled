@@ -37,8 +37,8 @@ export function ModeSelector() {
             key={mode.id}
             className={`block cursor-pointer rounded-xl border p-6 transition-all duration-200 hover:shadow-sm active:scale-[0.99] ${
               isSelected
-                ? "border-[#6366F1] bg-[#F8FAFC] shadow-[0_1px_3px_rgba(15,23,42,0.05)]"
-                : "border-[#E2E8F0] bg-[#FFFFFF] hover:border-[#6366F1]/40"
+                ? "border-accent/35 bg-accent-muted/50 ring-1 ring-accent/15"
+                : "border-border bg-card hover:border-accent/25"
             }`}
           >
             <div className="flex items-start gap-4">
@@ -48,7 +48,7 @@ export function ModeSelector() {
                 value={mode.id}
                 checked={isSelected}
                 onChange={() => setSelectedModeId(mode.id)}
-                className="mt-1 h-4 w-4 border-[#E2E8F0] text-[#6366F1] focus:ring-[#6366F1]"
+                className="mt-1 h-4 w-4 border-[#E2E8F0] text-accent focus:ring-accent"
               />
               <div className="space-y-2">
                 <p className="text-lg font-medium text-[#0F172A]">{modeCopy.name}</p>

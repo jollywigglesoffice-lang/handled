@@ -1,6 +1,10 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import { hasHighPriorityIntent, requiresHumanReply } from "@/lib/email-intent";
-import { hasMultilingualImportanceSignal } from "@/lib/multilingual-importance";
+import { detectRealHumanSignals } from "@/lib/categorization-intelligence/real-human-signals";
+import {
+  detectPromotionalSignals,
+  isPromotionalDominant,
+} from "@/lib/categorization-intelligence/promotional-signals";
 import { computeInboxRuleScores, isBillingLikely } from "@/lib/inbox-rule-classify";
 
 const BULK_SENDER =
@@ -55,13 +59,17 @@ export function isTransactionalFyi(row: GmailInboxRow): boolean {
   return TRANSACTIONAL_COPY.test(emailHaystack(row));
 }
 
-/** True when the email likely needs a real human decision (not just marketing noise). */
+/** True when the email likely needs a real human decision (not marketing noise). */
 export function hasUrgentHumanSignal(row: GmailInboxRow): boolean {
-  if (
-    hasHighPriorityIntent(row) ||
-    requiresHumanReply(row) ||
-    hasMultilingualImportanceSignal(row)
-  ) {
+  const promo = detectPromotionalSignals(row);
+  const real = detectRealHumanSignals(row, promo);
+
+  if (real.hasHardPersonalBlock || real.hasHumanRequest || real.score >= 30) {
+    return true;
+  }
+
+  if (hasHighPriorityIntent(row) || requiresHumanReply(row)) {
+    if (isPromotionalDominant(row, real.score)) return false;
     return true;
   }
 
@@ -72,7 +80,7 @@ export function hasUrgentHumanSignal(row: GmailInboxRow): boolean {
     return false;
   }
 
-  if (URGENT_HUMAN.test(hay)) {
+  if (URGENT_HUMAN.test(hay) && !isPromotionalDominant(row, real.score)) {
     return true;
   }
 
@@ -82,7 +90,7 @@ export function hasUrgentHumanSignal(row: GmailInboxRow): boolean {
 
   const personalName = /^[A-Za-zÀ-ÿ][\w.'-]*\s+[A-Za-zÀ-ÿ]/.test(row.sender.trim());
   const hasQuestion = /\?/.test(hay);
-  if (personalName && hasQuestion && !BULK_SENDER.test(sender)) {
+  if (personalName && hasQuestion && !BULK_SENDER.test(sender) && !isPromotionalDominant(row, real.score)) {
     return true;
   }
 

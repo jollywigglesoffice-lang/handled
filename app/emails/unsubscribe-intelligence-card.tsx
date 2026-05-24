@@ -169,7 +169,7 @@ export function UnsubscribeIntelligenceCard({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             {analysis.showBadge ? (
-              <span className="inline-block rounded-full bg-violet-600 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+              <span className="inline-block rounded-full bg-accent px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                 {analysis.badgeLabel}
               </span>
             ) : null}
@@ -301,7 +301,7 @@ function ActionButton({
       onClick={onClick}
       className={`rounded-xl px-4 py-2.5 text-sm font-medium transition disabled:opacity-50 ${
         primary
-          ? "bg-violet-600 text-white shadow-sm hover:bg-violet-700"
+          ? "bg-accent text-white shadow-sm hover:bg-accent-hover"
           : muted
             ? "border border-transparent text-gray-500 hover:text-gray-700"
             : "border border-violet-200 bg-white text-violet-900 hover:bg-violet-50"
@@ -350,7 +350,7 @@ function ConfirmModal({
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+            className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
             {busy ? "Working…" : isOneClick ? "Yes, unsubscribe" : "Open safely"}
           </button>

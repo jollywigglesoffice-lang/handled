@@ -18,7 +18,7 @@ export function EmailDetailMinimalView({ email }: { email: MinimalEmailDetail })
   return (
     <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
-        <Link href="/emails" className="text-sm font-medium text-[#6366F1]">
+        <Link href="/emails" className="text-sm font-medium text-accent">
           ← Back to inbox
         </Link>
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
