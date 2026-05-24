@@ -55,9 +55,9 @@ export function EmailDetailInsights({
       : `Category: ${email.inboxCategory ? inboxCategorySectionTitle(email.inboxCategory, "en") : "—"}`;
 
   return (
-    <section className="mt-12 space-y-0">
-      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-        {locale === "it" ? "Approfondimenti" : "More from Handled"}
+    <section className="mt-10 border-t border-gray-100 pt-1 opacity-90">
+      <p className="mb-1 py-3 text-xs text-gray-400">
+        {locale === "it" ? "Se serve, Handled può mostrarti altro" : "When you need it"}
       </p>
 
       <CalmCollapsible
@@ -104,7 +104,7 @@ export function EmailDetailInsights({
 
       {timeline?.active ? (
         <CalmCollapsible
-          title={locale === "it" ? "Memoria conversazione" : "Conversation memory"}
+          title={locale === "it" ? "Contesto recente" : "Recent context"}
           summary={timeline.timelineSummary?.slice(0, 72) ?? undefined}
         >
           <TimelineIntelligenceCard analysis={timeline} locale={locale} />
@@ -125,21 +125,21 @@ export function EmailDetailInsights({
         (decision.opportunities?.length ?? 0) > 0 ||
         (decision.risks?.length ?? 0) > 0) ? (
         <CalmCollapsible
-          title={locale === "it" ? "Analisi e rischi" : "Insights & considerations"}
+          title={locale === "it" ? "Da tenere a mente" : "Things to keep in mind"}
           summary={
             locale === "it"
-              ? "Opportunità, rischi e note decisionali"
-              : "Opportunities, risks, and decision notes"
+              ? "Note utili, senza rumore"
+              : "Useful notes, without the noise"
           }
         >
           <DecisionAssistanceCard analysis={decision} locale={locale} />
         </CalmCollapsible>
       ) : null}
 
-      {action?.actionable && action?.primaryLabel ? (
+      {action?.actionable && action?.primaryLabel && action.suggestedNextAction ? (
         <CalmCollapsible
-          title={locale === "it" ? "Dettaglio azione" : "Action details"}
-          summary={action.suggestedNextAction?.slice(0, 72) ?? undefined}
+          title={locale === "it" ? "Altri dettagli sul passo" : "More on this step"}
+          summary={action.suggestedNextAction.slice(0, 72)}
         >
           <ActionIntelligenceCard analysis={action} locale={locale} />
         </CalmCollapsible>

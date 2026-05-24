@@ -38,6 +38,7 @@ import { saveFollowUpReminderToAccount } from "@/lib/follow-up-reminders/client-
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import { DraftMemoryStyleChip } from "@/app/emails/draft-memory-style-chip";
 import { CalmCollapsible } from "@/app/components/calm-collapsible";
+import { FocusReplyPanel } from "./email-actions-focus-reply";
 import {
   draftMemoryHeaders,
   learnFromEdit,
@@ -1750,11 +1751,7 @@ return () => clearTimeout(timeout);
             }`
       }`}
     >
-      {calmLayout ? (
-        <h2 className="text-sm font-medium text-gray-900">
-          {ui.emailActions.chooseReplyTitle}
-        </h2>
-      ) : (
+      {!calmLayout ? (
         <>
           <h2 className="flex items-center gap-2 text-lg font-medium text-[#0F172A]">
             <svg
@@ -1871,7 +1868,7 @@ return () => clearTimeout(timeout);
           </button>
           {secondaryActionsRow}
         </>
-      )}
+      ) : null}
 
       {!shouldOfferReplies ? (
         <div
@@ -1897,8 +1894,69 @@ return () => clearTimeout(timeout);
             </p>
           ) : null}
         </div>
+      ) : calmLayout ? (
+        <FocusReplyPanel
+          visibleReplies={visibleReplies}
+          selectedReplyIndex={selectedReplyIndex}
+          editedReplyDraft={editedReplyDraft}
+          onDraftChange={setEditedReplyDraft}
+          draftRef={replyDraftTextareaRef}
+          onSelectReply={selectReplyOption}
+          onSend={handleSendSelectedReply}
+          onRegenerate={handleRegenerateReply}
+          onRefine={() => void handleRefineSelectedReply()}
+          onCopy={() => void handleCopyReply()}
+          replyCopied={replyCopied}
+          isGenerating={isGeneratingReplies}
+          isRefining={isRefining}
+          isClosing={isClosingView}
+          isStreaming={isStreaming}
+          isThinking={isThinking}
+          sendSuccessMessage={sendSuccessMessage}
+          showSendSuccess={showSendSuccess}
+          recommendationLabel={workflowBehavior.recommendationLabel}
+          sendLabel={ui.emailActions.sendButton}
+          editLabel={ui.emailActions.editReplyButton}
+          regenerateLabel={ui.emailActions.regenerateButton}
+          regenerateBusyLabel={ui.emailActions.regenerateButtonBusy}
+          refineLabel={ui.emailActions.refineButton}
+          refineBusyLabel={ui.emailActions.refineButtonBusy}
+          copyLabel={ui.emailActions.copyButton}
+          copiedLabel={ui.emailActions.copiedButton}
+          draftPlaceholder={ui.emailActions.draftPlaceholder}
+          generatingLabel={ui.emailActions.generatingReplies}
+          trustLine={TRUST_COPY.neverSend}
+          workflowReplyLanguage={workflowReplyLanguage}
+          onLanguageChange={handleWorkflowLanguageChange}
+          languageOptions={workflowLanguageOptions.map((o) => ({
+            value: o.value,
+            label: ui.personalization.languages[o.value],
+          }))}
+          replyLanguageLabel={ui.emailActions.replyLanguageLabel}
+          languageChangeHint={languageChangeHint}
+          draftStyleLabel={draftStyleLabel}
+          toneLabel="Tone"
+          toneName={mapTone(tone)}
+          recommendedTone={recommendedTone}
+          onApplyRecommendedTone={() => setTone(toneToValue(recommendedTone))}
+          toneSlider={toneSliderInput}
+          brainUsage={brainUsage}
+          usageHint={
+            !isPro && usageCount >= FREE_LIMIT
+              ? "You're out of free replies for today."
+              : !isPro
+                ? `${Math.max(0, FREE_LIMIT - usageCount)} replies left today`
+                : null
+          }
+          moreActionsSlot={
+            <div className="space-y-4 border-t border-gray-50 pt-4">
+              {secondaryActionsRow}
+              {accountMetaBlock}
+            </div>
+          }
+        />
       ) : (
-      <div className={calmLayout ? "space-y-5" : "space-y-4 border-t border-gray-200 pt-5"}>
+      <div className="space-y-4 border-t border-gray-200 pt-5">
           {!calmLayout ? (
           <div className="max-w-md space-y-2">
             <label
@@ -2411,13 +2469,7 @@ if (distance < 6) {
         >
           View analytics
         </button>
-      ) : (
-        <>
-          <p className="text-xs text-gray-400">{TRUST_COPY.neverSend}</p>
-          <CalmCollapsible title="Other actions">{secondaryActionsRow}</CalmCollapsible>
-          <CalmCollapsible title="Account & workflow">{accountMetaBlock}</CalmCollapsible>
-        </>
-      )}
+      ) : null}
 
       {showUpgrade ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">

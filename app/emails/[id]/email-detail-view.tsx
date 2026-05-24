@@ -50,7 +50,7 @@ type EmailDetailViewProps = {
   enrichmentEnabled?: boolean;
 };
 
-function primaryActionLine(
+function suggestedNextStep(
   email: EmailDetailPayload,
   locale: "en" | "it",
 ): string | null {
@@ -62,9 +62,7 @@ function primaryActionLine(
     return email.suggestedTriageAction.trim();
   }
   if (action?.actionable && action.primaryLabel) {
-    return locale === "it"
-      ? `Azione suggerita: ${action.primaryLabel.replace(/_/g, " ")}`
-      : `Suggested: ${action.primaryLabel.replace(/_/g, " ")}`;
+    return action.primaryLabel.replace(/_/g, " ");
   }
   return null;
 }
@@ -85,30 +83,28 @@ export function EmailDetailView({
   const summary =
     email.aiSummary?.trim() ||
     (categoryLocale === "it" ? "Nessun riepilogo disponibile." : "No summary available.");
-  const actionLine = primaryActionLine(email, categoryLocale);
+  const nextStep = suggestedNextStep(email, categoryLocale);
 
   return (
-    <main className="min-h-screen bg-white">
-      <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-8 sm:px-6 sm:pt-12">
+    <main className="min-h-screen bg-[#fafafa]">
+      <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-6 sm:px-6 sm:pt-10">
         <Link
           href="/emails"
-          className="text-sm text-gray-500 transition-colors hover:text-gray-900"
+          className="text-sm text-gray-400 transition-colors hover:text-gray-600"
         >
           {ui.common.backToInbox}
         </Link>
 
-        <header className="mt-8 space-y-5">
+        <header className="mt-6 space-y-3">
           <p className="text-sm text-gray-500">{email.sender}</p>
 
-          <h1 className="text-2xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-3xl">
+          <h1 className="text-2xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-[1.65rem]">
             {email.subject}
           </h1>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
             {email.inboxCategory ? (
-              <span className="text-xs font-medium text-gray-600">
-                {inboxCategorySectionTitle(email.inboxCategory, categoryLocale)}
-              </span>
+              <span>{inboxCategorySectionTitle(email.inboxCategory, categoryLocale)}</span>
             ) : null}
             {email.relationship ? (
               <RelationshipBadge relationship={email.relationship} />
@@ -117,16 +113,32 @@ export function EmailDetailView({
 
           <p className="text-[15px] leading-relaxed text-gray-600">{summary}</p>
 
-          {actionLine ? (
+          {nextStep ? (
             <p className="text-sm leading-relaxed text-gray-700">
-              <span className="font-medium text-accent">Suggested · </span>
-              {actionLine}
+              <span className="font-medium text-accent">
+                {categoryLocale === "it" ? "Prossimo passo · " : "Suggested next step · "}
+              </span>
+              {nextStep}
             </p>
           ) : null}
         </header>
 
+        <article className="mt-8">
+          <h2 className="mb-3 text-xs font-medium text-gray-400">
+            {ui.emailDetail.fullEmailBody}
+          </h2>
+          <EmailBody
+            variant="minimal"
+            bodyHtml={email.bodyHtml}
+            bodyPlain={email.bodyPlain ?? email.body}
+          />
+        </article>
+
         {showActions ? (
-          <section className="mt-10">
+          <section className="mt-8">
+            <h2 className="mb-3 text-xs font-medium text-gray-400">
+              {categoryLocale === "it" ? "Bozza di risposta" : "Draft reply"}
+            </h2>
             <EmailActions
               calmLayout
               emailId={email.id}
@@ -144,13 +156,6 @@ export function EmailDetailView({
             />
           </section>
         ) : null}
-
-        <article className="mt-12 border-t border-gray-100 pt-10">
-          <h2 className="mb-4 text-xs font-medium uppercase tracking-wide text-gray-400">
-            {ui.emailDetail.fullEmailBody}
-          </h2>
-          <EmailBody bodyHtml={email.bodyHtml} bodyPlain={email.bodyPlain ?? email.body} />
-        </article>
 
         <EmailDetailInsights
           email={email}
