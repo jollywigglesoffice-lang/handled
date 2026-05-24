@@ -41,9 +41,9 @@ export function FollowUpIntelligenceCard({
     try {
       const res = await fetch("/api/follow-ups/draft", {
         method: "POST",
-        credentials: "same-origin",
+        credentials: "include",
         redirect: "manual",
-        headers: { "Content-Type": "application/json", ...inboxFetchHeaders() },
+        headers: { "Content-Type": "application/json", ...(await inboxFetchHeaders()) },
         body: JSON.stringify({
           sender: analysis.sender,
           subject: analysis.subject,

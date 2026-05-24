@@ -45,7 +45,7 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
       const result = await safeFetchJson<GmailDetailApiBody>(endpoint, {
         label: "[email-detail] gmail message",
         credentials: "include",
-        headers: inboxFetchHeaders(),
+        headers: await inboxFetchHeaders(),
       });
 
       if (!result.ok) {

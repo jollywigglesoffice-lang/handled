@@ -22,6 +22,7 @@ import {
   readUsageCountWithDailyReset,
 } from "@/lib/daily-usage";
 import { detectReplyLanguageFromEmail } from "@/lib/detect-reply-language";
+import { protectedApiHeaders } from "@/lib/auth/protected-api-headers";
 import { safeParseJsonResponse } from "@/lib/safe-json-response";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -882,9 +883,10 @@ return () => clearTimeout(timeout);
         try {
           response = await fetch("/api/reply", {
             method: "POST",
+            credentials: "include",
             headers: {
               "Content-Type": "application/json",
-              ...draftMemoryHeaders(userId),
+              ...(await protectedApiHeaders(draftMemoryHeaders(userId))),
             },
             signal: controller.signal,
             body: JSON.stringify({
@@ -1421,8 +1423,10 @@ return () => clearTimeout(timeout);
       try {
         response = await fetch("/api/reply", {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
+            ...(await protectedApiHeaders()),
           },
           signal: controller.signal,
           body: JSON.stringify({

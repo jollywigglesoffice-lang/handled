@@ -1,8 +1,8 @@
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { getGoogleProviderToken, saveGoogleProviderToken } from "@/lib/google-provider-token";
 
 /**
- * Before same-origin /api/* calls, validate the session and persist it into
- * document cookies so Route Handlers see the same auth as the browser client.
+ * Validate session and sync provider token before protected API calls.
  */
 export async function ensureApiSessionCookies(): Promise<boolean> {
   const {
@@ -19,7 +19,26 @@ export async function ensureApiSessionCookies(): Promise<boolean> {
     return false;
   }
 
-  // Writes/refreshes sb-* cookies used by createServerClient on the server.
-  await supabaseBrowser.auth.getSession();
+  const {
+    data: { session },
+  } = await supabaseBrowser.auth.getSession();
+
+  if (session?.provider_token) {
+    saveGoogleProviderToken(session.provider_token);
+  }
+
   return true;
+}
+
+/** @deprecated use ensureApiSessionCookies */
+export async function ensureApiSessionWithGoogleToken(): Promise<{
+  ok: boolean;
+  hasGoogleToken: boolean;
+}> {
+  const ok = await ensureApiSessionCookies();
+  const {
+    data: { session },
+  } = await supabaseBrowser.auth.getSession();
+  const hasGoogleToken = Boolean(session?.provider_token ?? getGoogleProviderToken());
+  return { ok, hasGoogleToken };
 }

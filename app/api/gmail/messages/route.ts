@@ -14,7 +14,7 @@ import { hasUnsubscribeSignal } from "@/lib/unsubscribe/detect";
 export async function GET(request: Request) {
   const { supabase, applyAuthCookies } = createRouteHandlerSupabase(request);
 
-  const authResult = await requireApiAuth(supabase);
+  const authResult = await requireApiAuth(request, supabase);
   if (!authResult.ok) {
     return applyAuthCookies(authResult.response);
   }

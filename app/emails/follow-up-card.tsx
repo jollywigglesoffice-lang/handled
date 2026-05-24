@@ -49,8 +49,8 @@ export function FollowUpCard({ item, locale, onUpdated }: FollowUpCardProps) {
     try {
       const res = await fetch("/api/follow-ups/draft", {
         method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json", ...inboxFetchHeaders() },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...(await inboxFetchHeaders()) },
         body: JSON.stringify({
           sender: item.sender,
           subject: item.subject,

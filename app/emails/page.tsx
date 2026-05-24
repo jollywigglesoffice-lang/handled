@@ -392,7 +392,7 @@ export default function EmailsInboxPage() {
 
       const res = await fetch("/api/gmail/messages", {
         credentials: "include",
-        headers: inboxFetchHeaders(),
+        headers: await inboxFetchHeaders(),
       });
       const body = (await res.json()) as {
         messages?: GmailInboxMessage[];

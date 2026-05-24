@@ -25,7 +25,7 @@ export async function GET(request: Request, context: RouteContext) {
   const { supabase, applyAuthCookies } = createRouteHandlerSupabase(request);
 
   try {
-    const authResult = await requireApiAuth(supabase);
+    const authResult = await requireApiAuth(request, supabase);
     if (!authResult.ok) {
       return applyAuthCookies(authResult.response);
     }

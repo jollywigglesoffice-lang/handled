@@ -57,10 +57,10 @@ export function FollowUpsSection({ messages, locale, visible = true }: FollowUps
       await syncFollowUpRemindersFromAccount();
       const res = await fetch("/api/follow-ups/analyze", {
         method: "POST",
-        credentials: "same-origin",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...inboxFetchHeaders(),
+          ...(await inboxFetchHeaders()),
         },
         body: JSON.stringify({
           messages: messages.map((m) => ({

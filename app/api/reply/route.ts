@@ -22,7 +22,7 @@ import { normalizeInboxAiCategory, type InboxAiCategory } from "@/lib/inbox-ai-c
 import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import { resolveSenderRelationship } from "@/lib/relationship-intelligence/resolve";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getApiSession } from "@/lib/auth/get-api-session";
 import { workflowModeBrainMaxChunks } from "@/lib/workflow-mode-effects";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 import {
@@ -100,16 +100,11 @@ async function resolveUserIdentity(
     };
 
   try {
-    const supabase = await createSupabaseServerClient();
-    if (supabase) {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.user?.id) {
-        const serverIdentity = await loadUserIdentityForUser(session.user.id);
-        if (serverIdentity.displayName.trim() || serverIdentity.fullName?.trim()) {
-          identity = { ...identity, ...serverIdentity };
-        }
+    const session = await getApiSession(request);
+    if (session?.user?.id) {
+      const serverIdentity = await loadUserIdentityForUser(session.user.id);
+      if (serverIdentity.displayName.trim() || serverIdentity.fullName?.trim()) {
+        identity = { ...identity, ...serverIdentity };
       }
     }
   } catch {
@@ -142,11 +137,7 @@ async function resolveRelationshipForReply(
 ): Promise<SenderRelationshipProfile | undefined> {
   if (!sender?.trim()) return undefined;
   try {
-    const supabase = await createSupabaseServerClient();
-    if (!supabase) return undefined;
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const session = await getApiSession(request);
     if (!session?.user?.id) return undefined;
     const ctx = await loadCategorizationContext(session.user.id, request);
     return (
@@ -176,16 +167,11 @@ async function resolveKnowledgeContext(
     options?.bodyBrain ?? parseHandledBrainHeader(request.headers.get("x-handled-brain"));
 
   try {
-    const supabase = await createSupabaseServerClient();
-    if (supabase) {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.user?.id) {
-        const serverBrain = await loadHandledBrainForUser(session.user.id);
-        if (serverBrain.entries.length > 0 || serverBrain.writingStyle) {
-          brain = serverBrain;
-        }
+    const session = await getApiSession(request);
+    if (session?.user?.id) {
+      const serverBrain = await loadHandledBrainForUser(session.user.id);
+      if (serverBrain.entries.length > 0 || serverBrain.writingStyle) {
+        brain = serverBrain;
       }
     }
   } catch {

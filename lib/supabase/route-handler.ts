@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { readRequestCookieEntries } from "@/lib/auth/request-cookies";
 
 export type RouteHandlerSupabase = {
   supabase: SupabaseClient | null;
@@ -36,7 +37,11 @@ export function createRouteHandlerSupabase(request: Request): RouteHandlerSupaba
   const supabase = createServerClient(env.url, env.key, {
     cookies: {
       getAll() {
-        return nextRequest.cookies.getAll();
+        const fromNext = nextRequest.cookies.getAll();
+        if (fromNext.length > 0) {
+          return fromNext;
+        }
+        return readRequestCookieEntries(request);
       },
       setAll(cookiesToSet, headers) {
         cookiesToSet.forEach(({ name, value }) => {

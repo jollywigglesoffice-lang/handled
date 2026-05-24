@@ -2,19 +2,14 @@ import { NextResponse } from "next/server";
 import { generateFollowUpDraft } from "@/lib/follow-up/draft";
 import { parseConversationState } from "@/lib/follow-up-reminders/storage";
 import type { ConversationState } from "@/lib/follow-up/types";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireApiAuth } from "@/lib/auth/require-api-auth";
+import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 
 export async function POST(request: Request) {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) {
-    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
-  }
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { supabase, applyAuthCookies } = createRouteHandlerSupabase(request);
+  const authResult = await requireApiAuth(request, supabase);
+  if (!authResult.ok) {
+    return applyAuthCookies(authResult.response);
   }
 
   let body: {
@@ -44,5 +39,5 @@ export async function POST(request: Request) {
     userName: body.userName,
   });
 
-  return NextResponse.json({ draft });
+  return applyAuthCookies(NextResponse.json({ draft }));
 }
