@@ -22,7 +22,7 @@ export async function createSupabaseServerClient(): Promise<SupabaseClient | nul
             cookieStore.set(name, value, options);
           });
         } catch {
-          // Session refresh may be unavailable in some server contexts; middleware refreshes cookies.
+          // Session refresh may be unavailable in some server contexts; proxy refreshes cookies.
         }
       },
     },

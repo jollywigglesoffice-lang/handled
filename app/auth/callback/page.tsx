@@ -28,7 +28,7 @@ function AuthCallbackContent() {
       try {
         const code = searchParams.get("code");
 
-        // PKCE ?code= is exchanged in middleware (sets httpOnly cookies for SSR).
+        // PKCE ?code= is exchanged in proxy (sets httpOnly cookies for SSR).
         if (code) {
           setStatus("Completing sign-in…");
           await new Promise((r) => setTimeout(r, 150));

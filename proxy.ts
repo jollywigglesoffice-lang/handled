@@ -20,10 +20,7 @@ function canonicalProductionHost(host: string | null): string | null {
   return null;
 }
 
-function createSupabaseMiddlewareClient(
-  request: NextRequest,
-  response: NextResponse,
-) {
+function createSupabaseProxyClient(request: NextRequest, response: NextResponse) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
   if (!url.startsWith("http") || !key) return null;
@@ -52,7 +49,7 @@ function createSupabaseMiddlewareClient(
   });
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const host = request.headers.get("host");
 
@@ -69,10 +66,10 @@ export async function middleware(request: NextRequest) {
 
   let supabaseResponse = NextResponse.next({ request });
 
-  const supabase = createSupabaseMiddlewareClient(request, supabaseResponse);
+  const supabase = createSupabaseProxyClient(request, supabaseResponse);
   if (!supabase) {
     if (AUTH_DEBUG_ENABLED && pathname.startsWith("/api/")) {
-      console.warn("[auth-debug] middleware: Supabase env missing");
+      console.warn("[auth-debug] proxy: Supabase env missing");
     }
     return supabaseResponse;
   }
@@ -82,13 +79,13 @@ export async function middleware(request: NextRequest) {
     const nextParam = request.nextUrl.searchParams.get("next");
     const next = nextParam?.startsWith("/") ? nextParam : "/emails";
     const redirectResponse = NextResponse.redirect(new URL(next, request.url));
-    const oauthSupabase = createSupabaseMiddlewareClient(request, redirectResponse);
+    const oauthSupabase = createSupabaseProxyClient(request, redirectResponse);
     if (!oauthSupabase) {
       return NextResponse.redirect(new URL("/login?error=oauth", request.url));
     }
     const { error } = await oauthSupabase.auth.exchangeCodeForSession(oauthCode);
     if (error) {
-      console.error("[middleware] exchangeCodeForSession", error);
+      console.error("[proxy] exchangeCodeForSession", error);
       return NextResponse.redirect(new URL("/login?error=oauth", request.url));
     }
     return redirectResponse;
@@ -110,7 +107,7 @@ export async function middleware(request: NextRequest) {
       cookieUserId: user?.id ?? null,
       cookieUserError: userError?.message ?? null,
     };
-    logAuthDebug("middleware", snapshot);
+    logAuthDebug("proxy", snapshot);
   }
 
   return supabaseResponse;
