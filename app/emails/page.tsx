@@ -33,6 +33,10 @@ import { InboxClutterSection } from "@/app/emails/inbox-clutter-section";
 import { useStableInboxBuckets } from "@/app/emails/use-stable-inbox-buckets";
 import { GmailInboxCard, type GmailCardMessage } from "@/app/emails/gmail-inbox-card";
 import { InboxSyncBar } from "@/app/emails/inbox-sync-bar";
+import { CalmTypingIndicator } from "@/app/components/calm-loading";
+import { calmInboxErrorFromRaw } from "@/lib/calm-messages";
+import { pickInboxReliefMessage } from "@/lib/micro-relief";
+import { uiLocaleFromLanguage } from "@/lib/ui-copy";
 import {
   type CategorySource,
   type InboxAiCategory,
@@ -280,13 +284,14 @@ function MockEmailCard({
 function EmailCardSkeleton() {
   return (
     <div className="rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 shadow-sm">
-      <div className="space-y-3 animate-pulse">
+      <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <div className="h-4 w-40 rounded-lg bg-gray-200" />
-          <div className="h-4 w-20 rounded-lg bg-gray-200" />
+          <div className="h-4 w-40 rounded-lg subtle-shimmer" />
+          <div className="h-4 w-20 rounded-lg subtle-shimmer" />
         </div>
-        <div className="h-6 w-3/4 rounded-lg bg-gray-200" />
-        <div className="h-4 w-full rounded-lg bg-gray-200" />
+        <div className="h-6 w-3/4 rounded-lg subtle-shimmer" />
+        <div className="h-4 w-full rounded-lg subtle-shimmer" />
+        <div className="h-3 w-2/3 rounded-lg subtle-shimmer" />
       </div>
     </div>
   );
@@ -466,7 +471,7 @@ export default function EmailsInboxPage() {
       setLastSyncedAt(new Date().toISOString());
     } catch (e) {
       console.error("[inbox] gmail load", e);
-      setGmailError("Network error while loading Gmail.");
+      setGmailError("Network error while loading inbox.");
       setInboxMode("gmail_error");
     } finally {
       setIsRefreshing(false);
@@ -660,6 +665,30 @@ export default function EmailsInboxPage() {
   const activeBuckets = inboxMode === "gmail" ? gmailBuckets : mockBuckets;
 
   const todayAttentionCount = activeBuckets.todayAttentionCount;
+  const handledCount = activeBuckets.handledEmails.length;
+  const inboxLocale = uiLanguage === "it" ? "it" : "en";
+  const reliefMessage = useMemo(
+    () =>
+      inboxLoading
+        ? null
+        : pickInboxReliefMessage({
+            attentionCount: todayAttentionCount,
+            handledCount,
+            totalVisible: activeBuckets.allVisible.length,
+            locale: inboxLocale,
+          }),
+    [
+      inboxLoading,
+      todayAttentionCount,
+      handledCount,
+      inboxLocale,
+      activeBuckets.allVisible.length,
+    ],
+  );
+  const calmGmailError = calmInboxErrorFromRaw(
+    gmailError,
+    uiLocaleFromLanguage(uiLanguage),
+  );
   const importantEmailLabel =
     todayAttentionCount === 1
       ? `1 ${ui.home.attentionCountSingle}`
@@ -680,18 +709,22 @@ export default function EmailsInboxPage() {
               {ui.home.todayTitle}
             </h1>
             {!inboxLoading ? (
-              <p className="text-sm text-gray-500">
-                {isCountsPending && inboxMode === "gmail" ? (
-                  <span className="mr-2 inline-flex items-center gap-1.5">
-                    <span
-                      className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-accent border-t-transparent"
-                      aria-hidden
-                    />
-                  </span>
+              <div className="space-y-1">
+                <p className="text-sm text-gray-500">
+                  {isCountsPending && inboxMode === "gmail" ? (
+                    <span className="mr-2 inline-flex items-center gap-1.5" aria-hidden>
+                      <span className="calm-accent-pulse h-2 w-2 rounded-full" />
+                    </span>
+                  ) : null}
+                  <span className="font-medium text-gray-700">{importantEmailLabel}</span>
+                  <span className="text-gray-400"> · {workflowProfile.label}</span>
+                </p>
+                {reliefMessage ? (
+                  <p className="text-xs text-gray-400 transition-opacity duration-500 calm-fade-in">
+                    {reliefMessage}
+                  </p>
                 ) : null}
-                <span className="font-medium text-gray-700">{importantEmailLabel}</span>
-                <span className="text-gray-400"> · {workflowProfile.label}</span>
-              </p>
+              </div>
             ) : (
               <p className="text-sm text-gray-500">{ui.home.organizingInbox}</p>
             )}
@@ -717,14 +750,22 @@ export default function EmailsInboxPage() {
         </header>
 
         {inboxLoading ? (
-          <section className="mt-12 flex min-h-40 items-center justify-center">
-            <p
-              className={`text-sm text-gray-400 transition-opacity duration-500 ${
-                showMicroMessage ? "opacity-100" : "opacity-0"
-              }`}
-            >
-              {loadingMicroMessages[messageIndex]}
-            </p>
+          <section className="mt-10 space-y-6 calm-fade-in">
+            <div className="flex min-h-16 items-center justify-center gap-3">
+              <CalmTypingIndicator />
+              <p
+                className={`text-sm text-gray-400 transition-opacity duration-500 ${
+                  showMicroMessage ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                {loadingMicroMessages[messageIndex]}
+              </p>
+            </div>
+            <div className="space-y-3">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <EmailCardSkeleton key={`load-sk-${i}`} />
+              ))}
+            </div>
           </section>
         ) : null}
 
@@ -737,7 +778,7 @@ export default function EmailsInboxPage() {
             <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm">
               <h2 className="mb-5 flex items-center gap-2 text-lg font-medium text-[#0F172A]">
                 <SectionIcon title="Needs Your Attention" />
-                Loading inbox…
+                {ui.home.inboxLoadingTitle}
               </h2>
               <div className="space-y-4">
                 {Array.from({ length: 3 }).map((_, i) => (
@@ -746,11 +787,10 @@ export default function EmailsInboxPage() {
               </div>
             </div>
           ) : inboxMode === "no_google" ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 shadow-sm">
-              <h2 className="text-lg font-semibold text-amber-900">Connect Gmail</h2>
-              <p className="mt-2 text-sm leading-relaxed text-amber-800">
-                Sign in with Google (same account) so Handled can load your inbox with read-only
-                access.
+            <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+              <h2 className="text-lg font-semibold text-gray-900">{ui.home.connectGmailTitle}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                {ui.home.connectGmailBody}
               </p>
               <Link
                 href="/login"
@@ -760,15 +800,15 @@ export default function EmailsInboxPage() {
               </Link>
             </div>
           ) : inboxMode === "gmail_error" ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-8 shadow-sm">
-              <h2 className="text-lg font-semibold text-red-800">Couldn&apos;t load Gmail</h2>
-              <p className="mt-2 text-sm text-red-700">{gmailError}</p>
+            <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+              <h2 className="text-lg font-semibold text-gray-900">{ui.home.inboxErrorTitle}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-gray-600">{calmGmailError}</p>
               <button
                 type="button"
                 onClick={() => void loadInbox()}
-                className="mt-4 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+                className="btn-primary-sm mt-4"
               >
-                Try again
+                {ui.calm.errors.tryAgain}
               </button>
             </div>
           ) : inboxMode === "gmail_empty" ? (
@@ -777,7 +817,7 @@ export default function EmailsInboxPage() {
                 <SectionIcon title="Needs Your Attention" />
                 Inbox
               </h2>
-              <p className="text-sm text-gray-500">No messages in your Gmail inbox.</p>
+              <p className="text-sm leading-relaxed text-gray-600">{ui.home.emptyGmailInbox}</p>
             </div>
           ) : inboxMode === "gmail" ? (
             <div className="space-y-12">
@@ -845,9 +885,8 @@ export default function EmailsInboxPage() {
                       <EmptyNeedsAttentionState show={showContent} />
                     ) : section.title === "Handled For You" &&
                       section.emails.length === 0 ? (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-                        You&apos;re all caught up. New handled suggestions will appear here when
-                        they&apos;re ready.
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed text-gray-600">
+                        {ui.home.handledSectionEmpty}
                       </div>
                     ) : (
                       section.emails.map((email) => (

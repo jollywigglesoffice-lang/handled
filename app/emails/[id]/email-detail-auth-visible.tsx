@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useUiCopy } from "@/app/use-ui-copy";
 
 /** Visible auth state — no redirect to /login. */
 export function EmailDetailAuthVisible({
@@ -8,37 +11,36 @@ export function EmailDetailAuthVisible({
   emailId: string;
   reason: "sign_in" | "connect_gmail" | "server_session";
 }) {
+  const ui = useUiCopy();
+
   const title =
     reason === "connect_gmail"
-      ? "Connect Gmail to open this email"
+      ? ui.home.connectGmailTitle
       : reason === "server_session"
-        ? "Session not available on server"
+        ? "Sign in again to open this email"
         : "Sign in to open this email";
 
   const description =
     reason === "connect_gmail"
-      ? "Browser session exists but Google read-only token is missing. Sign in with Google."
+      ? ui.home.connectGmailBody
       : reason === "server_session"
-        ? "Inbox may work in the browser while API cookies are missing. Try signing in again from this tab."
-        : "No active session in this browser tab.";
+        ? "Handled needs a fresh session in this tab — sign in once and you should be set."
+        : "Open this email after signing in — nothing sends without you.";
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
-      <div className="mx-auto w-full max-w-lg space-y-4">
-        <Link href="/emails" className="text-sm font-medium text-accent">
-          ← Back to inbox
+    <main className="min-h-screen bg-[#fafafa] px-4 py-16 sm:px-6">
+      <div className="mx-auto w-full max-w-lg space-y-4 calm-fade-in">
+        <Link href="/emails" className="text-sm text-gray-400 hover:text-gray-600">
+          {ui.common.backToInbox}
         </Link>
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-8 shadow-sm space-y-3">
-          <h1 className="text-xl font-semibold text-amber-900">{title}</h1>
-          <p className="text-sm text-amber-800">{description}</p>
-          <p className="text-xs text-amber-700">
-            Email id: <code>{emailId}</code>
-          </p>
+        <section className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm space-y-3">
+          <h1 className="text-xl font-semibold tracking-tight text-gray-900">{title}</h1>
+          <p className="text-sm leading-relaxed text-gray-600">{description}</p>
           <Link
             href={`/login?next=${encodeURIComponent(`/emails/${encodeURIComponent(emailId)}`)}`}
-            className="inline-flex rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white"
+            className="btn-primary-sm mt-2 inline-flex"
           >
-            Go to sign in (optional)
+            Continue with Google
           </Link>
         </section>
       </div>

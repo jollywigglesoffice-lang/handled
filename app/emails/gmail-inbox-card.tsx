@@ -28,6 +28,7 @@ import type { ConversationStatus } from "@/lib/timeline-intelligence";
 import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { IntentChips } from "@/app/components/intent-chips";
+import { saveEmailPreview } from "@/lib/email-preview-cache";
 import { buildSituationSummary, deriveIntentChips } from "@/lib/situational-understanding";
 
 export type GmailCardMessage = {
@@ -171,7 +172,7 @@ export function GmailInboxCard({
       setSaveStatus("synced");
       window.dispatchEvent(new Event("handled-email-overrides-changed"));
     } catch {
-      setFeedback("Could not reset — try again.");
+      setFeedback("Handled couldn't reset — try again.");
       setSaveStatus("error");
     }
     window.setTimeout(() => setSaveStatus("idle"), 2500);
@@ -187,14 +188,14 @@ export function GmailInboxCard({
       clearSenderLearningSuggestion(message.sender);
       setLearningPrompt(null);
     } catch {
-      setFeedback("Could not save — try again.");
+      setFeedback("Handled couldn't save — try again.");
       setSaveStatus("error");
     }
   }, [message.sender, handleApply]);
 
   return (
     <div
-      className={`rounded-xl border border-[#E2E8F0] p-6 shadow-sm transition-all duration-200 hover:border-accent/40 hover:shadow-md ${accent}`}
+      className={`rounded-xl border border-[#E2E8F0] p-6 shadow-sm transition-[border-color,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-accent/40 hover:shadow-md ${accent}`}
     >
       <article className="space-y-3">
         <CardHeader
@@ -261,8 +262,21 @@ export function GmailInboxCard({
         <Link
           href={`/emails/${encodeURIComponent(message.id)}`}
           className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          onClick={() => {
+            const preview = buildInboxMessagePreview(message, locale);
+            saveEmailPreview({
+              id: message.id,
+              sender: message.sender,
+              subject: message.subject,
+              snippet: message.snippet,
+              summary: preview.summary,
+              chips: preview.chips,
+            });
+          }}
         >
-          <h3 className="text-base font-medium text-[#0F172A]">{message.subject}</h3>
+          <h3 className="text-base font-medium text-[#0F172A] transition-colors duration-200">
+            {message.subject}
+          </h3>
         </Link>
 
         {!showCorrection && !showRelationship ? (
@@ -302,6 +316,30 @@ export function GmailInboxCard({
   );
 }
 
+function buildInboxMessagePreview(message: GmailCardMessage, locale: "en" | "it") {
+  const row = {
+    sender: message.sender,
+    subject: message.subject,
+    snippet: message.snippet,
+  };
+  return {
+    summary: buildSituationSummary(row, message.category, {
+      category: message.category,
+      locale,
+      relationship: message.relationship,
+    }),
+    chips: deriveIntentChips(row, {
+      category: message.category,
+      locale,
+      relationship: message.relationship,
+      replyRecommended:
+        message.category !== "handled" && message.category !== "promotion",
+      suggestedNextAction: message.actionIntelligence?.suggestedNextAction,
+      schedulingDetected: message.needsCalendarContext,
+    }),
+  };
+}
+
 function InboxSituationPreview({
   message,
   locale,
@@ -309,28 +347,11 @@ function InboxSituationPreview({
   message: GmailCardMessage;
   locale: "en" | "it";
 }) {
-  const row = {
-    sender: message.sender,
-    subject: message.subject,
-    snippet: message.snippet,
-  };
-  const line = buildSituationSummary(row, message.category, {
-    category: message.category,
-    locale,
-    relationship: message.relationship,
-  });
-  const chips = deriveIntentChips(row, {
-    category: message.category,
-    locale,
-    relationship: message.relationship,
-    replyRecommended: message.category !== "handled" && message.category !== "promotion",
-    suggestedNextAction: message.actionIntelligence?.suggestedNextAction,
-    schedulingDetected: message.needsCalendarContext,
-  });
+  const { summary, chips } = buildInboxMessagePreview(message, locale);
 
   return (
-    <div className="space-y-2">
-      <p className="text-sm leading-relaxed text-gray-600">{line}</p>
+    <div className="space-y-2 calm-fade-in">
+      <p className="text-sm leading-relaxed text-gray-600">{summary}</p>
       <IntentChips chips={chips} />
     </div>
   );
@@ -401,7 +422,7 @@ function CardHeader({
         <button
           type="button"
           onClick={onOpenCorrection}
-          className="max-w-[11rem] rounded-full border border-[#E2E8F0] bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent hover:bg-accent-muted"
+          className="max-w-[11rem] rounded-full border border-[#E2E8F0] bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent transition-colors duration-300 hover:bg-accent-muted"
           aria-label={`Category: ${catLabel}. Click to change.`}
         >
           {catLabel} ▼

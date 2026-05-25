@@ -6,6 +6,25 @@ type UiCopy = {
   common: {
     backToInbox: string;
   };
+  calm: {
+    errors: {
+      title: string;
+      tryAgain: string;
+      showDetails: string;
+    };
+    empty: {
+      manageable: string;
+      clearedNoise: string;
+      noUnresolved: string;
+      nothingOverdue: string;
+      noBody: string;
+      noTriageNotes: string;
+    };
+    loading: {
+      openingEmail: string;
+      checkingInbox: string;
+    };
+  };
   sections: {
     needsYourAttention: string;
     handledForYou: string;
@@ -222,6 +241,12 @@ type UiCopy = {
     everythingHandledEmpty: string;
     comeBackLater: string;
     loadingMicroMessages: string[];
+    inboxLoadingTitle: string;
+    emptyGmailInbox: string;
+    inboxErrorTitle: string;
+    connectGmailTitle: string;
+    connectGmailBody: string;
+    handledSectionEmpty: string;
     handledToday: string;
     completedSuffix: string;
   };
@@ -231,6 +256,25 @@ const en: UiCopy = {
   common: {
     backToInbox: "← Back to inbox",
   },
+  calm: {
+    errors: {
+      title: "Something didn't come through",
+      tryAgain: "Try again",
+      showDetails: "Technical details",
+    },
+    empty: {
+      manageable: "Everything looks manageable right now.",
+      clearedNoise: "Handled cleared the noise.",
+      noUnresolved: "No unresolved conversations at the moment.",
+      nothingOverdue: "Nothing important appears overdue.",
+      noBody: "The message body wasn't available — the thread is still here.",
+      noTriageNotes: "Nothing extra to add for this one.",
+    },
+    loading: {
+      openingEmail: "Opening this for you…",
+      checkingInbox: "Checking for updates…",
+    },
+  },
   sections: {
     needsYourAttention: "Needs Your Attention",
     handledForYou: "Handled For You",
@@ -239,7 +283,7 @@ const en: UiCopy = {
   emailActions: {
     actionsTitle: "Actions",
     replyLanguageLabel: "Reply Language",
-    generatingReplies: "Generating short reply options...",
+    generatingReplies: "Drafting your reply…",
     contextQuickApproval: "Quick approval",
     contextLowPriority: "Low priority",
     contextNeedsResponse: "Needs response",
@@ -258,23 +302,23 @@ const en: UiCopy = {
     editReplyButton: "Edit Reply",
     remindLaterButton: "Remind Me Later",
     ignoreButton: "Ignore",
-    statusPreparing: "Preparing short reply options...",
-    statusTimeoutFallback: "That took too long — here are backup replies you can use.",
-    statusNetworkFallback: "Something went wrong — here are backup replies you can use.",
-    statusInvalidJson: "Could not read the server response — using backup replies.",
-    statusGenerateFailed: "Could not generate short reply options — using backups.",
+    statusPreparing: "Getting your draft ready…",
+    statusTimeoutFallback: "That took a moment — here's a draft you can use.",
+    statusNetworkFallback: "Handled couldn't reach the server — here's a draft you can use.",
+    statusInvalidJson: "Something interrupted the response — here's a draft you can use.",
+    statusGenerateFailed: "Handled couldn't prepare a draft — here's one you can edit.",
     statusChooseReply: "Choose a reply.",
-    statusUnexpectedFallback: "Something went wrong — here are backup replies you can use.",
-    statusCopyFailed: "Could not copy to clipboard.",
+    statusUnexpectedFallback: "Something interrupted the request — here's a draft you can use.",
+    statusCopyFailed: "Handled couldn't copy that — try selecting the text manually.",
     statusReminderSaved: "Reminder saved for later review.",
     statusIgnored: "Email ignored for now.",
     statusRefining: "Refining your selected reply...",
-    statusRefineTimeout: "Refine timed out — kept a simple fallback in its place.",
-    statusRefineNetwork: "Could not reach the server — kept a simple fallback in its place.",
-    statusRefineInvalidJson: "Could not read the server response — using a backup line.",
-    statusRefineFailed: "Could not refine this reply — using a backup line.",
-    statusRefinedDone: "Reply refined. You can refine again if needed.",
-    statusRefineUnexpected: "Something went wrong — using a backup line.",
+    statusRefineTimeout: "That took a moment — kept your draft as-is.",
+    statusRefineNetwork: "Handled couldn't reach the server — your draft is unchanged.",
+    statusRefineInvalidJson: "Something interrupted the response — your draft is unchanged.",
+    statusRefineFailed: "Handled couldn't refine this — your draft is unchanged.",
+    statusRefinedDone: "Draft updated — refine again anytime.",
+    statusRefineUnexpected: "Something interrupted the request — your draft is unchanged.",
     draftPlaceholder: "Edit your reply here…",
     usageLimitMessage: "You've handled a lot today. Want unlimited access?",
   },
@@ -365,7 +409,7 @@ const en: UiCopy = {
     settingsTitle: "Sender relationships",
     settingsSubtitle:
       "Teach Handled who matters — family, school, VIP clients, and more.",
-    emptySettings: "No relationships saved yet. Mark senders from your inbox.",
+    emptySettings: "No relationships yet — mark senders from your inbox when you're ready.",
   },
   contextualSearch: {
     eyebrow: "Memory recall",
@@ -377,7 +421,7 @@ const en: UiCopy = {
     filtersLabel: "Quick filters",
     answerLabel: "Handled found",
     resultsLabel: "Matching memory",
-    noResults: "Nothing matched — try different words or a filter.",
+    noResults: "Nothing turned up — try different words or a filter.",
     hint: "Search commitments, people, school, invoices, or unresolved threads.",
     openEmail: "Open email",
   },
@@ -386,9 +430,8 @@ const en: UiCopy = {
     sectionTitle: "Your day at a glance",
     sectionSubtitle:
       "What needs you, what is waiting, and what you can ignore — not an endless scroll.",
-    calmDayMessage:
-      "Nothing pressing in focus right now. Take a breath — Handled is watching the inbox.",
-    emptySection: "Nothing here — a good sign.",
+    calmDayMessage: "Everything looks manageable in focus right now.",
+    emptySection: "Nothing needs you here — a calm sign.",
     openEmail: "Open",
     fullInboxHint: "Full inbox below when you want every message.",
   },
@@ -409,7 +452,7 @@ const en: UiCopy = {
     sectionSubtitle:
       "Calm reminders for open conversations — nothing urgent unless you want it to be.",
     sectionCalmNote: "Handled never sends follow-ups for you — only gentle suggestions.",
-    emptyState: "No follow-ups right now. Handled will surface open threads when it helps.",
+    emptyState: "No unresolved conversations at the moment.",
     atRiskTab: "Easy to forget",
     followUpsTab: "Follow-ups",
     waitingOnTab: "Waiting on",
@@ -445,7 +488,7 @@ const en: UiCopy = {
     onboardingLine2:
       "Generate a reply, edit it, and copy it into your email app.",
     dismiss: "Dismiss",
-    organizingInbox: "Organizing your inbox…",
+    organizingInbox: "Preparing your inbox…",
     todayTitle: "Today",
     attentionCountSingle: "email needs your attention",
     attentionCountPlural: "emails need your attention",
@@ -456,16 +499,21 @@ const en: UiCopy = {
     heroTitle: "Your inbox. Handled.",
     heroDescription:
       "A calm space to see what needs your attention, what has already been taken care of, and what can stay out of sight for now.",
-    allCaughtUp: "You're all caught up.",
-    everythingHandledEmpty: "Everything is handled.",
-    comeBackLater: "Come back later for new emails.",
+    allCaughtUp: "Everything looks manageable right now.",
+    everythingHandledEmpty: "Handled cleared the noise.",
+    comeBackLater: "New mail will show up when it arrives.",
     loadingMicroMessages: [
-      "We've got it handled.",
-      "Only what matters.",
-      "Nothing urgent right now.",
-      "Take a breath.",
-      "You're in control.",
+      "Preparing your inbox…",
+      "Looking for what actually matters…",
+      "Getting things organized…",
     ],
+    inboxLoadingTitle: "Preparing your inbox…",
+    emptyGmailInbox: "Your Gmail inbox is quiet — nothing to sort right now.",
+    inboxErrorTitle: "Handled couldn't load your inbox",
+    connectGmailTitle: "Connect Gmail when you're ready",
+    connectGmailBody:
+      "Sign in with Google so Handled can read your inbox calmly — read-only, nothing sends without you.",
+    handledSectionEmpty: "Nothing queued here — Handled will surface suggestions when they help.",
     handledToday: "Handled Today",
     completedSuffix: "completed",
   },
@@ -475,6 +523,25 @@ const it: UiCopy = {
   common: {
     backToInbox: "← Torna alla inbox",
   },
+  calm: {
+    errors: {
+      title: "Qualcosa non e arrivato",
+      tryAgain: "Riprova",
+      showDetails: "Dettagli tecnici",
+    },
+    empty: {
+      manageable: "Tutto sembra gestibile adesso.",
+      clearedNoise: "Handled ha filtrato il rumore.",
+      noUnresolved: "Nessuna conversazione irrisolta al momento.",
+      nothingOverdue: "Niente di importante sembra in ritardo.",
+      noBody: "Il testo non era disponibile — il thread resta qui.",
+      noTriageNotes: "Niente da aggiungere per questa.",
+    },
+    loading: {
+      openingEmail: "La sto aprendo per te…",
+      checkingInbox: "Controllo gli aggiornamenti…",
+    },
+  },
   sections: {
     needsYourAttention: "Richiedono attenzione",
     handledForYou: "Gestite per te",
@@ -483,7 +550,7 @@ const it: UiCopy = {
   emailActions: {
     actionsTitle: "Azioni",
     replyLanguageLabel: "Lingua della risposta",
-    generatingReplies: "Generazione di risposte brevi in corso...",
+    generatingReplies: "Sto preparando la bozza…",
     contextQuickApproval: "Approvazione rapida",
     contextLowPriority: "Bassa priorita",
     contextNeedsResponse: "Serve risposta",
@@ -502,33 +569,31 @@ const it: UiCopy = {
     editReplyButton: "Modifica risposta",
     remindLaterButton: "Ricordamelo dopo",
     ignoreButton: "Ignora",
-    statusPreparing: "Preparazione di risposte brevi in corso...",
-    statusTimeoutFallback:
-      "Ci sta mettendo troppo — ecco risposte di backup da usare.",
+    statusPreparing: "Preparo la bozza…",
+    statusTimeoutFallback: "Ci ha messo un attimo — ecco una bozza da usare.",
     statusNetworkFallback:
-      "Qualcosa e andato storto — ecco risposte di backup da usare.",
+      "Handled non ha raggiunto il server — ecco una bozza da usare.",
     statusInvalidJson:
-      "Impossibile leggere la risposta del server — uso risposte di backup.",
+      "Qualcosa ha interrotto la risposta — ecco una bozza da usare.",
     statusGenerateFailed:
-      "Impossibile generare risposte brevi — uso risposte di backup.",
+      "Handled non ha preparato la bozza — ecco una bozza da modificare.",
     statusChooseReply: "Scegli una risposta.",
     statusUnexpectedFallback:
-      "Qualcosa e andato storto — ecco risposte di backup da usare.",
-    statusCopyFailed: "Impossibile copiare negli appunti.",
+      "Qualcosa ha interrotto la richiesta — ecco una bozza da usare.",
+    statusCopyFailed: "Handled non ha copiato — prova a selezionare il testo.",
     statusReminderSaved: "Promemoria salvato per dopo.",
     statusIgnored: "Email ignorata per ora.",
     statusRefining: "Sto migliorando la risposta selezionata...",
-    statusRefineTimeout:
-      "Timeout durante il miglioramento — ho mantenuto una versione semplice.",
+    statusRefineTimeout: "Ci ha messo un attimo — la bozza resta com'e.",
     statusRefineNetwork:
-      "Impossibile raggiungere il server — ho mantenuto una versione semplice.",
+      "Handled non ha raggiunto il server — la bozza resta com'e.",
     statusRefineInvalidJson:
-      "Impossibile leggere la risposta del server — uso una frase di backup.",
+      "Qualcosa ha interrotto la risposta — la bozza resta com'e.",
     statusRefineFailed:
-      "Impossibile migliorare questa risposta — uso una frase di backup.",
-    statusRefinedDone: "Risposta migliorata. Puoi migliorarla ancora se vuoi.",
+      "Handled non ha migliorato la bozza — resta com'e.",
+    statusRefinedDone: "Bozza aggiornata — puoi rifinirla ancora.",
     statusRefineUnexpected:
-      "Qualcosa e andato storto — uso una frase di backup.",
+      "Qualcosa ha interrotto la richiesta — la bozza resta com'e.",
     draftPlaceholder: "Modifica qui la tua risposta...",
     usageLimitMessage: "Hai gestito molto oggi. Vuoi accesso illimitato?",
   },
@@ -619,7 +684,8 @@ const it: UiCopy = {
     settingsTitle: "Relazioni con i mittenti",
     settingsSubtitle:
       "Insegna a Handled chi conta — famiglia, scuola, clienti VIP e altro.",
-    emptySettings: "Nessuna relazione salvata. Segna i mittenti dalla inbox.",
+    emptySettings:
+      "Nessuna relazione ancora — segna i mittenti dalla inbox quando vuoi.",
   },
   contextualSearch: {
     eyebrow: "Memoria",
@@ -640,9 +706,8 @@ const it: UiCopy = {
     sectionTitle: "La tua giornata",
     sectionSubtitle:
       "Cosa richiede te, cosa e in attesa e cosa puoi ignorare — non uno scroll infinito.",
-    calmDayMessage:
-      "Niente di urgente in focus ora. Respira — Handled osserva la inbox.",
-    emptySection: "Niente qui — buon segno.",
+    calmDayMessage: "In focus tutto sembra gestibile adesso.",
+    emptySection: "Qui non serve nulla — buon segno.",
     openEmail: "Apri",
     fullInboxHint: "Inbox completa sotto, quando ti serve ogni messaggio.",
   },
@@ -663,7 +728,7 @@ const it: UiCopy = {
     sectionSubtitle:
       "Promemoria calmi per conversazioni aperte — niente urgenza artificiale.",
     sectionCalmNote: "Handled non invia mai follow-up al posto tuo — solo suggerimenti.",
-    emptyState: "Nessun follow-up per ora. Handled segnalera i thread aperti quando serve.",
+    emptyState: "Nessuna conversazione irrisolta al momento.",
     atRiskTab: "Da non dimenticare",
     followUpsTab: "Follow-up",
     waitingOnTab: "In attesa",
@@ -700,7 +765,7 @@ const it: UiCopy = {
     onboardingLine2:
       "Genera una risposta, modificala e copiala nella tua app email.",
     dismiss: "Chiudi",
-    organizingInbox: "Sto organizzando la tua inbox...",
+    organizingInbox: "Preparo la tua inbox…",
     todayTitle: "Oggi",
     attentionCountSingle: "email richiede la tua attenzione",
     attentionCountPlural: "email richiedono la tua attenzione",
@@ -711,16 +776,22 @@ const it: UiCopy = {
     heroTitle: "La tua inbox. Gestita.",
     heroDescription:
       "Uno spazio calmo per vedere cosa richiede attenzione, cosa e gia stato gestito e cosa puo restare fuori vista.",
-    allCaughtUp: "Hai gia fatto tutto.",
-    everythingHandledEmpty: "E tutto gestito.",
-    comeBackLater: "Torna piu tardi per nuove email.",
+    allCaughtUp: "Tutto sembra gestibile adesso.",
+    everythingHandledEmpty: "Handled ha filtrato il rumore.",
+    comeBackLater: "Le nuove email compariranno quando arrivano.",
     loadingMicroMessages: [
-      "Ci pensiamo noi.",
-      "Solo cio che conta.",
-      "Nulla di urgente adesso.",
-      "Respira.",
-      "Hai il controllo.",
+      "Preparo la tua inbox…",
+      "Cerco cio che conta davvero…",
+      "Metto tutto in ordine…",
     ],
+    inboxLoadingTitle: "Preparo la tua inbox…",
+    emptyGmailInbox: "La tua Gmail e tranquilla — niente da ordinare ora.",
+    inboxErrorTitle: "Handled non ha caricato la inbox",
+    connectGmailTitle: "Collega Gmail quando vuoi",
+    connectGmailBody:
+      "Accedi con Google cosi Handled legge la inbox con calma — solo lettura, nulla parte senza di te.",
+    handledSectionEmpty:
+      "Niente in coda — Handled suggerira quando puo aiutare.",
     handledToday: "Gestite oggi",
     completedSuffix: "completate",
   },

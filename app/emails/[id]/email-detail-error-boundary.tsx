@@ -21,7 +21,7 @@ export class EmailDetailErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <EmailDetailVisibleError label="EMAIL DETAIL ERROR (render):" error={this.state.error} />
+        <EmailDetailVisibleError error={this.state.error} />
       );
     }
     return this.props.children;

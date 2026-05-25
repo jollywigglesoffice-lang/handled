@@ -1,11 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CalmFadeIn } from "@/app/components/calm-loading";
+import { EmailDetailSkeleton } from "@/app/components/email-detail-skeleton";
 import { EmailDetailView, type EmailDetailPayload } from "./email-detail-view";
 import { EmailDetailAuthVisible } from "./email-detail-auth-visible";
 import { EmailDetailNotFound } from "./email-detail-not-found";
 import { EmailDetailVisibleError } from "./email-detail-visible-error";
+import { useUiCopy } from "@/app/use-ui-copy";
 import { ensureApiSessionCookies } from "@/lib/auth/ensure-api-session";
+import { readEmailPreview, type EmailPreviewCache } from "@/lib/email-preview-cache";
 import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
 import { safeFetchJson } from "@/lib/safe-json-response";
 
@@ -29,7 +33,11 @@ type EmailDetailClientLoaderProps = {
 };
 
 export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProps) {
+  const ui = useUiCopy();
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [preview] = useState<EmailPreviewCache | null>(() =>
+    typeof window !== "undefined" ? readEmailPreview(emailId) : null,
+  );
 
   const loadEmail = useCallback(async () => {
     setState({ status: "loading" });
@@ -127,11 +135,15 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
     void loadEmail();
   }, [loadEmail]);
 
+  const skeletonPreview = useMemo(() => preview, [preview]);
+
   if (state.status === "loading") {
     return (
-      <main className="min-h-screen bg-[#F8FAFC] px-4 py-16">
-        <p className="text-sm text-gray-500">Loading email…</p>
-      </main>
+      <EmailDetailSkeleton
+        preview={skeletonPreview}
+        backLabel={ui.common.backToInbox}
+        openingLabel={ui.calm.loading.openingEmail}
+      />
     );
   }
 
@@ -146,11 +158,15 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
   if (state.status === "error") {
     return (
       <EmailDetailVisibleError
-        label="EMAIL DETAIL ERROR (client load):"
         error={state.raw ?? state.message}
+        onRetry={() => void loadEmail()}
       />
     );
   }
 
-  return <EmailDetailView email={state.email} showActions enrichmentEnabled />;
+  return (
+    <CalmFadeIn>
+      <EmailDetailView email={state.email} showActions enrichmentEnabled />
+    </CalmFadeIn>
+  );
 }

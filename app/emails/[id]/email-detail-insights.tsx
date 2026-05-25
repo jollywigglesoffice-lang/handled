@@ -8,6 +8,7 @@ import { ProactiveAssistantCard } from "@/app/emails/proactive-assistant-card";
 import { TimelineIntelligenceCard } from "@/app/emails/timeline-intelligence-card";
 import { UnsubscribeIntelligenceCard } from "@/app/emails/unsubscribe-intelligence-card";
 import { CalmCollapsible } from "@/app/components/calm-collapsible";
+import { useUiCopy } from "@/app/use-ui-copy";
 import type { EmailDetailPayload } from "./email-detail-view";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 
@@ -39,6 +40,8 @@ export function EmailDetailInsights({
   workflowMode,
   onUseReplyDraft,
 }: EmailDetailInsightsProps) {
+  const ui = useUiCopy();
+
   if (!enrichmentEnabled && !hasInsightContent(email)) {
     return null;
   }
@@ -79,11 +82,7 @@ export function EmailDetailInsights({
             <p className="text-gray-600">{email.suggestedTriageAction}</p>
           ) : null}
           {!email.inboxCategory && !email.replySuppressedReason && !email.suggestedTriageAction ? (
-            <p className="text-gray-500">
-              {locale === "it"
-                ? "Nessun dettaglio aggiuntivo."
-                : "No extra triage notes for this message."}
-            </p>
+            <p className="text-gray-500">{ui.calm.empty.noTriageNotes}</p>
           ) : null}
         </div>
       </CalmCollapsible>
@@ -189,14 +188,14 @@ export function EmailDetailInsights({
 
       {email.enrichmentWarnings && email.enrichmentWarnings.length > 0 ? (
         <CalmCollapsible
-          title={locale === "it" ? "Avvisi di sistema" : "System notes"}
+          title={locale === "it" ? "Nota" : "Note"}
           defaultOpen={false}
         >
           <IntelligenceFallbackNote
             message={
               locale === "it"
-                ? "Alcuni dati opzionali non sono stati caricati."
-                : "Some optional data did not load."
+                ? "Handled ha mostrato l'essenziale — alcuni dettagli opzionali arriveranno dopo."
+                : "Handled showed what matters — a few optional details will catch up later."
             }
           />
         </CalmCollapsible>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useUiCopy } from "@/app/use-ui-copy";
 
 function formatRelativeSync(iso: string | null): string {
   if (!iso) return "Not synced yet";
@@ -27,6 +28,7 @@ export function InboxSyncBar({
   autoRefreshEnabled = true,
   onRefresh,
 }: InboxSyncBarProps) {
+  const ui = useUiCopy();
   const [, tick] = useState(0);
 
   useEffect(() => {
@@ -38,15 +40,14 @@ export function InboxSyncBar({
     <div className="-mt-2 flex flex-wrap items-center justify-between gap-3 text-sm">
       <div className="flex items-center gap-2 text-sm text-gray-600">
         {isRefreshing ? (
-          <span
-            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent"
-            aria-hidden
-          />
+          <span className="calm-accent-pulse h-2 w-2 rounded-full" aria-hidden />
         ) : (
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
         )}
         <span>
-          {isRefreshing ? "Checking inbox…" : `Last synced ${formatRelativeSync(lastSyncedAt)}`}
+          {isRefreshing
+            ? ui.calm.loading.checkingInbox
+            : `Last synced ${formatRelativeSync(lastSyncedAt)}`}
         </span>
         {autoRefreshEnabled && !isRefreshing ? (
           <span className="text-xs text-gray-400">· auto every 3 min</span>

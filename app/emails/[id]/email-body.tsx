@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useUiCopy } from "@/app/use-ui-copy";
 import { isLikelyHtml, sanitizeEmailHtml } from "@/lib/sanitize-email-html";
 
 type EmailBodyProps = {
@@ -11,6 +12,7 @@ type EmailBodyProps = {
 };
 
 export function EmailBody({ bodyHtml, bodyPlain, variant = "default" }: EmailBodyProps) {
+  const ui = useUiCopy();
   const { mode, content } = useMemo(() => {
     const html = bodyHtml?.trim() ?? "";
     const plain = bodyPlain?.trim() ?? "";
@@ -28,7 +30,7 @@ export function EmailBody({ bodyHtml, bodyPlain, variant = "default" }: EmailBod
 
   if (!content) {
     return (
-      <p className="text-sm italic text-gray-400">No message body available.</p>
+      <p className="text-sm text-gray-500">{ui.calm.empty.noBody}</p>
     );
   }
 

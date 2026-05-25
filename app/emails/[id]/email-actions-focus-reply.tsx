@@ -2,6 +2,11 @@
 
 import type { RefObject } from "react";
 import { CalmCollapsible } from "@/app/components/calm-collapsible";
+import {
+  CalmAiPreparing,
+  CalmShimmerBlock,
+  CalmTypingIndicator,
+} from "@/app/components/calm-loading";
 import { BrainUsagePanel } from "@/app/emails/brain-usage-panel";
 import { DraftMemoryStyleChip } from "@/app/emails/draft-memory-style-chip";
 import type { BrainUsageDto } from "@/lib/knowledge/types";
@@ -109,18 +114,21 @@ export function FocusReplyPanel({
       {usageHint ? <p className="text-xs text-gray-400">{usageHint}</p> : null}
 
       {isGenerating ? (
-        <div className="space-y-2">
-          <p className="text-sm text-gray-400">{generatingLabel}</p>
-          <div className="h-24 rounded-lg bg-gray-50 subtle-shimmer" />
+        <div className="space-y-3 calm-fade-in">
+          <CalmAiPreparing label={generatingLabel} />
+          <CalmShimmerBlock className="h-24 w-full accent" accent />
         </div>
       ) : null}
 
-      {isThinking ? (
-        <p className="text-sm text-gray-400 italic">Thinking…</p>
+      {isThinking && !isGenerating ? (
+        <div className="flex items-center gap-2.5">
+          <CalmTypingIndicator />
+          <span className="text-sm text-gray-400">Almost ready…</span>
+        </div>
       ) : null}
 
       {hasDraft && !isGenerating ? (
-        <>
+        <div className="calm-reveal-up space-y-4">
           <div className="space-y-2">
             <p className="text-xs font-medium text-accent">Suggested draft</p>
             <textarea
@@ -134,7 +142,10 @@ export function FocusReplyPanel({
               placeholder={draftPlaceholder}
             />
             {isStreaming && selectedReplyIndex !== null ? (
-              <span className="text-xs text-gray-400 animate-pulse">Updating…</span>
+              <span className="flex items-center gap-2 text-xs text-gray-400">
+                <CalmTypingIndicator />
+                Refining
+              </span>
             ) : null}
           </div>
 
@@ -276,7 +287,7 @@ export function FocusReplyPanel({
               {sendSuccessMessage}
             </p>
           ) : null}
-        </>
+        </div>
       ) : null}
     </div>
   );

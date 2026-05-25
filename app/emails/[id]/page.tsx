@@ -28,10 +28,7 @@ export default async function EmailDetailPage({ params }: EmailDetailPageProps) 
     if (!id) {
       console.error("[email-detail] empty id after decode");
       return (
-        <EmailDetailVisibleError
-          label="EMAIL DETAIL ERROR:"
-          error={new Error("Route param id is empty")}
-        />
+        <EmailDetailVisibleError error={new Error("Route param id is empty")} />
       );
     }
 
@@ -79,7 +76,7 @@ export default async function EmailDetailPage({ params }: EmailDetailPageProps) 
     );
   } catch (error) {
     console.error("EMAIL DETAIL LOAD ERROR:", error);
-    return <EmailDetailVisibleError label="EMAIL DETAIL ERROR:" error={error} />;
+    return <EmailDetailVisibleError error={error} />;
   }
 }
 

@@ -106,7 +106,7 @@ export function EmailDetailView({
   const nextStep = situation.nextStep;
 
   return (
-    <main className="min-h-screen bg-[#fafafa]">
+    <main className="min-h-screen bg-[#fafafa] calm-fade-in">
       <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-6 sm:px-6 sm:pt-10">
         <Link
           href="/emails"

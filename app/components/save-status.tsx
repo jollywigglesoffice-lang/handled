@@ -8,7 +8,7 @@ const LABELS: Record<SaveStatusState, string> = {
   saved: "Saved",
   synced: "Synced",
   offline: "Saved on this device",
-  error: "Could not save",
+  error: "Still on this device",
 };
 
 type SaveStatusProps = {

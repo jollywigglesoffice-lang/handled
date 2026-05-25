@@ -38,6 +38,11 @@ import { saveFollowUpReminderToAccount } from "@/lib/follow-up-reminders/client-
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import { DraftMemoryStyleChip } from "@/app/emails/draft-memory-style-chip";
 import { CalmCollapsible } from "@/app/components/calm-collapsible";
+import {
+  CalmAiPreparing,
+  CalmShimmerBlock,
+  CalmTypingIndicator,
+} from "@/app/components/calm-loading";
 import { FocusReplyPanel } from "./email-actions-focus-reply";
 import {
   draftMemoryHeaders,
@@ -1991,13 +1996,18 @@ return () => clearTimeout(timeout);
           ) : null}
 
           {isGeneratingReplies ? (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-500">{ui.emailActions.generatingReplies}</p>
-              <div className="space-y-3">
-                <div className="h-16 rounded-xl bg-[#F1F5F9] subtle-shimmer" />
-                <div className="h-16 rounded-xl bg-[#F1F5F9] subtle-shimmer" />
-                <div className="h-16 rounded-xl bg-[#F1F5F9] subtle-shimmer" />
-              </div>
+            <div className="space-y-3 calm-fade-in">
+              <CalmAiPreparing label={ui.emailActions.generatingReplies} />
+              <CalmShimmerBlock
+                className={`h-20 w-full ${calmLayout ? "accent" : ""}`}
+                accent={calmLayout}
+              />
+              {!calmLayout ? (
+                <>
+                  <CalmShimmerBlock className="h-16 w-full" />
+                  <CalmShimmerBlock className="h-16 w-full" />
+                </>
+              ) : null}
             </div>
           ) : null}
 
@@ -2248,7 +2258,7 @@ if (distance < 6) {
           >
             {!isPro ? (
               <p className="mb-2 text-[11px] text-gray-400">
-                Upgrade for unlimited replies and faster AI performance
+                Upgrade for unlimited replies
               </p>
             ) : null}
             {!isPro && usageCount >= FREE_LIMIT ? (
@@ -2256,11 +2266,12 @@ if (distance < 6) {
                 {"You're out of free replies for today."}
               </div>
             ) : null}
-            {isThinking && (
-              <div className="text-sm text-gray-400 italic animate-pulse mb-2">
-                Thinking...
+            {isThinking && !isGeneratingReplies ? (
+              <div className="mb-2 flex items-center gap-2.5">
+                <CalmTypingIndicator />
+                <span className="text-sm text-gray-400">Almost ready…</span>
               </div>
-            )}
+            ) : null}
             {!isPro && usageCount >= 2 && usageCount < FREE_LIMIT ? (
               <div className="mb-2 text-[11px] text-gray-400">
                 Want unlimited replies? Upgrade anytime.
