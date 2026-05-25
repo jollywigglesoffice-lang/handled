@@ -2,6 +2,7 @@ import { detectEscalation } from "@/lib/timeline-intelligence/detect-escalation"
 import { detectEmotionalTrajectory } from "@/lib/timeline-intelligence/detect-emotional-trajectory";
 import { analyzeConversationProgression } from "@/lib/timeline-intelligence/detect-progression";
 import { resolveConversationStatus } from "@/lib/timeline-intelligence/conversation-status";
+import { humanizeTimelineSummary } from "@/lib/continuity-context";
 import { buildTimelineSummary } from "@/lib/timeline-intelligence/timeline-summary";
 import {
   countFollowUpsInHay,
@@ -86,7 +87,7 @@ export function analyzeTimelineIntelligence(
   });
 
   const senderLabel = senderFirstNameFromRow(row.sender);
-  const { primary, detail } = buildTimelineSummary({
+  const built = buildTimelineSummary({
     status: conversationStatus,
     daysSinceLatest,
     memory: threadMemory,
@@ -113,16 +114,30 @@ export function analyzeTimelineIntelligence(
       daysSinceLatest >= 2 ||
       conversationStatus !== "open");
 
-  return {
+  const result: TimelineIntelligenceResult = {
     active,
     conversationStatus,
     trajectory,
     escalationScore: escalation.score,
-    timelineSummary: primary,
-    calmDetail: detail,
+    timelineSummary: built.primary,
+    calmDetail: built.detail,
     threadMemory,
     progression,
     visibilityBoost,
+  };
+
+  const human = humanizeTimelineSummary(result, {
+    sender: row.sender,
+    subject: row.subject,
+    snippet: row.snippet,
+    daysSinceMessage: daysSinceLatest,
+    locale,
+  });
+
+  return {
+    ...result,
+    timelineSummary: human.primary,
+    calmDetail: human.detail ?? result.calmDetail,
   };
 }
 

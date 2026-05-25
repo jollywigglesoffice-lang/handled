@@ -29,6 +29,7 @@ import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe
 import { useUiCopy } from "@/app/use-ui-copy";
 import { IntentChips } from "@/app/components/intent-chips";
 import { saveEmailPreview } from "@/lib/email-preview-cache";
+import { buildContinuityContext } from "@/lib/continuity-context";
 import { buildSituationSummary, deriveIntentChips } from "@/lib/situational-understanding";
 
 export type GmailCardMessage = {
@@ -259,6 +260,8 @@ export function GmailInboxCard({
 
         <InboxSituationPreview message={message} locale={locale} />
 
+        <InboxContinuityHint message={message} locale={locale} />
+
         <Link
           href={`/emails/${encodeURIComponent(message.id)}`}
           className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -338,6 +341,35 @@ function buildInboxMessagePreview(message: GmailCardMessage, locale: "en" | "it"
       schedulingDetected: message.needsCalendarContext,
     }),
   };
+}
+
+function InboxContinuityHint({
+  message,
+  locale,
+}: {
+  message: GmailCardMessage;
+  locale: "en" | "it";
+}) {
+  if (
+    !message.timelineIntelligence?.active ||
+    (message.timelineIntelligence.conversationStatus !== "stalled" &&
+      message.timelineIntelligence.conversationStatus !== "waiting" &&
+      message.timelineIntelligence.conversationStatus !== "escalating")
+  ) {
+    return null;
+  }
+
+  const line = buildContinuityContext({
+    sender: message.sender,
+    subject: message.subject,
+    snippet: message.snippet,
+    relationship: message.relationship,
+    locale,
+  }).lines[0];
+
+  if (!line) return null;
+
+  return <p className="text-xs leading-relaxed text-gray-500">{line}</p>;
 }
 
 function InboxSituationPreview({

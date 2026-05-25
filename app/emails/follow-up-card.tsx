@@ -81,12 +81,10 @@ export function FollowUpCard({ item, locale, onUpdated }: FollowUpCardProps) {
     : conversationStateLabel(item.state, locale);
 
   return (
-    <article className="rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50/60 to-white p-5 shadow-sm">
+    <article className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
-            {stateLabel}
-          </p>
+          <p className="text-xs font-medium text-gray-500">{stateLabel}</p>
           {item.timingSuggestion ? (
             <p className="text-xs font-medium text-violet-600/90">
               {item.timingSuggestion.message}
@@ -103,12 +101,11 @@ export function FollowUpCard({ item, locale, onUpdated }: FollowUpCardProps) {
             {item.sender} — {item.subject}
           </p>
         </div>
-        <span
-          className="rounded-full border border-violet-200 bg-white px-2.5 py-0.5 text-[10px] font-medium tabular-nums text-violet-800"
-          title={ui.followUp.urgencyLabel}
-        >
-          {item.urgencyScore}
-        </span>
+        {item.atRiskOfForgotten ? (
+          <span className="text-[10px] text-gray-400">
+            {locale === "it" ? "In vista" : "On your radar"}
+          </span>
+        ) : null}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">

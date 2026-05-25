@@ -20,6 +20,8 @@ import type { TimelineIntelligenceResult } from "@/lib/timeline-intelligence";
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import type { UnsubscribeAnalysis } from "@/lib/unsubscribe/types";
+import { ContinuityLines } from "@/app/components/continuity-lines";
+import { continuityFromEmailDetail } from "@/lib/continuity-context";
 import { buildSituationBundle, buildSituationSummary } from "@/lib/situational-understanding";
 
 export type EmailDetailPayload = FakeEmail & {
@@ -105,6 +107,23 @@ export function EmailDetailView({
 
   const nextStep = situation.nextStep;
 
+  const continuity = useMemo(
+    () =>
+      continuityFromEmailDetail(
+        {
+          sender: email.sender,
+          subject: email.subject,
+          summary: email.summary,
+          bodyPlain: email.bodyPlain,
+          relationship: email.relationship,
+          followUpAnalysis: email.followUpAnalysis,
+          timelineIntelligence: email.timelineIntelligence,
+        },
+        locale,
+      ),
+    [email, locale],
+  );
+
   return (
     <main className="min-h-screen bg-[#fafafa] calm-fade-in">
       <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-6 sm:px-6 sm:pt-10">
@@ -129,6 +148,8 @@ export function EmailDetailView({
           <p className="text-[15px] leading-relaxed text-gray-700">{displaySummary}</p>
 
           <IntentChips chips={situation.chips} />
+
+          <ContinuityLines lines={continuity.lines} />
 
           {nextStep ? (
             <p className="text-sm leading-relaxed text-gray-600">

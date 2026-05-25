@@ -9,6 +9,7 @@ import { TimelineIntelligenceCard } from "@/app/emails/timeline-intelligence-car
 import { UnsubscribeIntelligenceCard } from "@/app/emails/unsubscribe-intelligence-card";
 import { CalmCollapsible } from "@/app/components/calm-collapsible";
 import { useUiCopy } from "@/app/use-ui-copy";
+import { continuityFromEmailDetail } from "@/lib/continuity-context";
 import type { EmailDetailPayload } from "./email-detail-view";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 
@@ -41,6 +42,18 @@ export function EmailDetailInsights({
   onUseReplyDraft,
 }: EmailDetailInsightsProps) {
   const ui = useUiCopy();
+  const continuity = continuityFromEmailDetail(
+    {
+      sender: email.sender,
+      subject: email.subject,
+      summary: email.summary,
+      bodyPlain: email.bodyPlain,
+      relationship: email.relationship,
+      followUpAnalysis: email.followUpAnalysis,
+      timelineIntelligence: email.timelineIntelligence,
+    },
+    locale,
+  );
 
   if (!enrichmentEnabled && !hasInsightContent(email)) {
     return null;
@@ -102,12 +115,18 @@ export function EmailDetailInsights({
         </CalmCollapsible>
       ) : null}
 
-      {timeline?.active ? (
+      {timeline?.active && continuity.lines.length === 0 ? (
         <CalmCollapsible
-          title={locale === "it" ? "Contesto recente" : "Recent context"}
+          title={locale === "it" ? "Prima in questo thread" : "Earlier in this thread"}
           summary={timeline.timelineSummary?.slice(0, 72) ?? undefined}
         >
-          <TimelineIntelligenceCard analysis={timeline} locale={locale} />
+          <TimelineIntelligenceCard
+            analysis={timeline}
+            locale={locale}
+            sender={email.sender}
+            subject={email.subject}
+            snippet={email.summary}
+          />
         </CalmCollapsible>
       ) : null}
 
@@ -147,13 +166,14 @@ export function EmailDetailInsights({
 
       {email.followUpAnalysis ? (
         <CalmCollapsible
-          title={locale === "it" ? "Follow-up" : "Follow-up"}
-          summary={email.followUpAnalysis.state}
+          title={locale === "it" ? "Se vuoi muoverti" : "If you want to act"}
+          summary={email.followUpAnalysis.headline.slice(0, 72)}
         >
           <FollowUpIntelligenceCard
             emailId={email.id}
             analysis={email.followUpAnalysis}
             locale={locale}
+            actionsOnly={continuity.lines.length > 0}
           />
         </CalmCollapsible>
       ) : null}

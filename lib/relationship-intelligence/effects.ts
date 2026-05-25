@@ -116,32 +116,9 @@ export function relationshipFollowUpHeadline(
 ): { headline: string; calmPrompt: string } {
   if (!profile) return { headline: baseHeadline, calmPrompt: baseCalmPrompt };
 
-  if (profile.kind === "school") {
-    return {
-      headline: baseHeadline.replace(/^/, "").startsWith("Teacher")
-        ? baseHeadline
-        : `School: ${baseHeadline}`,
-      calmPrompt: baseCalmPrompt,
-    };
-  }
-
-  if (profile.importance === "vip" || profile.kind === "vip_client") {
-    return {
-      headline: `VIP client — ${baseHeadline.charAt(0).toLowerCase()}${baseHeadline.slice(1)}`,
-      calmPrompt: `${baseCalmPrompt} Handled is keeping this relationship visible.`,
-    };
-  }
-
   if (profile.kind === "family") {
     return {
       headline: baseHeadline,
-      calmPrompt: `${baseCalmPrompt} Take your time — family comes first.`,
-    };
-  }
-
-  if (profile.kind === "healthcare") {
-    return {
-      headline: `Healthcare — ${baseHeadline}`,
       calmPrompt: baseCalmPrompt,
     };
   }

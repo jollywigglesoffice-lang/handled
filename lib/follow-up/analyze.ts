@@ -17,6 +17,7 @@ import {
   resolveStateWithSmartSignals,
   shouldSurfaceInFollowUpSection,
 } from "@/lib/follow-up/smart-engine";
+import { headlinesForFollowUpState } from "@/lib/continuity-context";
 import { analyzeTimelineIntelligence } from "@/lib/timeline-intelligence";
 import { toThreadSnapshot } from "@/lib/timeline-intelligence/thread-group";
 import type { ConversationState, FollowUpAnalysis } from "@/lib/follow-up/types";
@@ -105,69 +106,6 @@ function resolveState(input: {
   return null;
 }
 
-function buildHeadlines(
-  state: ConversationState,
-  name: string,
-  days: number,
-  subject: string,
-  commitment?: string,
-): { headline: string; calmPrompt: string } {
-  const shortSubject = subject.length > 48 ? `${subject.slice(0, 45)}…` : subject;
-
-  switch (state) {
-    case "awaiting_your_reply":
-      return {
-        headline:
-          days > 0
-            ? `${name} is waiting — it's been ${days} day${days === 1 ? "" : "s"}`
-            : `${name} may be waiting for your reply`,
-        calmPrompt: `Regarding “${shortSubject}” — a thoughtful reply when you're ready helps.`,
-      };
-    case "waiting_for_response":
-      return {
-        headline:
-          days >= 3
-            ? `${name} hasn't replied in ${days} days`
-            : `Waiting to hear back from ${name}`,
-        calmPrompt: "Would you like a gentle follow-up draft when the time feels right?",
-      };
-    case "follow_up_recommended":
-      return {
-        headline: `Follow-up may help with ${name}`,
-        calmPrompt:
-          days >= 2
-            ? `This thread has been quiet for ${days} days — no rush, just keeping it on your radar.`
-            : "Handled noticed this conversation might benefit from a nudge.",
-      };
-    case "pending_scheduling":
-      return {
-        headline: `Scheduling with ${name}`,
-        calmPrompt: "A quick reply can lock in a time that works for you.",
-      };
-    case "user_commitment_pending":
-      return {
-        headline: commitment ?? `You may owe ${name} a follow-up`,
-        calmPrompt: "Handled remembered a possible commitment in this thread — only if it still applies.",
-      };
-    case "awaiting_approval":
-      return {
-        headline: `Approval may be needed — ${shortSubject}`,
-        calmPrompt: "When you're ready, a clear yes/no helps everyone move forward.",
-      };
-    case "pending_payment":
-      return {
-        headline: `Payment or invoice open — ${shortSubject}`,
-        calmPrompt: "Review when convenient — no need to rush unless a deadline applies.",
-      };
-    case "conversation_unresolved":
-    default:
-      return {
-        headline: `Unresolved: ${shortSubject}`,
-        calmPrompt: "This conversation may still need your attention when you have a moment.",
-      };
-  }
-}
-
 /**
  * Analyze a message for follow-up / reminder intelligence.
  * Returns null when the message is not a follow-up candidate.
@@ -178,6 +116,7 @@ export function analyzeFollowUp(
   options?: {
     workflowMode?: "assist" | "clean" | "handle";
     senderRelationships?: SenderRelationship[];
+    locale?: "en" | "it";
   },
 ): FollowUpAnalysis | null {
   const hay = haystack(row);
@@ -225,9 +164,15 @@ export function analyzeFollowUp(
     Math.min(100, urgencyScore + timeline.visibilityBoost),
   );
 
-  const name = senderFirstNameFromRow(row.sender);
   const commitment = detectCommitment(hay);
-  const baseHeadlines = buildHeadlines(state, name, days, row.subject, commitment);
+  const baseHeadlines = headlinesForFollowUpState({
+    row,
+    state,
+    days,
+    commitment,
+    relationship,
+    locale: options?.locale ?? "en",
+  });
   const { headline, calmPrompt } = relationshipFollowUpHeadline(
     relationship,
     baseHeadlines.headline,

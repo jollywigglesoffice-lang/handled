@@ -1,88 +1,62 @@
 "use client";
 
+import { useMemo } from "react";
+import { ContinuityLines } from "@/app/components/continuity-lines";
 import { ConversationStatusChip } from "@/app/components/conversation-status-chip";
+import { buildContinuityContext } from "@/lib/continuity-context";
 import type { TimelineIntelligenceResult } from "@/lib/timeline-intelligence";
-import { trajectoryLabel } from "@/lib/timeline-intelligence/labels";
 
 type TimelineIntelligenceCardProps = {
   analysis: TimelineIntelligenceResult;
   locale: "en" | "it";
+  sender: string;
+  subject: string;
+  snippet?: string;
 };
 
 export function TimelineIntelligenceCard({
   analysis,
   locale,
+  sender,
+  subject,
+  snippet,
 }: TimelineIntelligenceCardProps) {
   if (!analysis?.active) return null;
 
-  const memory = analysis.threadMemory ?? {
-    requestedActions: [],
-    mentionedDeadlines: [],
-    mentionedAttachments: false,
-    unresolvedCommitments: [],
-    followUpCount: 0,
-    userRepliedHeuristic: false,
-    otherRepliedHeuristic: false,
-  };
+  const continuity = useMemo(
+    () =>
+      buildContinuityContext({
+        sender,
+        subject,
+        snippet,
+        timeline: analysis,
+        locale,
+      }),
+    [analysis, sender, subject, snippet, locale],
+  );
 
-  const memoryBullets: string[] = [];
-  if (memory.requestedActions?.[0]) {
-    memoryBullets.push(memory.requestedActions[0]!);
-  }
-  if (memory.mentionedDeadlines?.[0]) {
-    memoryBullets.push(
-      locale === "it"
-        ? `Scadenza: ${memory.mentionedDeadlines[0]}`
-        : `Deadline: ${memory.mentionedDeadlines[0]}`,
-    );
-  }
-  if (memory.mentionedAttachments) {
-    memoryBullets.push(
-      locale === "it" ? "Allegato citato" : "Attachment mentioned",
-    );
-  }
+  const lines =
+    continuity.lines.length > 0
+      ? continuity.lines
+      : [analysis.timelineSummary, analysis.calmDetail].filter(
+          (x): x is string => Boolean(x),
+        );
+
+  const showStatusChip =
+    analysis.conversationStatus === "escalating" ||
+    analysis.conversationStatus === "stalled" ||
+    analysis.conversationStatus === "waiting";
 
   return (
-    <div className="space-y-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-        {locale === "it" ? "Timeline conversazione" : "Conversation timeline"}
-      </p>
-
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-3 text-sm leading-relaxed">
+      {showStatusChip ? (
         <ConversationStatusChip
           status={analysis.conversationStatus}
           locale={locale}
           compact
         />
-        {analysis.trajectory !== "calm" && analysis.trajectory !== "informational" ? (
-          <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-gray-500">
-            {trajectoryLabel(analysis.trajectory, locale)}
-          </span>
-        ) : null}
-      </div>
-
-      <p className="text-sm font-medium leading-relaxed text-[#0F172A]">
-        {analysis.timelineSummary}
-      </p>
-      {analysis.calmDetail ? (
-        <p className="text-xs leading-relaxed text-gray-500">{analysis.calmDetail}</p>
       ) : null}
-
-      {memoryBullets.length > 0 ? (
-        <ul className="space-y-1 border-t border-gray-100 pt-3 text-xs text-gray-600">
-          {memoryBullets.slice(0, 2).map((line, i) => (
-            <li key={i} className="leading-relaxed">
-              {line}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      <p className="text-[10px] leading-relaxed text-gray-400">
-        {locale === "it"
-          ? "Handled osserva il thread nel tempo — nessun promemoria invasivo."
-          : "Handled watches the thread over time — no noisy reminders."}
-      </p>
+      <ContinuityLines lines={lines.slice(0, 2)} />
     </div>
   );
 }
