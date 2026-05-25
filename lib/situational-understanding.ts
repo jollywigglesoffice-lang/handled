@@ -288,14 +288,23 @@ export function deriveIntentChips(
   if (intent.kinds.includes("sales_lead")) add("Sales", "Commerciale");
   if (intent.kinds.includes("support_request")) add("Support", "Supporto");
   if (intent.kinds.includes("decision_required")) add("Needs decision", "Decisione");
-  if (intent.kinds.includes("deadline") || intent.kinds.includes("urgent_request")) {
-    add("Time-sensitive", "Urgenza");
+  const lowUrgency =
+    context.category === "promotion" ||
+    context.category === "newsletter" ||
+    context.category === "handled" ||
+    isCommercialBulk(fullRow);
+
+  if (
+    (intent.kinds.includes("deadline") || intent.kinds.includes("urgent_request")) &&
+    !lowUrgency
+  ) {
+    add("Worth checking today", "Da vedere oggi");
   }
 
-  if (context.replyRecommended && context.category !== "handled") {
-    add("Reply recommended", "Risposta consigliata");
-  } else if (context.category === "handled" || isCommercialBulk(fullRow)) {
-    add("No reply needed", "Nessuna risposta");
+  if (context.replyRecommended && context.category !== "handled" && !lowUrgency) {
+    add("Reply when ready", "Rispondi quando puoi");
+  } else if (lowUrgency) {
+    add("Can wait", "Può aspettare");
   }
 
   if (/waiting|follow up|in attesa|aspett/i.test(hay)) {

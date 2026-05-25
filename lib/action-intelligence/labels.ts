@@ -36,7 +36,7 @@ const LABELS_EN: Record<ActionLabelId, string> = {
   payment: "Payment",
   review: "Review",
   meeting: "Meeting",
-  urgent: "Urgent",
+  urgent: "Worth checking",
 };
 
 const LABELS_IT: Record<ActionLabelId, string> = {
@@ -47,7 +47,7 @@ const LABELS_IT: Record<ActionLabelId, string> = {
   payment: "Pagamento",
   review: "Revisione",
   meeting: "Riunione",
-  urgent: "Urgente",
+  urgent: "Da vedere",
 };
 
 export function impliedActionsToLabels(implied: ImpliedActionKind[]): ActionLabelId[] {
@@ -71,8 +71,9 @@ export function actionLabelTitle(id: ActionLabelId, locale: "en" | "it" = "en"):
 export function actionLabelTone(id: ActionLabelId): string {
   switch (id) {
     case "urgent":
+      return "border-accent/15 bg-accent-muted/40 text-accent";
     case "deadline":
-      return "border-rose-200 bg-rose-50 text-rose-900";
+      return "border-amber-100 bg-amber-50/80 text-amber-900";
     case "payment":
       return "border-amber-200 bg-amber-50 text-amber-900";
     case "meeting":

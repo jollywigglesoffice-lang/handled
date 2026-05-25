@@ -105,35 +105,35 @@ export function normalizeInboxAiCategory(raw: string): InboxAiCategory {
 }
 
 const TITLES_EN: Record<InboxAiCategory, string> = {
-  needs_attention: "Needs your attention",
-  quick_reply: "Quick reply",
-  handled: "Handled",
+  needs_attention: "Worth your attention",
+  quick_reply: "Quick replies",
+  handled: "Can wait",
   newsletter: "Newsletters",
   promotion: "Promotions",
 };
 
 const TITLES_IT: Record<InboxAiCategory, string> = {
-  needs_attention: "Richiede attenzione",
-  quick_reply: "Risposta veloce",
-  handled: "Gestite",
+  needs_attention: "Da vedere",
+  quick_reply: "Risposte veloci",
+  handled: "Possono aspettare",
   newsletter: "Newsletter",
   promotion: "Promozioni",
 };
 
 const SUB_EN: Partial<Record<InboxAiCategory, string>> = {
-  needs_attention: "Messages that likely need a decision or deeper review.",
-  quick_reply: "Short acknowledgments or simple replies usually suffice.",
-  handled: "Looks informational or already taken care of.",
-  newsletter: "Digests, blogs, and recurring content.",
-  promotion: "Marketing, offers, and sales outreach.",
+  needs_attention: "Worth checking when you have a moment.",
+  quick_reply: "Short replies — no heavy lifting.",
+  handled: "Informational or already quiet — safe to skim later.",
+  newsletter: "Digests and recurring reads — nothing urgent here.",
+  promotion: "Offers and marketing — likely no action needed.",
 };
 
 const SUB_IT: Partial<Record<InboxAiCategory, string>> = {
-  needs_attention: "Messaggi che probabilmente richiedono una decisione o più attenzione.",
-  quick_reply: "Bastano conferme brevi o risposte semplici.",
-  handled: "Sembrano informativi o già risolti.",
-  newsletter: "Digest, blog e contenuti ricorrenti.",
-  promotion: "Marketing, offerte e promozioni.",
+  needs_attention: "Da controllare quando hai un momento.",
+  quick_reply: "Risposte brevi — niente di pesante.",
+  handled: "Informativi o già tranquilli — puoi leggerli dopo.",
+  newsletter: "Digest e letture ricorrenti — niente di urgente.",
+  promotion: "Offerte e marketing — probabilmente nessuna azione.",
 };
 
 export function inboxCategorySectionTitle(

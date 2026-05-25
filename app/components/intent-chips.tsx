@@ -6,7 +6,7 @@ export function IntentChips({ chips }: { chips: string[] }) {
     <div className="flex flex-wrap gap-1.5" role="list" aria-label="Context">
       {chips.map((chip) => {
         const highlight =
-          /reply recommended|risposta consigliata|time-sensitive|urgenza/i.test(chip);
+          /worth checking|da vedere oggi|reply when ready|risposta quando puoi/i.test(chip);
         return (
           <span
             key={chip}

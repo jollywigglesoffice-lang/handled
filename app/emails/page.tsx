@@ -34,8 +34,13 @@ import { useStableInboxBuckets } from "@/app/emails/use-stable-inbox-buckets";
 import { GmailInboxCard, type GmailCardMessage } from "@/app/emails/gmail-inbox-card";
 import { InboxSyncBar } from "@/app/emails/inbox-sync-bar";
 import { CalmTypingIndicator } from "@/app/components/calm-loading";
+import {
+  calmSectionCountLabel,
+  calmTodayHeadline,
+  pickFocusReassurance,
+  type AttentionSnapshot,
+} from "@/lib/attention-calm";
 import { calmInboxErrorFromRaw } from "@/lib/calm-messages";
-import { pickInboxReliefMessage } from "@/lib/micro-relief";
 import { uiLocaleFromLanguage } from "@/lib/ui-copy";
 import {
   type CategorySource,
@@ -244,7 +249,9 @@ function GmailCategorySectionHeader({
           ) : null}
         </div>
       </div>
-      <span className="text-xs tabular-nums text-gray-400">{count}</span>
+      <span className="text-xs text-gray-400">
+        {calmSectionCountLabel(count, category, locale)}
+      </span>
     </div>
   );
 }
@@ -664,35 +671,28 @@ export default function EmailsInboxPage() {
 
   const activeBuckets = inboxMode === "gmail" ? gmailBuckets : mockBuckets;
 
-  const todayAttentionCount = activeBuckets.todayAttentionCount;
-  const handledCount = activeBuckets.handledEmails.length;
   const inboxLocale = uiLanguage === "it" ? "it" : "en";
+  const attentionSnapshot: AttentionSnapshot = useMemo(
+    () => ({
+      needsAttention: activeBuckets.todayAttentionCount,
+      quickReply: activeBuckets.quickReplyEmails.length,
+      handled: activeBuckets.handledEmails.length,
+      newsletter: activeBuckets.newsletterEmails.length,
+      promotion: activeBuckets.promotionEmails.length,
+      clutter: activeBuckets.clutterCount,
+      totalVisible: activeBuckets.allVisible.length,
+    }),
+    [activeBuckets],
+  );
+  const todayHeadline = calmTodayHeadline(attentionSnapshot, inboxLocale);
   const reliefMessage = useMemo(
-    () =>
-      inboxLoading
-        ? null
-        : pickInboxReliefMessage({
-            attentionCount: todayAttentionCount,
-            handledCount,
-            totalVisible: activeBuckets.allVisible.length,
-            locale: inboxLocale,
-          }),
-    [
-      inboxLoading,
-      todayAttentionCount,
-      handledCount,
-      inboxLocale,
-      activeBuckets.allVisible.length,
-    ],
+    () => (inboxLoading ? null : pickFocusReassurance(attentionSnapshot, inboxLocale)),
+    [inboxLoading, attentionSnapshot, inboxLocale],
   );
   const calmGmailError = calmInboxErrorFromRaw(
     gmailError,
     uiLocaleFromLanguage(uiLanguage),
   );
-  const importantEmailLabel =
-    todayAttentionCount === 1
-      ? `1 ${ui.home.attentionCountSingle}`
-      : `${todayAttentionCount} ${ui.home.attentionCountPlural}`;
 
   const workflowProfile = getWorkflowModeProfile(workflowMode);
 
@@ -716,7 +716,7 @@ export default function EmailsInboxPage() {
                       <span className="calm-accent-pulse h-2 w-2 rounded-full" />
                     </span>
                   ) : null}
-                  <span className="font-medium text-gray-700">{importantEmailLabel}</span>
+                  <span className="font-medium text-gray-700">{todayHeadline}</span>
                   <span className="text-gray-400"> · {workflowProfile.label}</span>
                 </p>
                 {reliefMessage ? (

@@ -56,8 +56,8 @@ export function buildTimelineSummary(input: {
     return {
       primary:
         locale === "it"
-          ? `Il tono è diventato più urgente oggi.`
-          : `Tone has shifted more urgent recently.`,
+          ? `Il tono è un po' più insistente oggi.`
+          : `The tone has picked up a little recently.`,
       detail:
         locale === "it"
           ? `Da ${input.senderLabel} — ${d} fa.`
