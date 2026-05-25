@@ -341,32 +341,3 @@ function looksLikePossibleHumanEmail(row: GmailInboxRow): boolean {
   return false;
 }
 
-export function intentSummaryLine(row: GmailInboxRow): string | null {
-  const intent = analyzeEmailIntent(row);
-  if (!intent.highPriority) return null;
-
-  const hay = emailHaystack(row);
-  if (intent.kinds.includes("pricing_inquiry")) {
-    const emp = hay.match(/(\d+)\s*employees?/i);
-    if (emp) {
-      return `Potential customer asking about corporate pricing (${emp[1]} employees). Reply recommended.`;
-    }
-    return "Potential customer asking about pricing or plans. Reply recommended.";
-  }
-  if (intent.kinds.includes("sales_lead")) {
-    return "Inbound sales or early-access interest. Treat as a business opportunity.";
-  }
-  if (intent.kinds.includes("scheduling")) {
-    return "Meeting or scheduling request. Likely needs a reply.";
-  }
-  if (intent.kinds.includes("support_request")) {
-    return "Support or help request. Review and respond.";
-  }
-  if (intent.kinds.includes("direct_question")) {
-    return "Contains direct questions. A reply is likely expected.";
-  }
-  if (intent.kinds.includes("decision_required")) {
-    return "Asks for your decision or approval.";
-  }
-  return "Important message that may need your response.";
-}

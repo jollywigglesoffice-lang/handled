@@ -122,7 +122,7 @@ export function FocusReplyPanel({
       {hasDraft && !isGenerating ? (
         <>
           <div className="space-y-2">
-            <p className="text-xs font-medium text-accent">{recommendationLabel}</p>
+            <p className="text-xs font-medium text-accent">Suggested draft</p>
             <textarea
               id="reply-draft"
               ref={draftRef}

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { IntentChips } from "@/app/components/intent-chips";
 import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
 import { EmailDetailInsights } from "./email-detail-insights";
@@ -9,7 +10,6 @@ import { RelationshipBadge } from "@/app/emails/relationship-badge";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import type { FakeEmail } from "@/lib/fake-emails";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
-import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
 import { uiLocaleFromLanguage } from "@/lib/ui-copy";
@@ -20,6 +20,7 @@ import type { TimelineIntelligenceResult } from "@/lib/timeline-intelligence";
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import type { UnsubscribeAnalysis } from "@/lib/unsubscribe/types";
+import { buildSituationBundle, buildSituationSummary } from "@/lib/situational-understanding";
 
 export type EmailDetailPayload = FakeEmail & {
   bodyPlain?: string;
@@ -50,23 +51,6 @@ type EmailDetailViewProps = {
   enrichmentEnabled?: boolean;
 };
 
-function suggestedNextStep(
-  email: EmailDetailPayload,
-  locale: "en" | "it",
-): string | null {
-  const action = email.actionIntelligence;
-  if (action?.suggestedNextAction?.trim()) {
-    return action.suggestedNextAction.trim();
-  }
-  if (email.suggestedTriageAction?.trim()) {
-    return email.suggestedTriageAction.trim();
-  }
-  if (action?.actionable && action.primaryLabel) {
-    return action.primaryLabel.replace(/_/g, " ");
-  }
-  return null;
-}
-
 export function EmailDetailView({
   email,
   showActions = true,
@@ -77,13 +61,49 @@ export function EmailDetailView({
   );
   const ui = useUiCopy();
   const { uiLanguage } = useUserPreferences();
-  const categoryLocale = uiLocaleFromLanguage(uiLanguage) === "it" ? "it" : "en";
+  const locale = uiLocaleFromLanguage(uiLanguage) === "it" ? "it" : "en";
   const workflowMode = readWorkflowModeFromStorage();
+
+  const category = email.inboxCategory ?? "needs_attention";
+
+  const situation = useMemo(() => {
+    const row = {
+      sender: email.sender,
+      subject: email.subject,
+      snippet: email.summary,
+    };
+    const rawNext =
+      email.actionIntelligence?.suggestedNextAction?.trim() ||
+      email.suggestedTriageAction?.trim() ||
+      null;
+
+    return buildSituationBundle(row, {
+      category,
+      locale,
+      relationship: email.relationship,
+      replyRecommended: email.replyRecommended ?? true,
+      suggestedNextAction: rawNext,
+      schedulingDetected: email.schedulingIntentDetected ?? email.needsCalendarContext,
+    });
+  }, [email, category, locale]);
 
   const summary =
     email.aiSummary?.trim() ||
-    (categoryLocale === "it" ? "Nessun riepilogo disponibile." : "No summary available.");
-  const nextStep = suggestedNextStep(email, categoryLocale);
+    buildSituationSummary(
+      { sender: email.sender, subject: email.subject, snippet: email.summary },
+      category,
+      { category, locale, relationship: email.relationship },
+    );
+
+  const displaySummary =
+    summary &&
+    !/needs attention|likely needs|scheduling request detected|no summary available/i.test(
+      summary,
+    )
+      ? summary
+      : situation.summary;
+
+  const nextStep = situation.nextStep;
 
   return (
     <main className="min-h-screen bg-[#fafafa]">
@@ -102,21 +122,18 @@ export function EmailDetailView({
             {email.subject}
           </h1>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-            {email.inboxCategory ? (
-              <span>{inboxCategorySectionTitle(email.inboxCategory, categoryLocale)}</span>
-            ) : null}
-            {email.relationship ? (
-              <RelationshipBadge relationship={email.relationship} />
-            ) : null}
-          </div>
+          {email.relationship ? (
+            <RelationshipBadge relationship={email.relationship} />
+          ) : null}
 
-          <p className="text-[15px] leading-relaxed text-gray-600">{summary}</p>
+          <p className="text-[15px] leading-relaxed text-gray-700">{displaySummary}</p>
+
+          <IntentChips chips={situation.chips} />
 
           {nextStep ? (
-            <p className="text-sm leading-relaxed text-gray-700">
-              <span className="font-medium text-accent">
-                {categoryLocale === "it" ? "Prossimo passo · " : "Suggested next step · "}
+            <p className="text-sm leading-relaxed text-gray-600">
+              <span className="font-medium text-gray-800">
+                {locale === "it" ? "Prossimo passo · " : "Next step · "}
               </span>
               {nextStep}
             </p>
@@ -137,7 +154,7 @@ export function EmailDetailView({
         {showActions ? (
           <section className="mt-8">
             <h2 className="mb-3 text-xs font-medium text-gray-400">
-              {categoryLocale === "it" ? "Bozza di risposta" : "Draft reply"}
+              {locale === "it" ? "Bozza di risposta" : "Draft reply"}
             </h2>
             <EmailActions
               calmLayout
@@ -159,7 +176,7 @@ export function EmailDetailView({
 
         <EmailDetailInsights
           email={email}
-          locale={categoryLocale}
+          locale={locale}
           enrichmentEnabled={enrichmentEnabled}
           workflowMode={workflowMode}
           onUseReplyDraft={(text) => setReplyDraftOverride(text)}

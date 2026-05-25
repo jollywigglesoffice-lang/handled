@@ -21,13 +21,14 @@ import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import { RelationshipAssignPanel } from "@/app/emails/relationship-assign-panel";
 import { RelationshipBadge } from "@/app/emails/relationship-badge";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
-import { ActionLabelChip } from "@/app/components/action-label-chip";
 import { CalendarContextBadge } from "@/app/components/calendar-context-badge";
 import type { ActionLabelId } from "@/lib/action-intelligence";
 import { ConversationStatusChip } from "@/app/components/conversation-status-chip";
 import type { ConversationStatus } from "@/lib/timeline-intelligence";
 import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe";
 import { useUiCopy } from "@/app/use-ui-copy";
+import { IntentChips } from "@/app/components/intent-chips";
+import { buildSituationSummary, deriveIntentChips } from "@/lib/situational-understanding";
 
 export type GmailCardMessage = {
   id: string;
@@ -255,22 +256,13 @@ export function GmailInboxCard({
           />
         ) : null}
 
+        <InboxSituationPreview message={message} locale={locale} />
+
         <Link
           href={`/emails/${encodeURIComponent(message.id)}`}
-          className="block space-y-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <h3 className="text-base font-medium text-[#0F172A]">{message.subject}</h3>
-          {message.timelineIntelligence?.active &&
-          message.timelineIntelligence.timelineSummary ? (
-            <p className="text-xs leading-relaxed text-gray-400">
-              {message.timelineIntelligence.timelineSummary}
-            </p>
-          ) : message.actionIntelligence?.suggestedNextAction ? (
-            <p className="text-xs leading-relaxed text-gray-400">
-              {message.actionIntelligence.suggestedNextAction}
-            </p>
-          ) : null}
-          <p className="text-sm leading-relaxed text-gray-500">{message.snippet}</p>
         </Link>
 
         {!showCorrection && !showRelationship ? (
@@ -310,6 +302,40 @@ export function GmailInboxCard({
   );
 }
 
+function InboxSituationPreview({
+  message,
+  locale,
+}: {
+  message: GmailCardMessage;
+  locale: "en" | "it";
+}) {
+  const row = {
+    sender: message.sender,
+    subject: message.subject,
+    snippet: message.snippet,
+  };
+  const line = buildSituationSummary(row, message.category, {
+    category: message.category,
+    locale,
+    relationship: message.relationship,
+  });
+  const chips = deriveIntentChips(row, {
+    category: message.category,
+    locale,
+    relationship: message.relationship,
+    replyRecommended: message.category !== "handled" && message.category !== "promotion",
+    suggestedNextAction: message.actionIntelligence?.suggestedNextAction,
+    schedulingDetected: message.needsCalendarContext,
+  });
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm leading-relaxed text-gray-600">{line}</p>
+      <IntentChips chips={chips} />
+    </div>
+  );
+}
+
 function CardHeader({
   message,
   catLabel,
@@ -338,14 +364,6 @@ function CardHeader({
           message.timelineIntelligence.conversationStatus === "stalled") ? (
           <ConversationStatusChip
             status={message.timelineIntelligence.conversationStatus}
-            locale={locale}
-            compact
-          />
-        ) : null}
-        {message.actionIntelligence?.actionable &&
-        message.actionIntelligence.primaryLabel ? (
-          <ActionLabelChip
-            label={message.actionIntelligence.primaryLabel}
             locale={locale}
             compact
           />

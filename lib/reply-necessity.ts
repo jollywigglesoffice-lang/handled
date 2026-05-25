@@ -47,14 +47,15 @@ export function assessReplyNeed(input: {
       (intent.kinds.includes("pricing_inquiry")
         ? "Review pricing question and reply with details."
         : "Review and reply when ready.");
+    const who = row.sender.split("<")[0]?.trim() || "They";
     return {
       recommended: true,
       reason:
         intent.kinds.includes("pricing_inquiry")
-          ? "Pricing or plan inquiry — a reply is expected."
+          ? `${who} is asking about pricing — they expect an answer.`
           : intent.kinds.includes("sales_lead")
-            ? "Inbound business opportunity — reply recommended."
-            : "Direct questions or requests that need a response.",
+            ? `${who} reached out with business interest.`
+            : `${who} asked something that needs a response.`,
       suggestedAction: action,
       confidence: Math.max(0.85, intent.confidence),
     };
@@ -63,8 +64,8 @@ export function assessReplyNeed(input: {
   if (category === "promotion") {
     return {
       recommended: false,
-      reason: "Likely promotional or marketing email.",
-      suggestedAction: "Safe to archive — no reply needed.",
+      reason: "Promotional email — nothing you need to send back.",
+      suggestedAction: "Archive when you're done skimming.",
       confidence: 0.92,
     };
   }
@@ -72,8 +73,8 @@ export function assessReplyNeed(input: {
   if (category === "newsletter") {
     return {
       recommended: false,
-      reason: "Newsletter or bulk update.",
-      suggestedAction: "Read later or archive — no reply needed.",
+      reason: "Newsletter or digest — read when you want.",
+      suggestedAction: "Read later or archive.",
       confidence: 0.9,
     };
   }
@@ -128,8 +129,8 @@ export function assessReplyNeed(input: {
   if (category === "needs_attention" || hasUrgentHumanSignal(rowForSignals)) {
     return {
       recommended: true,
-      reason: "Looks like a real person expects a response or decision.",
-      suggestedAction: "Review and reply when ready.",
+      reason: "They're waiting to hear from you.",
+      suggestedAction: "Send a reply when you're ready.",
       confidence: 0.8,
     };
   }

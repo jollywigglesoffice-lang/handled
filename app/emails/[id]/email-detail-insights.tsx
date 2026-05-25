@@ -9,7 +9,6 @@ import { TimelineIntelligenceCard } from "@/app/emails/timeline-intelligence-car
 import { UnsubscribeIntelligenceCard } from "@/app/emails/unsubscribe-intelligence-card";
 import { CalmCollapsible } from "@/app/components/calm-collapsible";
 import type { EmailDetailPayload } from "./email-detail-view";
-import { calendarContextBadgeHint, readCalendarConnectionState } from "@/lib/calendar-awareness";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 
 type EmailDetailInsightsProps = {
@@ -93,11 +92,13 @@ export function EmailDetailInsights({
         <CalmCollapsible
           title={locale === "it" ? "Programmazione" : "Scheduling"}
           summary={
-            locale === "it" ? "Orari o calendario rilevati" : "Time or calendar context detected"
+            locale === "it" ? "Propongono un orario" : "They're proposing a time"
           }
         >
           <p className="text-sm leading-relaxed text-gray-600">
-            {calendarContextBadgeHint(readCalendarConnectionState().status, locale)}
+            {locale === "it"
+              ? "Handled può suggerire orari in bozza — tu approvi prima di inviare."
+              : "Handled can suggest times in your draft — you approve before anything sends."}
           </p>
         </CalmCollapsible>
       ) : null}
@@ -113,7 +114,7 @@ export function EmailDetailInsights({
 
       {proactive?.active && (proactive.suggestions?.length ?? 0) > 0 ? (
         <CalmCollapsible
-          title={locale === "it" ? "Suggerimenti proattivi" : "Proactive suggestions"}
+          title={locale === "it" ? "Altre idee" : "Other ideas"}
           summary={`${proactive.suggestions.length} ${locale === "it" ? "suggerimenti" : "suggestions"}`}
         >
           <ProactiveAssistantCard analysis={proactive} locale={locale} />

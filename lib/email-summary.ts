@@ -6,91 +6,41 @@ import {
   readOpenRouterChatContent,
   REPLY_MODEL,
 } from "@/lib/openrouter-reply";
-import { analyzeEmailIntent, intentSummaryLine } from "@/lib/email-intent";
+import { analyzeEmailIntent } from "@/lib/email-intent";
 import { emailHaystack, isCommercialBulk } from "@/lib/inbox-triage-signals";
+import { buildSituationSummary } from "@/lib/situational-understanding";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
-function topicFromSubject(subject: string): string {
-  const s = subject.replace(/^(re|fwd?):\s*/gi, "").trim();
-  if (s.length <= 80) return s.toLowerCase();
-  return `${s.slice(0, 77).trim()}…`;
-}
-
-/** Calm, human, neutral one-liner — no marketing voice. */
+/** Calm, human situation line — delegates to situational understanding. */
 export function heuristicEmailSummary(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
   category: InboxAiCategory,
+  locale: "en" | "it" = "en",
 ): string {
-  const fullRow = row as GmailInboxRow;
-  const intentLine = intentSummaryLine(fullRow);
-  if (intentLine) {
-    return intentLine;
-  }
-
-  const subject = (row.subject ?? "").trim();
-  const topic = topicFromSubject(subject || "this message");
-  const hay = emailHaystack(fullRow);
-
-  if (category === "promotion") {
-    if (/instagram|tiktok|facebook|linkedin/i.test(hay)) {
-      return "Social app notification. Likely non-urgent.";
-    }
-    return `Marketing email about ${topic}. No action needed.`;
-  }
-
-  if (category === "newsletter") {
-    return `Newsletter or digest${subject ? `: ${topic}` : ""}. Read later if interested.`;
-  }
-
-  if (category === "handled") {
-    if (/receipt|invoice|payment received|charged/i.test(hay)) {
-      return "Payment or receipt. No reply needed.";
-    }
-    if (/shipped|tracking|delivery|order confirmed/i.test(hay)) {
-      return "Shipping or order update. No reply needed.";
-    }
-    return "Automated update. No action required.";
-  }
-
-  if (category === "quick_reply") {
-    return `Short message${subject ? ` about ${topic}` : ""}. A brief reply may be enough.`;
-  }
-
-  if (/school|scuola|teacher|student/i.test(hay)) {
-    return `School-related message${subject ? `: ${topic}` : ""}. May need attention.`;
-  }
-
-  if (/doctor|clinic|hospital|ospedale|appointment/i.test(hay)) {
-    return `Health or clinic message${subject ? `: ${topic}` : ""}. Worth reviewing.`;
-  }
-
-  return `Personal or work message${subject ? `: ${topic}` : ""}. Review if a response is needed.`;
+  return buildSituationSummary(row, category, { category, locale });
 }
 
 function buildSummaryPrompt(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
   category: InboxAiCategory,
   workflowMode: WorkflowMode,
+  locale: "en" | "it",
 ): string {
-  return `Write ONE calm sentence summarizing this email for the user's inbox.
+  return `Write ONE sentence that explains the situation to a busy professional — like a calm executive assistant briefing them.
 
-Tone rules (critical):
-- Sound like a thoughtful assistant, NOT marketing copy
-- No hype, no exclamation-heavy phrases, no "unlock", "journey", "no question about it"
-- Neutral, concise, factual
-- Max 22 words
+Forbidden phrases (never use):
+- "needs attention", "likely needs a reply", "scheduling request detected"
+- "AI", "classifier", "category", "automated update", "review if a response is needed"
+- marketing hype or exclamation-heavy tone
 
-Context:
-- Category: ${category.replace(/_/g, " ")}
-- Workflow mode: ${workflowMode}
-- If pricing/sales/questions: describe intent and that a reply is likely needed
-- If promotional/newsletter/automated FYI only: state no action needed
-- NEVER say "automated update" for emails asking questions or about pricing
+Required style:
+- Name who wrote (${locale === "it" ? "es." : "e.g."} "Studio Medico Ferrara needs you to choose a new appointment time")
+- What they want or what happened
+- Max 22 words, neutral, confident, plain language
 
-Good examples:
-- "Marketing email about book sales income. No action needed."
-- "Instagram notification. Likely non-urgent."
-- "School email mentioning Seba. May need your attention."
+Context (internal only, do not repeat labels):
+- Inbox bucket: ${category.replace(/_/g, " ")}
+- Workflow: ${workflowMode}
 
 Email:
 From: ${row.sender}
@@ -104,8 +54,9 @@ export async function buildEmailSummary(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
   category: InboxAiCategory,
   workflowMode: WorkflowMode = "assist",
+  locale: "en" | "it" = "en",
 ): Promise<string> {
-  const fallback = heuristicEmailSummary(row, category);
+  const fallback = heuristicEmailSummary(row, category, locale);
 
   const apiKey = getAiApiKey();
   if (!apiKey) {
@@ -127,15 +78,20 @@ export async function buildEmailSummary(
   try {
     const response = await callOpenRouterChat(apiKey, {
       model: REPLY_MODEL,
-      temperature: 0.3,
-      messages: [{ role: "user", content: buildSummaryPrompt(row, category, workflowMode) }],
+      temperature: 0.35,
+      messages: [{ role: "user", content: buildSummaryPrompt(row, category, workflowMode, locale) }],
     });
     const { content } = await readOpenRouterChatContent(response);
     if (!content) return fallback;
 
     const line = content.split("\n")[0]?.trim() ?? "";
     if (line.length < 8 || line.length > 200) return fallback;
-    if (/unlock|journey|no question about it|productivity/i.test(line.toLowerCase())) {
+    const lower = line.toLowerCase();
+    if (
+      /unlock|journey|needs attention|scheduling request detected|likely needs|automated update|ai generated/i.test(
+        lower,
+      )
+    ) {
       return fallback;
     }
     return line;

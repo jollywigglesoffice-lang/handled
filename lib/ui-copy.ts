@@ -353,7 +353,7 @@ const en: UiCopy = {
   emailDetail: {
     sender: "Sender",
     subject: "Subject",
-    aiSummary: "AI summary",
+    aiSummary: "Summary",
     fullEmailBody: "Full email body",
   },
   relationship: {
@@ -607,7 +607,7 @@ const it: UiCopy = {
   emailDetail: {
     sender: "Mittente",
     subject: "Oggetto",
-    aiSummary: "Riepilogo AI",
+    aiSummary: "Riepilogo",
     fullEmailBody: "Testo completo dell'email",
   },
   relationship: {

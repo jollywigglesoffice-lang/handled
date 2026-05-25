@@ -2292,9 +2292,7 @@ if (distance < 6) {
     </div>
   </div>
 ) : isRecommended && calmLayout ? (
-  <p className="mb-1">
-    <span className="chip-ai normal-case">{workflowBehavior.recommendationLabel}</span>
-  </p>
+  <p className="mb-1 text-xs font-medium text-accent">Suggested draft</p>
 ) : null}
                   <button
                     type="button"

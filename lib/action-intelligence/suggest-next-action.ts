@@ -43,8 +43,8 @@ export function suggestNextAction(input: {
 
   if (input.primaryLabel === "meeting" || input.implied.includes("scheduling")) {
     return locale === "it"
-      ? "Conferma disponibilità in bozza — nulla viene inviato senza approvazione."
-      : "Confirm availability in a draft — nothing sends without your approval.";
+      ? "Proponi un orario che ti va e invia una bozza."
+      : "Offer a time that works and send a draft.";
   }
 
   if (input.primaryLabel === "review" || input.implied.includes("approval")) {

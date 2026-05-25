@@ -222,7 +222,7 @@ export async function enrichEmailDetailIntelligence(
 
   const aiSummary = await safeAsync(
     "buildEmailSummary",
-    () => buildEmailSummary(row, category, workflowMode),
+    () => buildEmailSummary(row, category, workflowMode, locale),
     heuristicEmailSummary(row, category),
     warnings,
   );
