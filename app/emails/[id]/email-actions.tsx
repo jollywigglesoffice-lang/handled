@@ -67,6 +67,8 @@ type EmailActionsProps = {
   relationship?: import("@/lib/relationship-intelligence/types").SenderRelationshipProfile;
   /** Calmer layout: fewer cards, progressive disclosure, no confidence bars. */
   calmLayout?: boolean;
+  /** Start draft generation as soon as the detail view is ready. */
+  anticipatoryPrefetch?: boolean;
 };
 
 const FETCH_REPLY_TIMEOUT_MS = 28_000;
@@ -419,6 +421,7 @@ export function EmailActions({
   followUpAnalysis,
   relationship,
   calmLayout = false,
+  anticipatoryPrefetch = false,
 }: EmailActionsProps) {
   const ui = useUiCopy();
   const router = useRouter();
@@ -1204,13 +1207,11 @@ return () => clearTimeout(timeout);
     workflowBehavior.status,
   ]);
 
-  useEffect(() => {
-    if (!authUser?.id) {
-      lastAutoGenerateKeyRef.current = null;
-      return;
-    }
-    if (!emailContent) return;
-    if (!shouldOfferReplies || !workflowBehavior.autoGenerateReplies) return;
+  const tryAnticipatoryGenerate = useCallback(() => {
+    if (!authUser?.id || !emailContent) return;
+    if (!shouldOfferReplies) return;
+    const autoOk = workflowBehavior.autoGenerateReplies || anticipatoryPrefetch;
+    if (!autoOk) return;
     if (isGeneratingReplies || isThinking || isStreaming) return;
 
     const key = `${authUser.id}:${emailId}`;
@@ -1220,15 +1221,25 @@ return () => clearTimeout(timeout);
     void generateReplyOptions({ skipUsageIncrement: true });
   }, [
     authUser?.id,
-    emailId,
     emailContent,
+    emailId,
+    anticipatoryPrefetch,
+    generateReplyOptions,
     isGeneratingReplies,
     isThinking,
     isStreaming,
-    generateReplyOptions,
     shouldOfferReplies,
     workflowBehavior.autoGenerateReplies,
   ]);
+
+  useLayoutEffect(() => {
+    if (!anticipatoryPrefetch || !calmLayout) return;
+    tryAnticipatoryGenerate();
+  }, [anticipatoryPrefetch, calmLayout, tryAnticipatoryGenerate]);
+
+  useEffect(() => {
+    tryAnticipatoryGenerate();
+  }, [tryAnticipatoryGenerate]);
 
   const generateReplyOptionsRef = useRef(generateReplyOptions);
 
@@ -1266,6 +1277,8 @@ return () => clearTimeout(timeout);
   ]);
 
   useEffect(() => {
+    if (calmLayout && anticipatoryPrefetch) return;
+
     const timerId = window.setTimeout(() => {
       void generateReplyOptionsRef.current({ skipUsageIncrement: true });
     }, 0);
@@ -1273,7 +1286,16 @@ return () => clearTimeout(timeout);
     return () => {
       window.clearTimeout(timerId);
     };
-  }, [emailContent, emailId, _senderName, _suggestedReply, tone, userName]);
+  }, [
+    calmLayout,
+    anticipatoryPrefetch,
+    emailContent,
+    emailId,
+    _senderName,
+    _suggestedReply,
+    tone,
+    userName,
+  ]);
 
   useEffect(() => {
     return () => {

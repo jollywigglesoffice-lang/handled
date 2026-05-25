@@ -21,7 +21,14 @@ import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import type { UnsubscribeAnalysis } from "@/lib/unsubscribe/types";
 import { ContinuityLines } from "@/app/components/continuity-lines";
+import { useAnticipatoryPrefetch } from "@/app/emails/[id]/use-anticipatory-prefetch";
+import {
+  buildAnticipatoryBundle,
+  mergeAmbientContextLines,
+} from "@/lib/anticipatory-assistance";
 import { continuityFromEmailDetail } from "@/lib/continuity-context";
+import { loadClientHandledBrain } from "@/lib/handled-brain/client-storage";
+import { retrieveBrainUsageDto } from "@/lib/knowledge/retrieve";
 import { buildSituationBundle, buildSituationSummary } from "@/lib/situational-understanding";
 
 export type EmailDetailPayload = FakeEmail & {
@@ -105,8 +112,6 @@ export function EmailDetailView({
       ? summary
       : situation.summary;
 
-  const nextStep = situation.nextStep;
-
   const continuity = useMemo(
     () =>
       continuityFromEmailDetail(
@@ -123,6 +128,49 @@ export function EmailDetailView({
       ),
     [email, locale],
   );
+
+  const anticipatory = useMemo(() => {
+    const brain = loadClientHandledBrain();
+    const brainUsage = retrieveBrainUsageDto(
+      {
+        emailText: `${email.summary}\n${email.bodyPlain ?? email.body ?? ""}`,
+        subject: email.subject,
+      },
+      brain,
+    );
+    return buildAnticipatoryBundle({
+      sender: email.sender,
+      subject: email.subject,
+      snippet: email.summary,
+      bodyPlain: email.bodyPlain,
+      category,
+      relationship: email.relationship,
+      replyRecommended: email.replyRecommended,
+      schedulingDetected: email.schedulingIntentDetected ?? email.needsCalendarContext,
+      suggestedNextAction:
+        email.actionIntelligence?.suggestedNextAction ?? email.suggestedTriageAction,
+      followUpAnalysis: email.followUpAnalysis,
+      timelineIntelligence: email.timelineIntelligence,
+      proactiveAssistant: email.proactiveAssistant,
+      brainUsage,
+      locale,
+    });
+  }, [email, category, locale]);
+
+  const ambientLines = useMemo(
+    () => mergeAmbientContextLines(continuity.lines, anticipatory.contextLines, 2),
+    [continuity.lines, anticipatory.contextLines],
+  );
+
+  const nextStep = anticipatory.likelyNextStep ?? situation.nextStep;
+
+  const shouldPrefetch =
+    showActions && (email.replyRecommended ?? true) && category !== "handled";
+
+  useAnticipatoryPrefetch({
+    emailId: email.id,
+    enabled: shouldPrefetch,
+  });
 
   return (
     <main className="min-h-screen bg-[#fafafa] calm-fade-in">
@@ -149,12 +197,12 @@ export function EmailDetailView({
 
           <IntentChips chips={situation.chips} />
 
-          <ContinuityLines lines={continuity.lines} />
+          <ContinuityLines lines={ambientLines} />
 
           {nextStep ? (
             <p className="text-sm leading-relaxed text-gray-600">
               <span className="font-medium text-gray-800">
-                {locale === "it" ? "Prossimo passo · " : "Next step · "}
+                {locale === "it" ? "Probabilmente · " : "Likely · "}
               </span>
               {nextStep}
             </p>
@@ -179,6 +227,7 @@ export function EmailDetailView({
             </h2>
             <EmailActions
               calmLayout
+              anticipatoryPrefetch
               emailId={email.id}
               emailContent={email.replyContext ?? email.body}
               senderName={email.sender}
