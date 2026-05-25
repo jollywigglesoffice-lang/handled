@@ -96,12 +96,7 @@ export function FollowUpIntelligenceCard({
   return (
     <div className="space-y-4 text-sm leading-relaxed">
       {!actionsOnly ? (
-        <>
-          <ContinuityLines lines={displayLines} />
-          {analysis.calmPrompt ? (
-            <p className="text-xs text-gray-500">{analysis.calmPrompt}</p>
-          ) : null}
-        </>
+        <ContinuityLines lines={displayLines} />
       ) : null}
 
       <div className={`flex flex-wrap gap-2 ${actionsOnly ? "" : "pt-1"}`}>

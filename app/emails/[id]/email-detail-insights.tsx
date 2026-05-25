@@ -10,6 +10,7 @@ import { UnsubscribeIntelligenceCard } from "@/app/emails/unsubscribe-intelligen
 import { CalmCollapsible } from "@/app/components/calm-collapsible";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { continuityFromEmailDetail } from "@/lib/continuity-context";
+import type { IntelligenceVerbosity } from "@/lib/intelligence-quiet";
 import type { EmailDetailPayload } from "./email-detail-view";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 
@@ -18,6 +19,7 @@ type EmailDetailInsightsProps = {
   locale: "en" | "it";
   enrichmentEnabled: boolean;
   workflowMode: import("@/lib/workflow-mode").WorkflowMode;
+  verbosity?: IntelligenceVerbosity;
   onUseReplyDraft: (text: string) => void;
 };
 
@@ -39,6 +41,7 @@ export function EmailDetailInsights({
   locale,
   enrichmentEnabled,
   workflowMode,
+  verbosity = "full",
   onUseReplyDraft,
 }: EmailDetailInsightsProps) {
   const ui = useUiCopy();
@@ -69,11 +72,15 @@ export function EmailDetailInsights({
       ? `Categoria: ${email.inboxCategory ? inboxCategorySectionTitle(email.inboxCategory, "it") : "—"}`
       : `Category: ${email.inboxCategory ? inboxCategorySectionTitle(email.inboxCategory, "en") : "—"}`;
 
+  const quiet = verbosity !== "full";
+
   return (
-    <section className="mt-10 border-t border-gray-100 pt-1 opacity-90">
-      <p className="mb-1 py-3 text-xs text-gray-400">
-        {locale === "it" ? "Se serve, Handled può mostrarti altro" : "When you need it"}
-      </p>
+    <section className="mt-8 border-t border-gray-100 pt-1 opacity-90">
+      {quiet ? null : (
+        <p className="mb-1 py-2 text-xs text-gray-400">
+          {locale === "it" ? "Se serve, altro" : "More if needed"}
+        </p>
+      )}
 
       <CalmCollapsible
         title={locale === "it" ? "Perché Handled l'ha segnalata" : "Why Handled flagged this"}
@@ -100,17 +107,15 @@ export function EmailDetailInsights({
         </div>
       </CalmCollapsible>
 
-      {email.needsCalendarContext ? (
+      {email.needsCalendarContext && !quiet ? (
         <CalmCollapsible
           title={locale === "it" ? "Programmazione" : "Scheduling"}
-          summary={
-            locale === "it" ? "Propongono un orario" : "They're proposing a time"
-          }
+          summary={locale === "it" ? "Orario da confermare" : "Time to confirm"}
         >
-          <p className="text-sm leading-relaxed text-gray-600">
+          <p className="text-sm leading-snug text-gray-600">
             {locale === "it"
-              ? "Handled può suggerire orari in bozza — tu approvi prima di inviare."
-              : "Handled can suggest times in your draft — you approve before anything sends."}
+              ? "Orari in bozza — approvi prima di inviare."
+              : "Times in your draft — you approve before sending."}
           </p>
         </CalmCollapsible>
       ) : null}
@@ -130,7 +135,7 @@ export function EmailDetailInsights({
         </CalmCollapsible>
       ) : null}
 
-      {proactive?.active && (proactive.suggestions?.length ?? 0) > 0 ? (
+      {proactive?.active && (proactive.suggestions?.length ?? 0) > 0 && !quiet ? (
         <CalmCollapsible
           title={locale === "it" ? "Altre idee" : "Other ideas"}
           summary={`${proactive.suggestions.length} ${locale === "it" ? "suggerimenti" : "suggestions"}`}
@@ -140,6 +145,7 @@ export function EmailDetailInsights({
       ) : null}
 
       {decision?.active &&
+      !quiet &&
       ((decision.insights?.length ?? 0) > 0 ||
         (decision.opportunities?.length ?? 0) > 0 ||
         (decision.risks?.length ?? 0) > 0) ? (
@@ -155,7 +161,10 @@ export function EmailDetailInsights({
         </CalmCollapsible>
       ) : null}
 
-      {action?.actionable && action?.primaryLabel && action.suggestedNextAction ? (
+      {action?.actionable &&
+      action?.primaryLabel &&
+      action.suggestedNextAction &&
+      !quiet ? (
         <CalmCollapsible
           title={locale === "it" ? "Altri dettagli sul passo" : "More on this step"}
           summary={action.suggestedNextAction.slice(0, 72)}
@@ -173,7 +182,7 @@ export function EmailDetailInsights({
             emailId={email.id}
             analysis={email.followUpAnalysis}
             locale={locale}
-            actionsOnly={continuity.lines.length > 0}
+            actionsOnly
           />
         </CalmCollapsible>
       ) : null}

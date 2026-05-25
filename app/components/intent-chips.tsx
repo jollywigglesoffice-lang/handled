@@ -3,7 +3,7 @@ export function IntentChips({ chips }: { chips: string[] }) {
   if (chips.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-1.5" role="list" aria-label="Context">
+    <div className="flex flex-wrap gap-1" role="list" aria-label="Context">
       {chips.map((chip) => {
         const highlight =
           /worth checking|da vedere oggi|reply when ready|risposta quando puoi/i.test(chip);

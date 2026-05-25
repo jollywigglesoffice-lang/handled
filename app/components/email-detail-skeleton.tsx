@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { IntentChips } from "@/app/components/intent-chips";
 import { CalmShimmerBlock, CalmShimmerLines } from "@/app/components/calm-loading";
 import type { EmailPreviewCache } from "@/lib/email-preview-cache";
 
@@ -30,7 +29,7 @@ export function EmailDetailSkeleton({
           {backLabel}
         </Link>
 
-        <header className="mt-6 space-y-3">
+        <header className="mt-5 space-y-2">
           {cached ? (
             <>
               <p className="text-sm text-gray-500">{cached.sender}</p>
@@ -38,13 +37,10 @@ export function EmailDetailSkeleton({
                 {cached.subject}
               </h1>
               {cached.summary ? (
-                <p className="text-[15px] leading-relaxed text-gray-700">{cached.summary}</p>
+                <p className="text-[15px] leading-snug text-gray-800">{cached.summary}</p>
               ) : (
-                <CalmShimmerLines lines={2} />
+                <CalmShimmerLines lines={1} />
               )}
-              {cached.chips && cached.chips.length > 0 ? (
-                <IntentChips chips={cached.chips} />
-              ) : null}
             </>
           ) : (
             <>

@@ -27,10 +27,10 @@ import { ConversationStatusChip } from "@/app/components/conversation-status-chi
 import type { ConversationStatus } from "@/lib/timeline-intelligence";
 import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe";
 import { useUiCopy } from "@/app/use-ui-copy";
-import { IntentChips } from "@/app/components/intent-chips";
 import { saveEmailPreview } from "@/lib/email-preview-cache";
 import { buildContinuityContext } from "@/lib/continuity-context";
-import { buildSituationSummary, deriveIntentChips } from "@/lib/situational-understanding";
+import { buildInboxGlanceLine } from "@/lib/glance-clarity";
+import { buildSituationSummary } from "@/lib/situational-understanding";
 
 export type GmailCardMessage = {
   id: string;
@@ -196,9 +196,9 @@ export function GmailInboxCard({
 
   return (
     <div
-      className={`rounded-xl border border-[#E2E8F0] p-6 shadow-sm transition-[border-color,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-accent/40 hover:shadow-md ${accent}`}
+      className={`rounded-xl border border-[#E2E8F0] p-4 shadow-sm transition-[border-color,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:p-5 hover:border-accent/40 hover:shadow-md ${accent}`}
     >
-      <article className="space-y-3">
+      <article className="space-y-2">
         <CardHeader
           message={message}
           catLabel={catLabel}
@@ -258,10 +258,6 @@ export function GmailInboxCard({
           />
         ) : null}
 
-        <InboxSituationPreview message={message} locale={locale} />
-
-        <InboxContinuityHint message={message} locale={locale} />
-
         <Link
           href={`/emails/${encodeURIComponent(message.id)}`}
           className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -272,15 +268,17 @@ export function GmailInboxCard({
               sender: message.sender,
               subject: message.subject,
               snippet: message.snippet,
-              summary: preview.summary,
-              chips: preview.chips,
+              summary: preview.glanceLine,
+              chips: [],
             });
           }}
         >
-          <h3 className="text-base font-medium text-[#0F172A] transition-colors duration-200">
+          <h3 className="text-[15px] font-medium leading-snug text-[#0F172A] transition-colors duration-200">
             {message.subject}
           </h3>
         </Link>
+
+        <InboxGlanceLine message={message} locale={locale} />
 
         {!showCorrection && !showRelationship ? (
           <div className="flex flex-wrap items-center gap-3">
@@ -325,67 +323,47 @@ function buildInboxMessagePreview(message: GmailCardMessage, locale: "en" | "it"
     subject: message.subject,
     snippet: message.snippet,
   };
-  return {
-    summary: buildSituationSummary(row, message.category, {
-      category: message.category,
-      locale,
-      relationship: message.relationship,
-    }),
-    chips: deriveIntentChips(row, {
-      category: message.category,
-      locale,
-      relationship: message.relationship,
-      replyRecommended:
-        message.category !== "handled" && message.category !== "promotion",
-      suggestedNextAction: message.actionIntelligence?.suggestedNextAction,
-      schedulingDetected: message.needsCalendarContext,
-    }),
-  };
-}
-
-function InboxContinuityHint({
-  message,
-  locale,
-}: {
-  message: GmailCardMessage;
-  locale: "en" | "it";
-}) {
-  if (
-    !message.timelineIntelligence?.active ||
-    (message.timelineIntelligence.conversationStatus !== "stalled" &&
-      message.timelineIntelligence.conversationStatus !== "waiting" &&
-      message.timelineIntelligence.conversationStatus !== "escalating")
-  ) {
-    return null;
-  }
-
-  const line = buildContinuityContext({
-    sender: message.sender,
-    subject: message.subject,
-    snippet: message.snippet,
-    relationship: message.relationship,
+  const summary = buildSituationSummary(row, message.category, {
+    category: message.category,
     locale,
-  }).lines[0];
-
-  if (!line) return null;
-
-  return <p className="text-xs leading-relaxed text-gray-500">{line}</p>;
+    relationship: message.relationship,
+  });
+  const haystack = `${message.sender} ${message.subject} ${message.snippet}`;
+  let continuityLine: string | null = null;
+  if (
+    message.timelineIntelligence?.active &&
+    (message.timelineIntelligence.conversationStatus === "stalled" ||
+      message.timelineIntelligence.conversationStatus === "waiting" ||
+      message.timelineIntelligence.conversationStatus === "escalating")
+  ) {
+    continuityLine =
+      buildContinuityContext({
+        sender: message.sender,
+        subject: message.subject,
+        snippet: message.snippet,
+        relationship: message.relationship,
+        locale,
+      }).lines[0] ?? null;
+  }
+  const glanceLine = buildInboxGlanceLine(summary, {
+    continuityLine,
+    nextStep: message.actionIntelligence?.suggestedNextAction ?? null,
+    haystack,
+    locale,
+  });
+  return { summary, glanceLine };
 }
 
-function InboxSituationPreview({
+function InboxGlanceLine({
   message,
   locale,
 }: {
   message: GmailCardMessage;
   locale: "en" | "it";
 }) {
-  const { summary, chips } = buildInboxMessagePreview(message, locale);
-
+  const line = buildInboxMessagePreview(message, locale).glanceLine;
   return (
-    <div className="space-y-2 calm-fade-in">
-      <p className="text-sm leading-relaxed text-gray-600">{summary}</p>
-      <IntentChips chips={chips} />
-    </div>
+    <p className="text-sm leading-snug text-gray-600 calm-fade-in">{line}</p>
   );
 }
 

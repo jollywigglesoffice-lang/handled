@@ -1,4 +1,5 @@
 import { detectSchedulingIntent } from "@/lib/calendar-awareness";
+import { extractDeadlinePhrase } from "@/lib/glance-clarity";
 import { analyzeEmailIntent, type EmailIntentKind } from "@/lib/email-intent";
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
@@ -95,13 +96,25 @@ function buildHighPrioritySummary(
 
   if (/school|scuola|pickup|ritiro|classroom|insegnante|teacher|bambini|child/i.test(hay)) {
     if (/pickup|ritiro|confirm|conferm/i.test(hay)) {
-      return locale === "it"
-        ? child
+      const deadline = extractDeadlinePhrase(hay, locale);
+      if (locale === "it") {
+        if (deadline) {
+          return child
+            ? `Conferma ritiro per ${child} ${deadline}.`
+            : `Conferma ritiro scolastico ${deadline}.`;
+        }
+        return child
           ? `La scuola di ${child} chiede conferma sul ritiro.`
-          : `Messaggio dalla scuola — serve conferma sul ritiro.`
-        : child
-          ? `Aggiornamento dalla scuola di ${child}.`
-          : `Aggiornamento dalla scuola.`;
+          : `Messaggio dalla scuola — serve conferma sul ritiro.`;
+      }
+      if (deadline) {
+        return child
+          ? `${child}'s school needs pickup confirmation ${deadline}.`
+          : `School pickup confirmation needed ${deadline}.`;
+      }
+      return child
+        ? `${child}'s school needs pickup confirmation.`
+        : `School pickup confirmation needed.`;
     }
     return locale === "it"
       ? child

@@ -37,9 +37,11 @@ import { CalmTypingIndicator } from "@/app/components/calm-loading";
 import {
   calmSectionCountLabel,
   calmTodayHeadline,
+  loadingRhythmMessages,
   pickFocusReassurance,
   type AttentionSnapshot,
 } from "@/lib/attention-calm";
+import { healthyCompletionState } from "@/lib/daily-rhythm";
 import { calmInboxErrorFromRaw } from "@/lib/calm-messages";
 import { uiLocaleFromLanguage } from "@/lib/ui-copy";
 import {
@@ -267,7 +269,7 @@ function MockEmailCard({
   return (
     <Link
       href={`/emails/${id}`}
-      className={`block rounded-xl border p-6 shadow-sm transition-all duration-200 hover:scale-[1.01] hover:shadow-md ${
+      className={`block rounded-xl border p-4 shadow-sm transition-all duration-200 hover:scale-[1.01] hover:shadow-md sm:p-5 ${
         highlighted
           ? "border-[#C7D2FE] bg-accent-muted/40 hover:border-[#A5B4FC]"
           : "border-[#E2E8F0] bg-[#FFFFFF] hover:border-accent/40"
@@ -290,7 +292,7 @@ function MockEmailCard({
 
 function EmailCardSkeleton() {
   return (
-    <div className="rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 shadow-sm">
+    <div className="rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-4 shadow-sm sm:p-5">
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div className="h-4 w-40 rounded-lg subtle-shimmer" />
@@ -322,8 +324,8 @@ function HandledTodayItem({ id, sender, subject }: Pick<FakeEmail, "id" | "sende
   );
 }
 
-function EmptyNeedsAttentionState({ show }: { show: boolean }) {
-  const ui = useUiCopy();
+function EmptyNeedsAttentionState({ show, locale }: { show: boolean; locale: "en" | "it" }) {
+  const completion = healthyCompletionState(locale);
 
   return (
     <div
@@ -346,9 +348,11 @@ function EmptyNeedsAttentionState({ show }: { show: boolean }) {
           />
         </svg>
       </span>
-      <p className="text-xl font-medium text-[#0F172A]">{ui.home.allCaughtUp}</p>
-      <p className="text-sm text-gray-500">{ui.home.everythingHandledEmpty}</p>
-      <p className="pt-1 text-xs text-gray-400">{ui.home.comeBackLater}</p>
+      <p className="text-xl font-medium text-[#0F172A]">{completion.title}</p>
+      <p className="text-sm leading-relaxed text-gray-500">{completion.subtitle}</p>
+      {completion.footer ? (
+        <p className="pt-1 text-xs text-gray-400">{completion.footer}</p>
+      ) : null}
     </div>
   );
 }
@@ -356,7 +360,10 @@ function EmptyNeedsAttentionState({ show }: { show: boolean }) {
 export default function EmailsInboxPage() {
   const ui = useUiCopy();
   const { uiLanguage, setUiLanguage } = useUserPreferences();
-  const loadingMicroMessages = ui.home.loadingMicroMessages;
+  const loadingMicroMessages = useMemo(
+    () => loadingRhythmMessages(uiLanguage === "it" ? "it" : "en"),
+    [uiLanguage],
+  );
   const { handledEmailIds } = useHandledEmails();
 
   const inboxSections = getInboxSections().map((section) => ({
@@ -770,7 +777,7 @@ export default function EmailsInboxPage() {
         ) : null}
 
         <section
-          className={`mt-10 space-y-12 transition-opacity duration-500 ${
+          className={`mt-10 space-y-8 transition-opacity duration-500 ${
             inboxLoading ? "opacity-100" : showContent ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -820,7 +827,7 @@ export default function EmailsInboxPage() {
               <p className="text-sm leading-relaxed text-gray-600">{ui.home.emptyGmailInbox}</p>
             </div>
           ) : inboxMode === "gmail" ? (
-            <div className="space-y-12">
+            <div className="space-y-8">
               <InboxSyncBar
                 lastSyncedAt={lastSyncedAt}
                 isRefreshing={isRefreshing}
@@ -882,7 +889,10 @@ export default function EmailsInboxPage() {
                   <div className="space-y-2">
                     {section.title === "Needs Your Attention" &&
                     section.emails.length === 0 ? (
-                      <EmptyNeedsAttentionState show={showContent} />
+                      <EmptyNeedsAttentionState
+                        show={showContent}
+                        locale={uiLanguage === "it" ? "it" : "en"}
+                      />
                     ) : section.title === "Handled For You" &&
                       section.emails.length === 0 ? (
                       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed text-gray-600">
@@ -911,7 +921,7 @@ export default function EmailsInboxPage() {
 
         {inboxMode === "mock" && handledTodayEmails.length > 0 ? (
           <section
-            className={`space-y-3 rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 shadow-sm transition-opacity duration-500 ${
+            className={`space-y-3 rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-4 shadow-sm transition-opacity duration-500 sm:p-5 ${
               showContent ? "opacity-100" : "opacity-0"
             }`}
           >

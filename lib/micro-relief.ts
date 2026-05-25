@@ -8,24 +8,24 @@ export type InboxReliefInput = {
 const EN = {
   onlyAttention: (n: number) =>
     n === 1
-      ? "Only 1 email likely needs your attention."
-      : `Only ${n} emails likely need your attention.`,
+      ? "Only 1 conversation likely needs your attention."
+      : `Only ${n} conversations likely need your attention.`,
   manageable: "Everything else looks manageable.",
   mostManageable: "Most of your inbox appears manageable.",
   handledRest: "Handled took care of the rest.",
-  quietInbox: "Everything looks manageable right now.",
+  quietInbox: "Most of your inbox looks manageable.",
   nothingOverdue: "Nothing important appears overdue.",
 } as const;
 
 const IT = {
   onlyAttention: (n: number) =>
     n === 1
-      ? "Solo 1 email probabilmente richiede attenzione."
-      : `Solo ${n} email probabilmente richiedono attenzione.`,
+      ? "Solo 1 conversazione probabilmente richiede attenzione."
+      : `Solo ${n} conversazioni probabilmente richiedono attenzione.`,
   manageable: "Il resto sembra sotto controllo.",
   mostManageable: "La maggior parte della inbox sembra gestibile.",
   handledRest: "Handled ha gestito il resto.",
-  quietInbox: "Tutto sembra gestibile adesso.",
+  quietInbox: "La maggior parte della inbox sembra gestibile.",
   nothingOverdue: "Niente di importante sembra in ritardo.",
 } as const;
 

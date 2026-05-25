@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { IntentChips } from "@/app/components/intent-chips";
 import { EmailActions } from "./email-actions";
@@ -20,7 +20,6 @@ import type { TimelineIntelligenceResult } from "@/lib/timeline-intelligence";
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import type { UnsubscribeAnalysis } from "@/lib/unsubscribe/types";
-import { ContinuityLines } from "@/app/components/continuity-lines";
 import { useAnticipatoryPrefetch } from "@/app/emails/[id]/use-anticipatory-prefetch";
 import {
   buildAnticipatoryBundle,
@@ -29,6 +28,12 @@ import {
 import { continuityFromEmailDetail } from "@/lib/continuity-context";
 import { loadClientHandledBrain } from "@/lib/handled-brain/client-storage";
 import { retrieveBrainUsageDto } from "@/lib/knowledge/retrieve";
+import { buildGlancePresentation } from "@/lib/glance-clarity";
+import {
+  getIntelligenceVerbosity,
+  recordEmailEngagement,
+  showExplicitNextStepLabel,
+} from "@/lib/intelligence-quiet";
 import { buildSituationBundle, buildSituationSummary } from "@/lib/situational-understanding";
 
 export type EmailDetailPayload = FakeEmail & {
@@ -73,7 +78,14 @@ export function EmailDetailView({
   const locale = uiLocaleFromLanguage(uiLanguage) === "it" ? "it" : "en";
   const workflowMode = readWorkflowModeFromStorage();
 
+  useEffect(() => {
+    recordEmailEngagement();
+  }, [email.id]);
+
+  const verbosity = useMemo(() => getIntelligenceVerbosity(), [email.id]);
+
   const category = email.inboxCategory ?? "needs_attention";
+  const haystack = `${email.sender} ${email.subject} ${email.summary} ${email.bodyPlain ?? ""}`;
 
   const situation = useMemo(() => {
     const row = {
@@ -158,11 +170,33 @@ export function EmailDetailView({
   }, [email, category, locale]);
 
   const ambientLines = useMemo(
-    () => mergeAmbientContextLines(continuity.lines, anticipatory.contextLines, 2),
+    () => mergeAmbientContextLines(continuity.lines, anticipatory.contextLines, 1),
     [continuity.lines, anticipatory.contextLines],
   );
 
-  const nextStep = anticipatory.likelyNextStep ?? situation.nextStep;
+  const rawNextStep = anticipatory.likelyNextStep ?? situation.nextStep;
+
+  const glance = useMemo(
+    () =>
+      buildGlancePresentation({
+        summary: displaySummary,
+        nextStep: rawNextStep,
+        ambientLines,
+        chips: situation.chips,
+        haystack,
+        locale,
+        verbosity,
+      }),
+    [
+      displaySummary,
+      rawNextStep,
+      ambientLines,
+      situation.chips,
+      haystack,
+      locale,
+      verbosity,
+    ],
+  );
 
   const shouldPrefetch =
     showActions && (email.replyRecommended ?? true) && category !== "handled";
@@ -182,7 +216,7 @@ export function EmailDetailView({
           {ui.common.backToInbox}
         </Link>
 
-        <header className="mt-6 space-y-3">
+        <header className="mt-5 space-y-2">
           <p className="text-sm text-gray-500">{email.sender}</p>
 
           <h1 className="text-2xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-[1.65rem]">
@@ -193,23 +227,20 @@ export function EmailDetailView({
             <RelationshipBadge relationship={email.relationship} />
           ) : null}
 
-          <p className="text-[15px] leading-relaxed text-gray-700">{displaySummary}</p>
+          <p className="text-[15px] leading-snug text-gray-800">{glance.primary}</p>
 
-          <IntentChips chips={situation.chips} />
+          {glance.secondary ? (
+            <p className="text-xs leading-relaxed text-gray-500">{glance.secondary}</p>
+          ) : null}
 
-          <ContinuityLines lines={ambientLines} />
+          <IntentChips chips={glance.chips} />
 
-          {nextStep ? (
-            <p className="text-sm leading-relaxed text-gray-600">
-              <span className="font-medium text-gray-800">
-                {locale === "it" ? "Probabilmente · " : "Likely · "}
-              </span>
-              {nextStep}
-            </p>
+          {glance.nextStep && showExplicitNextStepLabel(verbosity) ? (
+            <p className="text-sm leading-snug text-gray-600">{glance.nextStep}</p>
           ) : null}
         </header>
 
-        <article className="mt-8">
+        <article className="mt-6">
           <h2 className="mb-3 text-xs font-medium text-gray-400">
             {ui.emailDetail.fullEmailBody}
           </h2>
@@ -221,7 +252,7 @@ export function EmailDetailView({
         </article>
 
         {showActions ? (
-          <section className="mt-8">
+          <section className="mt-6">
             <h2 className="mb-3 text-xs font-medium text-gray-400">
               {locale === "it" ? "Bozza di risposta" : "Draft reply"}
             </h2>
@@ -249,6 +280,7 @@ export function EmailDetailView({
           locale={locale}
           enrichmentEnabled={enrichmentEnabled}
           workflowMode={workflowMode}
+          verbosity={verbosity}
           onUseReplyDraft={(text) => setReplyDraftOverride(text)}
         />
       </div>
