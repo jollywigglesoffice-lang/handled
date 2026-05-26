@@ -1,6 +1,6 @@
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import type { CategoryApplyScope } from "@/lib/category-correction";
-import { upsertClientEmailOverride } from "@/lib/email-overrides/client-storage";
+import { persistEmailOverrideToAccount } from "@/lib/email-overrides/client-sync";
 import { loadClientInboxRules, saveClientInboxRules } from "@/lib/inbox-rules-client-storage";
 import {
   loadClientSenderPreferences,
@@ -13,6 +13,7 @@ import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
 import {
   getSenderLearningSuggestion,
   recordSenderCategoryCorrection,
+  shouldAutoLearnSenderRule,
 } from "@/lib/sender-correction-learning";
 
 export type CategoryFeedbackInput = {
@@ -34,6 +35,41 @@ export type CategoryFeedbackResult = {
   senderLearningSuggestion?: string;
 };
 
+async function persistSenderRule(input: {
+  sender: string;
+  chosenCategory: InboxAiCategory;
+  clientPreferences?: ReturnType<typeof loadClientSenderPreferences>;
+}): Promise<{ ok: boolean; learnedSender: boolean }> {
+  const mergedPrefs = mergeSenderPreferences(
+    input.clientPreferences ?? loadClientSenderPreferences(),
+    preferenceFromSender(
+      input.sender,
+      input.chosenCategory,
+      `Always: ${input.chosenCategory.replace(/_/g, " ")}`,
+    ),
+  );
+  saveClientSenderPreferences(mergedPrefs);
+
+  const res = await fetch("/api/inbox-feedback", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "correct_category",
+      emailId: "",
+      sender: input.sender,
+      subject: "",
+      guessedCategory: input.chosenCategory,
+      category: input.chosenCategory,
+      scope: "sender",
+      clientPreferences: mergedPrefs,
+      clientRules: loadClientInboxRules(),
+    }),
+  });
+
+  return { ok: res.ok, learnedSender: res.ok };
+}
+
 export async function submitCategoryFeedback(
   input: CategoryFeedbackInput,
 ): Promise<CategoryFeedbackResult> {
@@ -43,15 +79,41 @@ export async function submitCategoryFeedback(
     chosenCategory: input.chosenCategory,
   });
 
-  if (input.scope === "this_email") {
-    const now = new Date().toISOString();
-    upsertClientEmailOverride({
+  let effectiveScope: CategoryApplyScope = input.scope;
+
+  if (
+    input.scope === "this_email" &&
+    shouldAutoLearnSenderRule(learningRecord, input.chosenCategory)
+  ) {
+    effectiveScope = "sender";
+  }
+
+  if (effectiveScope === "this_email") {
+    await persistEmailOverrideToAccount({
       emailId: input.emailId,
-      originalCategory: input.guessedCategory,
       overriddenCategory: input.chosenCategory,
-      createdAt: now,
-      updatedAt: now,
+      originalCategory: input.guessedCategory,
     });
+  }
+
+  if (effectiveScope === "sender") {
+    const senderResult = await persistSenderRule({
+      sender: input.sender,
+      chosenCategory: input.chosenCategory,
+    });
+    if (senderResult.ok) {
+      return {
+        message:
+          input.scope === "this_email"
+            ? "Saved — future mail from this sender will follow your choice."
+            : "Learned sender rule saved — matching emails updated.",
+        learnedSender: true,
+        affectedCount: input.scope === "this_email" ? 1 : undefined,
+      };
+    }
+    if (input.scope === "sender") {
+      throw new Error("Could not save sender preference");
+    }
   }
 
   const clientPrefs = loadClientSenderPreferences();
@@ -94,6 +156,7 @@ export async function submitCategoryFeedback(
     rules?: InboxUserRule[];
     error?: string;
     learnedSender?: boolean;
+    override?: { emailId: string };
   };
 
   if (data.rules?.length) {
@@ -113,7 +176,7 @@ export async function submitCategoryFeedback(
   const scopeMessages: Record<CategoryApplyScope, string> = {
     this_email: data.message ?? "Saved",
     sender: "Learned sender rule saved — matching emails updated.",
-    similar: "Handled will match similar subject lines going forward.",
+    similar: "Similar subjects will follow this category going forward.",
   };
 
   const senderLearningSuggestion =

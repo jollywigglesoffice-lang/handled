@@ -10,6 +10,7 @@ import {
 import type { CategorySource } from "@/lib/inbox-ai-categories";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
 import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
+import { persistEmailOverrideToAccount } from "@/lib/email-overrides/client-sync";
 import {
   clearSenderLearningSuggestion,
   getSenderLearningSuggestion,
@@ -129,6 +130,14 @@ export function GmailInboxCard({
 
       onCategoryChange(message.id, chosen, options);
       setSaveStatus("saving");
+
+      if (scope === "this_email") {
+        void persistEmailOverrideToAccount({
+          emailId: message.id,
+          overriddenCategory: chosen,
+          originalCategory: guessedRef.current,
+        });
+      }
 
       try {
         const result = await submitCategoryFeedback({

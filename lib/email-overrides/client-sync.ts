@@ -5,7 +5,7 @@ import {
   saveClientEmailOverrides,
   upsertClientEmailOverride,
 } from "@/lib/email-overrides/client-storage";
-import { overridesToCategoryMap } from "@/lib/email-overrides/storage";
+import { mergeEmailOverrides, overridesToCategoryMap } from "@/lib/email-overrides/storage";
 import type { EmailCategoryOverride } from "@/lib/email-overrides/types";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 
@@ -18,11 +18,7 @@ export async function syncEmailOverridesFromAccount(): Promise<Record<string, In
     const res = await fetch("/api/email-overrides", { credentials: "same-origin" });
     const data = (await res.json()) as { overrides?: EmailCategoryOverride[] };
     if (res.ok && Array.isArray(data.overrides)) {
-      const localList = loadClientEmailOverrides();
-      const byId = new Map<string, EmailCategoryOverride>();
-      for (const o of localList) byId.set(o.emailId, o);
-      for (const o of data.overrides) byId.set(o.emailId, o);
-      const merged = [...byId.values()];
+      const merged = mergeEmailOverrides(loadClientEmailOverrides(), data.overrides);
       saveClientEmailOverrides(merged);
       return overridesToCategoryMap(merged);
     }

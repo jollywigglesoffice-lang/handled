@@ -18,4 +18,8 @@ create unique index if not exists email_overrides_user_email_idx
 create index if not exists email_overrides_user_id_idx
   on public.email_overrides (user_id);
 
+-- Fallback when dedicated table is unavailable (mirrors sender_preferences_json)
+alter table public.users
+  add column if not exists email_overrides_json jsonb not null default '[]'::jsonb;
+
 notify pgrst, 'reload schema';

@@ -45,3 +45,23 @@ export function isEmailOverridesTableMissingError(message: string): boolean {
   const m = message.toLowerCase();
   return m.includes("email_overrides") && (m.includes("does not exist") || m.includes("schema cache"));
 }
+
+/** Merge overrides — newest `updatedAt` wins per email. */
+export function mergeEmailOverrides(
+  ...lists: EmailCategoryOverride[][]
+): EmailCategoryOverride[] {
+  const byId = new Map<string, EmailCategoryOverride>();
+  for (const list of lists) {
+    for (const o of list) {
+      const existing = byId.get(o.emailId);
+      if (!existing) {
+        byId.set(o.emailId, o);
+        continue;
+      }
+      const a = new Date(o.updatedAt).getTime();
+      const b = new Date(existing.updatedAt).getTime();
+      if (a >= b) byId.set(o.emailId, o);
+    }
+  }
+  return [...byId.values()];
+}

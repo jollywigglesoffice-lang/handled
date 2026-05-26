@@ -1,6 +1,6 @@
 import { parseEmailOverridesHeader } from "@/lib/email-overrides/client-storage";
 import { loadEmailOverridesForUser } from "@/lib/email-overrides/store";
-import { overridesToCategoryMap } from "@/lib/email-overrides/storage";
+import { mergeEmailOverrides, overridesToCategoryMap } from "@/lib/email-overrides/storage";
 import type { EmailCategoryOverride } from "@/lib/email-overrides/types";
 import { mergeInboxUserRules } from "@/lib/merge-inbox-rules";
 import { loadInboxUserRulesForUser } from "@/lib/inbox-user-rules";
@@ -50,10 +50,7 @@ export async function loadCategorizationContext(
   const clientOverrides = request
     ? parseEmailOverridesHeader(request.headers.get("x-handled-email-overrides"))
     : [];
-  const overrideById = new Map<string, EmailCategoryOverride>();
-  for (const o of clientOverrides) overrideById.set(o.emailId, o);
-  for (const o of serverOverrides) overrideById.set(o.emailId, o);
-  const emailOverrideRecords = [...overrideById.values()];
+  const emailOverrideRecords = mergeEmailOverrides(clientOverrides, serverOverrides);
   const emailOverrides = overridesToCategoryMap(emailOverrideRecords);
 
   const clientRules = request

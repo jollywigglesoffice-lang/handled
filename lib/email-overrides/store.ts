@@ -1,6 +1,8 @@
 import { normalizeInboxAiCategory, type InboxAiCategory } from "@/lib/inbox-ai-categories";
 import {
   isEmailOverridesTableMissingError,
+  mergeEmailOverrides,
+  parseEmailOverridesJson,
   SETUP_SQL,
 } from "@/lib/email-overrides/storage";
 import type { EmailCategoryOverride } from "@/lib/email-overrides/types";
@@ -31,6 +33,40 @@ function rowToOverride(row: {
   };
 }
 
+async function loadFromJsonColumn(userId: string): Promise<EmailCategoryOverride[]> {
+  const supabase = await getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("users")
+    .select("email_overrides_json")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[email-overrides] json load failed:", error.message);
+    return [];
+  }
+
+  return parseEmailOverridesJson(data?.email_overrides_json);
+}
+
+async function saveToJsonColumn(
+  userId: string,
+  overrides: EmailCategoryOverride[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { syncPublicUserFromAuth } = await import("@/lib/sync-public-user");
+  const sync = await syncPublicUserFromAuth(userId);
+  if (sync.error) return { ok: false, error: sync.error };
+
+  const supabase = await getSupabaseAdmin();
+  const { error } = await supabase.from("users").upsert({
+    id: userId,
+    email_overrides_json: overrides,
+  });
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 export async function loadEmailOverridesForUser(
   userId: string,
 ): Promise<EmailCategoryOverride[]> {
@@ -42,12 +78,14 @@ export async function loadEmailOverridesForUser(
     .order("updated_at", { ascending: false });
 
   if (error) {
-    if (isEmailOverridesTableMissingError(error.message)) return [];
+    if (isEmailOverridesTableMissingError(error.message)) {
+      return loadFromJsonColumn(userId);
+    }
     console.warn("[email-overrides] load failed:", error.message);
-    return [];
+    return loadFromJsonColumn(userId);
   }
 
-  return (data ?? []).map((row) =>
+  const fromTable = (data ?? []).map((row) =>
     rowToOverride(
       row as {
         email_id: string;
@@ -58,6 +96,27 @@ export async function loadEmailOverridesForUser(
       },
     ),
   );
+
+  if (fromTable.length > 0) return fromTable;
+
+  const legacy = await loadFromJsonColumn(userId);
+  if (legacy.length) {
+    void saveEmailOverridesBulk(userId, legacy);
+  }
+  return legacy;
+}
+
+async function saveEmailOverridesBulk(
+  userId: string,
+  overrides: EmailCategoryOverride[],
+): Promise<void> {
+  for (const o of overrides) {
+    await saveEmailOverrideForUser(userId, {
+      emailId: o.emailId,
+      overriddenCategory: o.overriddenCategory,
+      originalCategory: o.originalCategory,
+    });
+  }
 }
 
 export async function loadEmailOverrideForMessage(
@@ -121,26 +180,43 @@ export async function saveEmailOverrideForUser(
 
   if (error) {
     if (isEmailOverridesTableMissingError(error.message)) {
+      const override: EmailCategoryOverride = {
+        emailId: input.emailId,
+        originalCategory: input.originalCategory ?? null,
+        overriddenCategory: input.overriddenCategory,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const existing = await loadFromJsonColumn(userId);
+      const merged = mergeEmailOverrides(existing, [override]);
+      const jsonSaved = await saveToJsonColumn(userId, merged);
+      if (jsonSaved.ok) {
+        return { ok: true, override };
+      }
       return {
         ok: false,
-        error: "Run supabase/sql/email_overrides.sql in Supabase SQL Editor.",
+        error: jsonSaved.error,
       };
     }
     return { ok: false, error: error.message };
   }
 
-  return {
-    ok: true,
-    override: rowToOverride(
-      data as {
-        email_id: string;
-        original_category: string | null;
-        overridden_category: string;
-        created_at: string;
-        updated_at: string;
-      },
-    ),
-  };
+  const savedOverride = rowToOverride(
+    data as {
+      email_id: string;
+      original_category: string | null;
+      overridden_category: string;
+      created_at: string;
+      updated_at: string;
+    },
+  );
+
+  void saveToJsonColumn(
+    userId,
+    mergeEmailOverrides(await loadFromJsonColumn(userId), [savedOverride]),
+  ).catch(() => {});
+
+  return { ok: true, override: savedOverride };
 }
 
 export async function deleteEmailOverrideForUser(
@@ -156,13 +232,17 @@ export async function deleteEmailOverrideForUser(
 
   if (error) {
     if (isEmailOverridesTableMissingError(error.message)) {
-      return {
-        ok: false,
-        error: "Run supabase/sql/email_overrides.sql in Supabase SQL Editor.",
-      };
+      const existing = await loadFromJsonColumn(userId);
+      const next = existing.filter((o) => o.emailId !== emailId);
+      const jsonSaved = await saveToJsonColumn(userId, next);
+      return jsonSaved.ok ? { ok: true } : { ok: false, error: jsonSaved.error };
     }
     return { ok: false, error: error.message };
   }
+
+  const existing = await loadFromJsonColumn(userId);
+  const next = existing.filter((o) => o.emailId !== emailId);
+  void saveToJsonColumn(userId, next).catch(() => {});
 
   return { ok: true };
 }

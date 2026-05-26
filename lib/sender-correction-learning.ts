@@ -3,12 +3,14 @@ import { parseSenderEmail } from "@/lib/inbox-user-rules/match";
 import { suggestSenderAutoRuleMessage } from "@/lib/inbox-sender-onboarding";
 
 const STORAGE_KEY = "handled_sender_correction_learning_v1";
-const SUGGEST_THRESHOLD = 2;
+const AUTO_LEARN_THRESHOLD = 2;
 
 export type SenderCorrectionRecord = {
   senderKey: string;
   displayLabel: string;
   correctionsToNeedsAttention: number;
+  /** Count of manual corrections per chosen category (for quiet sender learning). */
+  categoryCounts: Partial<Record<InboxAiCategory, number>>;
   lastGuessedCategory?: InboxAiCategory;
   lastChosenCategory?: InboxAiCategory;
   updatedAt: number;
@@ -27,13 +29,26 @@ function displayLabelFromSender(sender: string): string {
   return email?.split("@")[0] ?? sender.slice(0, 40);
 }
 
+function normalizeRecord(raw: Partial<SenderCorrectionRecord>): SenderCorrectionRecord {
+  return {
+    senderKey: raw.senderKey ?? "",
+    displayLabel: raw.displayLabel ?? "",
+    correctionsToNeedsAttention: raw.correctionsToNeedsAttention ?? 0,
+    categoryCounts: raw.categoryCounts ?? {},
+    lastGuessedCategory: raw.lastGuessedCategory,
+    lastChosenCategory: raw.lastChosenCategory,
+    updatedAt: raw.updatedAt ?? Date.now(),
+  };
+}
+
 export function loadSenderCorrectionLearning(): SenderCorrectionRecord[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as SenderCorrectionRecord[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((r) => normalizeRecord(r as Partial<SenderCorrectionRecord>));
   } catch {
     return [];
   }
@@ -45,13 +60,16 @@ function saveSenderCorrectionLearning(records: SenderCorrectionRecord[]): void {
 }
 
 /**
- * Record when user moves mail to a higher-priority category (especially handled → needs_attention).
+ * Record a manual category correction (any direction).
+ * Returns the updated record when the sender may be ready for quiet auto-learning.
  */
 export function recordSenderCategoryCorrection(input: {
   sender: string;
   guessedCategory: InboxAiCategory;
   chosenCategory: InboxAiCategory;
 }): SenderCorrectionRecord | null {
+  if (input.guessedCategory === input.chosenCategory) return null;
+
   const priority: Record<InboxAiCategory, number> = {
     needs_attention: 4,
     quick_reply: 3,
@@ -60,13 +78,12 @@ export function recordSenderCategoryCorrection(input: {
     promotion: 0,
   };
 
-  if (priority[input.chosenCategory] <= priority[input.guessedCategory]) {
-    return null;
-  }
-
   const key = senderKey(input.sender);
   const list = loadSenderCorrectionLearning();
   const existing = list.find((r) => r.senderKey === key);
+  const categoryCounts = { ...(existing?.categoryCounts ?? {}) };
+  categoryCounts[input.chosenCategory] = (categoryCounts[input.chosenCategory] ?? 0) + 1;
+
   const bump =
     input.chosenCategory === "needs_attention" &&
     (input.guessedCategory === "handled" ||
@@ -79,7 +96,9 @@ export function recordSenderCategoryCorrection(input: {
     senderKey: key,
     displayLabel: existing?.displayLabel ?? displayLabelFromSender(input.sender),
     correctionsToNeedsAttention:
-      (existing?.correctionsToNeedsAttention ?? 0) + (bump || (input.chosenCategory === "needs_attention" ? 1 : 0)),
+      (existing?.correctionsToNeedsAttention ?? 0) +
+      (bump || (input.chosenCategory === "needs_attention" ? 1 : 0)),
+    categoryCounts,
     lastGuessedCategory: input.guessedCategory,
     lastChosenCategory: input.chosenCategory,
     updatedAt: Date.now(),
@@ -90,13 +109,22 @@ export function recordSenderCategoryCorrection(input: {
   return next;
 }
 
+/** After repeated corrections to the same category, apply a sender rule quietly. */
+export function shouldAutoLearnSenderRule(
+  record: SenderCorrectionRecord | null,
+  chosenCategory: InboxAiCategory,
+): boolean {
+  if (!record) return false;
+  return (record.categoryCounts[chosenCategory] ?? 0) >= AUTO_LEARN_THRESHOLD;
+}
+
 export function getSenderLearningSuggestion(
   sender: string,
   locale: "en" | "it" = "en",
 ): { message: string; senderKey: string; count: number } | null {
   const key = senderKey(sender);
   const record = loadSenderCorrectionLearning().find((r) => r.senderKey === key);
-  if (!record || record.correctionsToNeedsAttention < SUGGEST_THRESHOLD) {
+  if (!record || record.correctionsToNeedsAttention < AUTO_LEARN_THRESHOLD) {
     return null;
   }
 

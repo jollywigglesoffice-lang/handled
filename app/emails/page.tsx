@@ -532,7 +532,6 @@ export default function EmailsInboxPage() {
     const onOverridesChange = async () => {
       const overrides = await syncEmailOverridesFromAccount();
       setCategoryOverrides(overrides);
-      void loadInbox({ silent: true });
     };
     window.addEventListener("handled-workflow-mode-changed", onModeChange);
     window.addEventListener("handled-inbox-rules-changed", onRulesChange);

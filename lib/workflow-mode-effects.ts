@@ -42,6 +42,11 @@ export function applyWorkflowModeToCategory(
   category: InboxAiCategory,
   source: CategorySource,
 ): { category: InboxAiCategory; source: CategorySource } {
+  /** User corrections always win over workflow demotion/heuristics. */
+  if (source === "manual_override") {
+    return { category, source };
+  }
+
   if (hasHighPriorityIntent(row)) {
     return { category, source };
   }
