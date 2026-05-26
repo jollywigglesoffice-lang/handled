@@ -3,19 +3,19 @@ import type { ConversationStatus, EmotionalTrajectory } from "@/lib/timeline-int
 const STATUS_EN: Record<ConversationStatus, string> = {
   open: "Open",
   waiting: "Waiting",
-  escalating: "Escalating",
+  escalating: "Needs reply",
   resolved: "Resolved",
   stalled: "Stalled",
-  needs_follow_up: "Needs follow-up",
+  needs_follow_up: "Still open",
 };
 
 const STATUS_IT: Record<ConversationStatus, string> = {
   open: "Aperta",
   waiting: "In attesa",
-  escalating: "In escalatione",
+  escalating: "Serve risposta",
   resolved: "Risolta",
   stalled: "In stallo",
-  needs_follow_up: "Follow-up",
+  needs_follow_up: "Ancora aperta",
 };
 
 export function conversationStatusLabel(
@@ -47,7 +47,7 @@ export function trajectoryLabel(
 ): string {
   const en: Record<EmotionalTrajectory, string> = {
     calm: "Calm",
-    urgent: "Urgent",
+    urgent: "Time-sensitive",
     frustrated: "Frustrated",
     actionable: "Actionable",
     informational: "Informational",
@@ -55,7 +55,7 @@ export function trajectoryLabel(
   };
   const it: Record<EmotionalTrajectory, string> = {
     calm: "Calmo",
-    urgent: "Urgente",
+    urgent: "Sensibile al tempo",
     frustrated: "Frustrato",
     actionable: "Richiede azione",
     informational: "Informativo",

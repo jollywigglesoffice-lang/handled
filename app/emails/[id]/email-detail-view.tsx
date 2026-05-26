@@ -118,7 +118,7 @@ export function EmailDetailView({
 
   const displaySummary =
     summary &&
-    !/needs attention|likely needs|scheduling request detected|no summary available/i.test(
+    !/needs attention|likely needs|scheduling request detected|ai detected|handled suggests|no summary available/i.test(
       summary,
     )
       ? summary

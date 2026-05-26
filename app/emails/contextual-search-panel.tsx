@@ -21,7 +21,7 @@ type ContextualSearchPanelProps = {
 
 const FILTER_LABELS: Record<SmartSearchFilter, { en: string; it: string }> = {
   unresolved: { en: "Unresolved", it: "Aperte" },
-  urgent: { en: "Urgent", it: "Urgenti" },
+  urgent: { en: "Worth checking", it: "Da vedere" },
   school: { en: "School", it: "Scuola" },
   doctor: { en: "Doctor", it: "Salute" },
   invoices: { en: "Invoices", it: "Fatture" },

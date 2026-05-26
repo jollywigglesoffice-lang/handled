@@ -25,7 +25,7 @@ export function buildBriefingInsights(
       message:
         locale === "it"
           ? "Giornata tranquilla in inbox — niente di urgente."
-          : "Quiet inbox day — nothing urgent on your plate.",
+          : "Quiet inbox day — nothing pressing on your plate.",
     });
   }
 
@@ -47,7 +47,7 @@ export function buildBriefingInsights(
       message:
         locale === "it"
           ? "Alcuni follow-up potrebbero meritare attenzione — solo quando vuoi."
-          : "Several follow-ups may need attention — only when you are ready.",
+          : "A few conversations may still need closure — only when you are ready.",
     });
   }
 

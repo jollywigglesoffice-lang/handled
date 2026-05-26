@@ -53,11 +53,6 @@ function insightCopy(
   locale: "en" | "it",
   confidence: DecisionConfidenceLevel,
 ): { why: string; detail?: string } | null {
-  const cautious =
-    locale === "it"
-      ? "Handled suggerisce — tu decidi sempre."
-      : "Handled suggests — you always decide.";
-
   const lowNote =
     locale === "it"
       ? "Segnale leggero — verifica se ti serve."
@@ -66,17 +61,17 @@ function insightCopy(
   const detail =
     confidence === "low_suggestion"
       ? lowNote
-      : confidence === "possible_concern"
-        ? cautious
-        : cautious;
+      : locale === "it"
+        ? "Tu decidi sempre."
+        : "You always decide.";
 
   const en: Record<typeof kind, string> = {
     financial_request: "This thread may affect payment timing or billing.",
     scheduling_conflict: "Scheduling may need your review — nothing is booked automatically.",
     unresolved_approval: "An approval or decision may still be open.",
-    escalating_conversation: "Conversation urgency appears to be increasing.",
+    escalating_conversation: "This thread may need a calm reply soon.",
     business_opportunity: "This may be a valuable business opportunity.",
-    potential_risk: `Important thread with ${name} may need your attention.`,
+    potential_risk: `Important thread with ${name} — worth checking when you can.`,
     deadline_approaching: "A mentioned deadline may be approaching.",
   };
 
@@ -84,9 +79,9 @@ function insightCopy(
     financial_request: "Questo thread può influire su pagamenti o fatturazione.",
     scheduling_conflict: "La programmazione richiede revisione — nulla viene prenotato da solo.",
     unresolved_approval: "Un'approvazione o decisione potrebbe essere ancora aperta.",
-    escalating_conversation: "L'urgenza della conversazione sembra in aumento.",
+    escalating_conversation: "Questo thread potrebbe meritare una risposta calma presto.",
     business_opportunity: "Potrebbe essere un'opportunita di valore.",
-    potential_risk: `Thread importante con ${name} — potrebbe meritare attenzione.`,
+    potential_risk: `Thread importante con ${name} — da vedere quando puoi.`,
     deadline_approaching: "Una scadenza citata potrebbe avvicinarsi.",
   };
 
@@ -165,15 +160,15 @@ export function buildRisks(
 function riskMessage(reason: string, locale: "en" | "it"): string | null {
   const en: Record<string, string> = {
     vip_thread_open: "VIP thread is still open — no pressure to reply instantly.",
-    at_risk_forgotten: "Easy to forget — Handled is holding this gently visible.",
-    repeated_follow_ups: "Repeated follow-ups detected — a calm reply may help.",
+    at_risk_forgotten: "Easy to forget — kept gently visible here.",
+    repeated_follow_ups: "A few follow-ups in this thread — a calm reply may help.",
     unanswered_important: "Important thread unanswered for several days.",
     missed_confirmation: "Confirmation may still be outstanding.",
   };
   const it: Record<string, string> = {
     vip_thread_open: "Thread VIP ancora aperto — nessuna pressione immediata.",
-    at_risk_forgotten: "Facile da dimenticare — Handled lo tiene visibile con calma.",
-    repeated_follow_ups: "Follow-up ripetuti — una risposta calma puo aiutare.",
+    at_risk_forgotten: "Facile da dimenticare — tenuto visibile con calma.",
+    repeated_follow_ups: "Qualche follow-up in questo thread — una risposta calma può aiutare.",
     unanswered_important: "Thread importante senza risposta da giorni.",
     missed_confirmation: "Conferma forse ancora in sospeso.",
   };

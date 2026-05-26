@@ -114,7 +114,13 @@ export function GmailInboxCard({
     (workflowMode === "assist" &&
       (message.category === "newsletter" || message.category === "promotion"));
   const badgeLabel =
-    message.category === "promotion" ? "Promotion detected" : "Newsletter detected";
+    message.category === "promotion"
+      ? locale === "it"
+        ? "Promozione"
+        : "Promotion"
+      : locale === "it"
+        ? "Newsletter"
+        : "Newsletter";
 
   const handleApply = useCallback(
     async (chosen: InboxAiCategory, scope: CategoryApplyScope) => {

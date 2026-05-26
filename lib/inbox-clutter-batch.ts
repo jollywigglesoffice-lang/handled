@@ -1,3 +1,4 @@
+import { calmTimeSensitiveHere } from "@/lib/calm-confidence";
 import { senderDisplayName } from "@/lib/situational-understanding";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 
@@ -44,8 +45,8 @@ function batchLabel(
   }
   if (kind === "store") {
     return locale === "it"
-      ? `${count} notifiche negozio — probabilmente nessuna azione`
-      : `${count} store notifications — no action likely needed`;
+      ? `${count} notifiche negozio — possono aspettare`
+      : `${count} store notifications — can likely wait`;
   }
   if (name && count >= 2) {
     return locale === "it"
@@ -62,9 +63,7 @@ function batchLabel(
 }
 
 function reassurance(locale: "en" | "it"): string {
-  return locale === "it"
-    ? "Niente di urgente qui — puoi aprirle quando vuoi."
-    : "Nothing time-sensitive here — open when you want.";
+  return calmTimeSensitiveHere(locale);
 }
 
 /**

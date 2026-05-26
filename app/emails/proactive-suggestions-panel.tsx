@@ -62,8 +62,8 @@ export function ProactiveSuggestionsPanel({
         </h2>
         <p className="mt-1 text-sm leading-relaxed text-gray-500">
           {locale === "it"
-            ? "Handled nota impegni e scadenze — tu decidi sempre cosa fare."
-            : "Handled noticed commitments and timing — you always decide what to do."}
+            ? "Impegni e scadenze in vista — tu decidi cosa fare."
+            : "Commitments and timing in view — you decide what to do."}
         </p>
         <p className="mt-1 text-xs text-gray-400">
           {locale === "it"

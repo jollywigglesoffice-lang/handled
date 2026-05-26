@@ -1,4 +1,5 @@
 import { detectSchedulingIntent } from "@/lib/calendar-awareness";
+import { calmWorthCheckingToday } from "@/lib/calm-confidence";
 import { extractDeadlinePhrase } from "@/lib/glance-clarity";
 import { analyzeEmailIntent, type EmailIntentKind } from "@/lib/email-intent";
 import type { GmailInboxRow } from "@/lib/gmail-api";
@@ -150,14 +151,14 @@ function buildHighPrioritySummary(
 
   if (kinds.includes("direct_question") || kinds.includes("information_request")) {
     return locale === "it"
-      ? `${who} ha una domanda diretta — probabilmente serve una risposta.`
-      : `${who} asked something directly — a reply is probably expected.`;
+      ? `${who} ha una domanda diretta — una risposta breve dovrebbe bastare.`
+      : `${who} asked something directly — a short reply should do.`;
   }
 
   if (kinds.includes("urgent_request") || kinds.includes("deadline")) {
     return locale === "it"
-      ? `${who} segnala urgenza — conviene rispondere presto.`
-      : `${who} flagged this as time-sensitive.`;
+      ? `${who} — ${calmWorthCheckingToday("it")}`
+      : `${who} — ${calmWorthCheckingToday("en")}`;
   }
 
   return locale === "it"
@@ -337,8 +338,11 @@ export function polishNextStep(text: string | null | undefined, locale: "en" | "
       ? "Scegli un orario e rispondi con una bozza."
       : "Pick a time that works and send a draft reply.";
   }
-  if (/likely needs a reply|probabilmente serve una risposta/i.test(t)) {
+  if (/likely needs a reply|probabilmente serve una risposta|suggests replying/i.test(t)) {
     return locale === "it" ? "Rispondi quando puoi." : "Reply when you can.";
+  }
+  if (/reply today|rispondi oggi/i.test(t)) {
+    return locale === "it" ? "Rispondi oggi." : "Reply today.";
   }
   if (/pricing or plan inquiry|preventivo/i.test(t)) {
     return locale === "it" ? "Condividi i dettagli sui prezzi." : "Share pricing details when ready.";

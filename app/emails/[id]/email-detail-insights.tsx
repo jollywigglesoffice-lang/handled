@@ -83,7 +83,7 @@ export function EmailDetailInsights({
       )}
 
       <CalmCollapsible
-        title={locale === "it" ? "Perché Handled l'ha segnalata" : "Why Handled flagged this"}
+        title={locale === "it" ? "Perché è qui" : "Why it's here"}
         summary={whySummary}
       >
         <div className="space-y-3 leading-relaxed">
@@ -193,7 +193,7 @@ export function EmailDetailInsights({
           (email.unsubscribeAnalysis?.methods?.length ?? 0) > 0
             ? locale === "it"
               ? "Opzioni disiscrizione rilevate"
-              : "Unsubscribe options detected"
+              : "Leave this list"
             : locale === "it"
               ? "Gestione preferenze"
               : "Preference management"
@@ -223,8 +223,8 @@ export function EmailDetailInsights({
           <IntelligenceFallbackNote
             message={
               locale === "it"
-                ? "Handled ha mostrato l'essenziale — alcuni dettagli opzionali arriveranno dopo."
-                : "Handled showed what matters — a few optional details will catch up later."
+                ? "L'essenziale è qui — altri dettagli arriveranno dopo se servono."
+                : "What matters is here — optional details may catch up later."
             }
           />
         </CalmCollapsible>

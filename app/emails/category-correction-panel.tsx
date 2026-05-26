@@ -67,7 +67,7 @@ export function CategoryCorrectionPanel({
       ) : null}
 
       <h3 className={`font-semibold text-[#0F172A] ${compact ? "text-sm" : "mt-2 text-lg"}`}>
-        Handled guessed: {guessedLabel}
+        Best guess: {guessedLabel}
       </h3>
       <p className="mt-1 text-sm text-gray-600">
         Where should {step === "pick_category" ? "emails like this" : "future emails from this sender"}{" "}

@@ -1,4 +1,10 @@
 import type { AttentionLocale, AttentionSnapshot } from "@/lib/attention-calm";
+import {
+  calmFewNeedYou,
+  calmNothingPressing,
+  calmOpenThreads,
+  type CalmLocale,
+} from "@/lib/calm-confidence";
 import { pickInboxReliefMessage } from "@/lib/micro-relief";
 
 export type RhythmLocale = AttentionLocale;
@@ -23,25 +29,11 @@ function conversationCount(snapshot: AttentionSnapshot): number {
 }
 
 const EN = {
-  nothingUrgent: {
-    morning: "Nothing urgent appears waiting today.",
-    afternoon: "Nothing urgent appears waiting.",
-    evening: "Nothing urgent appears waiting tonight.",
-  },
-  onlyToday: (n: number) =>
-    n === 1
-      ? "Only 1 conversation likely needs attention today."
-      : `Only ${n} conversations likely need attention today.`,
   quickOnly: (n: number) =>
     n === 1
       ? "One quick reply when you have a moment."
       : `${n} quick replies when you have a moment.`,
-  worthToday: {
-    morning: "A few conversations worth your attention today — the rest can wait.",
-    afternoon: "A few conversations to tend to — most of the rest can wait.",
-    evening: "A few open threads — nothing that can't wait until tomorrow.",
-  },
-  manageable: "Most of your inbox looks manageable.",
+  manageable: "Most things look manageable.",
   rhythm: {
     morning: "A calm read on what matters first.",
     afternoon: "Gentle follow-through — no rush.",
@@ -51,12 +43,12 @@ const EN = {
     title: [
       "You're caught up enough for now.",
       "Nothing important appears unresolved right now.",
-      "Handled took care of the noise.",
+      "The rest is tucked aside for later.",
     ],
     subtitle: [
-      "Step away when you want — Handled will be here.",
+      "Step away when you want — nothing needs you right now.",
       "The inbox can rest until something actually needs you.",
-      "Low-priority mail is tucked away for later.",
+      "Low-priority mail is set aside for when you want it.",
     ],
     footer: "New messages will show up when they arrive.",
   },
@@ -80,25 +72,11 @@ const EN = {
 } as const;
 
 const IT = {
-  nothingUrgent: {
-    morning: "Niente di urgente in attesa oggi.",
-    afternoon: "Niente di urgente in attesa.",
-    evening: "Niente di urgente in attesa stasera.",
-  },
-  onlyToday: (n: number) =>
-    n === 1
-      ? "Solo 1 conversazione probabilmente richiede attenzione oggi."
-      : `Solo ${n} conversazioni probabilmente richiedono attenzione oggi.`,
   quickOnly: (n: number) =>
     n === 1
       ? "Una risposta veloce quando hai un attimo."
       : `${n} risposte veloci quando hai un attimo.`,
-  worthToday: {
-    morning: "Qualche conversazione oggi — il resto può aspettare.",
-    afternoon: "Qualche conversazione da seguire — il resto può aspettare.",
-    evening: "Qualche thread aperto — può aspettare fino a domani.",
-  },
-  manageable: "La maggior parte della inbox sembra gestibile.",
+  manageable: "La maggior parte sembra gestibile.",
   rhythm: {
     morning: "Una lettura calma di cosa conta prima.",
     afternoon: "Follow-through leggero — senza fretta.",
@@ -108,12 +86,12 @@ const IT = {
     title: [
       "Per ora sei a posto.",
       "Niente di importante sembra irrisolto.",
-      "Handled ha filtrato il rumore.",
+      "Il resto è messo da parte per dopo.",
     ],
     subtitle: [
-      "Stacca quando vuoi — Handled resta qui.",
+      "Stacca quando vuoi — niente ti serve adesso.",
       "La inbox può riposare finché non serve davvero.",
-      "Il resto a bassa priorità è messo da parte.",
+      "Il resto a bassa priorità è da parte per quando vuoi.",
     ],
     footer: "I nuovi messaggi arriveranno quando arrivano.",
   },
@@ -166,17 +144,18 @@ export function dailyOrientationHeadline(
   phase: DayPhase = getDayPhase(),
 ): string {
   const t = copy(locale);
+  const loc = locale as CalmLocale;
   const { needsAttention, quickReply } = snapshot;
   const conversations = conversationCount(snapshot);
 
   if (conversations === 0) {
-    return t.nothingUrgent[phase];
+    return calmNothingPressing(phase, loc);
   }
   if (needsAttention === 0 && quickReply > 0) {
     return t.quickOnly(quickReply);
   }
   if (needsAttention <= 4) {
-    return t.onlyToday(needsAttention);
+    return calmFewNeedYou(needsAttention, loc);
   }
   if (
     snapshot.totalVisible > 8 &&
@@ -184,7 +163,7 @@ export function dailyOrientationHeadline(
   ) {
     return t.manageable;
   }
-  return t.worthToday[phase];
+  return calmOpenThreads(phase, loc);
 }
 
 /** Sparse subline under Today — time-of-day + relief, once per phase per session. */
@@ -214,8 +193,8 @@ export function dailyRhythmSubline(
   }
   if (handled >= 4 && needsAttention <= 2) {
     return locale === "it"
-      ? "Handled ha messo da parte il rumore."
-      : "Handled tucked the noise aside.";
+      ? "Il resto è stato messo da parte."
+      : "The rest has been set aside.";
   }
 
   return t.rhythm[phase];

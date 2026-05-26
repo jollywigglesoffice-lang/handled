@@ -21,7 +21,7 @@ export function RelationshipBadge({ relationship }: RelationshipBadgeProps) {
   return (
     <span
       className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${cls}`}
-      title={`Handled knows this sender as ${relationship.label}`}
+      title={relationship.label}
     >
       {relationship.label}
       {relationship.importance === "vip" ? " · VIP" : null}

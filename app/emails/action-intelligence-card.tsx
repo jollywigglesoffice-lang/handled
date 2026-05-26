@@ -49,7 +49,7 @@ export function ActionIntelligenceCard({
   return (
     <div className="space-y-3 rounded-xl border border-[#E2E8F0] bg-gradient-to-br from-[#F8FAFC] to-white p-5">
       <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-        {locale === "it" ? "Azione suggerita" : "Suggested action"}
+        {locale === "it" ? "Prossimo passo" : "Next step"}
       </p>
 
       <div className="flex flex-wrap items-center gap-2">

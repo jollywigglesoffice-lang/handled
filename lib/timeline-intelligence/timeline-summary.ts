@@ -21,8 +21,8 @@ export function buildTimelineSummary(input: {
     return {
       primary:
         locale === "it"
-          ? "Conversazione probabilmente conclusa."
-          : "This conversation is likely complete.",
+          ? "Conversazione probabilmente chiusa."
+          : "This conversation looks complete.",
     };
   }
 

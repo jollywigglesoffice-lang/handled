@@ -1,3 +1,4 @@
+import { calmCanLikelyWait, calmTimeSensitiveHere } from "@/lib/calm-confidence";
 import {
   dailyOrientationHeadline,
   dailyRhythmSubline,
@@ -38,18 +39,12 @@ export function notUrgentSectionReassurance(
   locale: AttentionLocale,
 ): string {
   if (count === 0) {
-    return locale === "it"
-      ? "Niente di urgente qui."
-      : "Nothing urgent appears here.";
+    return calmTimeSensitiveHere(locale);
   }
   if (category === "newsletter") {
-    return locale === "it"
-      ? "Questi aggiornamenti possono aspettare."
-      : "These updates can likely wait.";
+    return calmCanLikelyWait(locale);
   }
-  return locale === "it"
-    ? "Niente di urgente qui."
-    : "Nothing time-sensitive here.";
+  return calmTimeSensitiveHere(locale);
 }
 
 /** Subtle count — avoid shouting large numbers. */

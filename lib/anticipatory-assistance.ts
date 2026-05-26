@@ -155,9 +155,7 @@ function inferLikelyNextStep(
     isCommercialBulk(row);
 
   if (lowUrgency) {
-    return locale === "it"
-      ? "Probabilmente puoi lasciarla passare."
-      : "You can likely leave this for later.";
+    return locale === "it" ? "Può aspettare." : "Can likely wait.";
   }
 
   if (
@@ -166,14 +164,14 @@ function inferLikelyNextStep(
       countTimeOptions(haystackText) >= 2)
   ) {
     return locale === "it"
-      ? "Probabilmente vorrai confermare uno dei nuovi orari."
-      : "You'll probably want to confirm one of the new times.";
+      ? "Conferma uno dei nuovi orari."
+      : "Confirm one of the new times.";
   }
 
   if (input.schedulingDetected || intent.kinds.includes("scheduling")) {
     return locale === "it"
-      ? "Probabilmente basterà proporre un orario che ti va."
-      : "You'll probably want to offer a time that works.";
+      ? "Proponi un orario che ti va."
+      : "Offer a time that works.";
   }
 
   if (intent.kinds.includes("pricing_inquiry") || /pricing|quote|preventivo/i.test(haystackText)) {
@@ -187,9 +185,7 @@ function inferLikelyNextStep(
     (intent.kinds.includes("deadline") ||
       /\btoday\b|entro oggi|by eod|by friday|entro venerdì/i.test(haystackText))
   ) {
-    return locale === "it"
-      ? "Una risposta oggi potrebbe essere attesa."
-      : "A reply is likely expected today.";
+    return locale === "it" ? "Rispondi oggi." : "Reply today.";
   }
 
   if (input.replyRecommended !== false && intent.requiresReply) {

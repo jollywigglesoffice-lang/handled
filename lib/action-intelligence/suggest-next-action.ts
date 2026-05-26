@@ -71,7 +71,7 @@ export function suggestNextAction(input: {
 
   if (input.primaryLabel === "waiting") {
     return locale === "it"
-      ? "Nessuna azione urgente — sei in attesa."
+      ? "Nessuna fretta — sei in attesa."
       : "No rush — you're waiting on them.";
   }
 

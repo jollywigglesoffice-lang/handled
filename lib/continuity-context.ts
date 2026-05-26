@@ -306,8 +306,8 @@ export function headlinesForFollowUpState(input: {
   if (primary) {
     const calm =
       input.locale === "it"
-        ? "Handled tiene d'occhio il thread — nulla parte senza di te."
-        : "Handled is keeping this in view — nothing moves without you.";
+        ? "Nulla parte senza di te."
+        : "Nothing moves without you.";
     return { headline: primary, calmPrompt: calm };
   }
 

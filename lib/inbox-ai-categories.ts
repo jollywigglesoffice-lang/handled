@@ -124,16 +124,16 @@ const SUB_EN: Partial<Record<InboxAiCategory, string>> = {
   needs_attention: "Worth checking when you have a moment.",
   quick_reply: "Short replies — no heavy lifting.",
   handled: "Informational or already quiet — safe to skim later.",
-  newsletter: "Digests and recurring reads — nothing urgent here.",
-  promotion: "Offers and marketing — likely no action needed.",
+  newsletter: "Digests and recurring reads — can likely wait.",
+  promotion: "Offers and marketing — can likely wait.",
 };
 
 const SUB_IT: Partial<Record<InboxAiCategory, string>> = {
   needs_attention: "Da controllare quando hai un momento.",
   quick_reply: "Risposte brevi — niente di pesante.",
   handled: "Informativi o già tranquilli — puoi leggerli dopo.",
-  newsletter: "Digest e letture ricorrenti — niente di urgente.",
-  promotion: "Offerte e marketing — probabilmente nessuna azione.",
+  newsletter: "Digest e letture ricorrenti — possono aspettare.",
+  promotion: "Offerte e marketing — possono aspettare.",
 };
 
 export function inboxCategorySectionTitle(

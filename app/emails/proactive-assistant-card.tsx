@@ -39,7 +39,7 @@ export function ProactiveAssistantCard({
       <p className="text-xs leading-relaxed text-teal-900/80">
         {locale === "it"
           ? "Suggerimenti basati su impegni e tempistiche — approvazione sempre necessaria."
-          : "Suggestions from commitments and timing — your approval always required."}
+          : "From commitments and timing — you approve anything that happens."}
       </p>
       <div className="space-y-3">
         {suggestions.map((s) => (

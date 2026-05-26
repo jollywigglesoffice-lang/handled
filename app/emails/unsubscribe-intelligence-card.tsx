@@ -179,15 +179,14 @@ export function UnsubscribeIntelligenceCard({
               Unsubscribe in seconds
             </h2>
             <p className="mt-1 text-sm leading-relaxed text-violet-900/80">
-              Handled found how to leave this list — you approve every step. Nothing sends or
-              clicks automatically.
+              A way to leave this list — you approve every step. Nothing sends or clicks
+              automatically.
             </p>
           </div>
         </div>
 
         {primary ? (
           <p className="mt-3 rounded-lg border border-violet-100 bg-white/80 px-3 py-2 text-sm text-violet-950">
-            <span className="font-medium">Detected: </span>
             {primary.explanation}
             {!primary.safe ? (
               <span className="mt-1 block text-xs text-amber-700">
