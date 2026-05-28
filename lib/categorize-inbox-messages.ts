@@ -33,6 +33,14 @@ import { applyRelationshipToCategory } from "@/lib/relationship-intelligence/eff
 import { resolveRelationshipCategory } from "@/lib/relationship-intelligence/relationship-category";
 import { resolveSenderRelationship } from "@/lib/relationship-intelligence/resolve";
 import type { SenderRelationship, SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
+import { isUserLockedCategorySource } from "@/lib/category-authority";
+import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-messages";
+import {
+  logCategoryResolution,
+  mustSkipAiCategorization,
+  resolveFinalCategory,
+  type CategoryResolutionContext,
+} from "@/lib/final-category-resolution";
 import { applyWorkflowModeToCategory } from "@/lib/workflow-mode-effects";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
@@ -275,6 +283,16 @@ function finalizeRow(
   relationship?: SenderRelationshipProfile | null,
   intelligence?: CategorizationIntelligenceResult,
 ): GmailInboxRowCategorized {
+  if (isUserLockedCategorySource(source)) {
+    return {
+      ...row,
+      category,
+      categoryConfidence: 1,
+      categorySource: source,
+      relationship: relationship ?? undefined,
+    };
+  }
+
   const c = Math.round(Math.max(0, Math.min(1, confidence)) * 100) / 100;
   let coerced = coerceNeedsAttentionCategory(row, category);
   coerced = safetyCategoryWhenUncertain(row, coerced, c, relationship);
@@ -625,22 +643,21 @@ export async function categorizeGmailInboxRows(
   const workflowMode = options?.workflowMode ?? "assist";
   const apiKey = getAiApiKey();
   logAiKeyStatus("categorize-inbox");
+  const resolutionCtx: CategoryResolutionContext = { emailOverrides, senderRules };
   const ambiguousIndices: number[] = [];
   const out: GmailInboxRowCategorized[] = new Array(rows.length) as GmailInboxRowCategorized[];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
-    const manualCategory = emailOverrides[row.id];
-    if (manualCategory) {
-      const modeAdjusted = applyWorkflowModeToCategory(
-        workflowMode,
+    if (mustSkipAiCategorization(row, resolutionCtx)) {
+      const resolved = resolveFinalCategory({
         row,
-        manualCategory,
-        "manual_override",
-      );
-      const rel = resolveSenderRelationship(row, manualCategory, senderRelationships);
-      out[i] = finalizeRow(row, i, modeAdjusted.category, modeAdjusted.source, 1, rel);
+        context: resolutionCtx,
+      });
+      logCategoryResolution(resolved.audit);
+      const rel = resolveSenderRelationship(row, resolved.category, senderRelationships);
+      out[i] = finalizeRow(row, i, resolved.category, resolved.source, 1, rel);
       continue;
     }
 
@@ -661,14 +678,13 @@ export async function categorizeGmailInboxRows(
       continue;
     }
 
-    const senderPre = applyUserRulesPre(row, senderRules);
-    const keywordPre = senderPre ? null : applyUserRulesPre(row, userRules);
-    const userPre = senderPre ?? keywordPre;
-    const preSource: CategorySource = senderPre ? "sender_rule" : "user_rule";
+    const keywordPre = applyUserRulesPre(row, userRules);
+    const userPre = keywordPre;
+    const preSource: CategorySource = "user_rule";
 
     if (userPre?.kind === "force") {
       console.log("RULE MATCH:", userPre.category, {
-        source: senderPre ? "sender_learned" : "user_pre",
+        source: "user_pre",
         label: userPre.label,
       });
       out[i] = applyUserPostIfNeeded(
@@ -755,12 +771,18 @@ export async function categorizeGmailInboxRows(
         senderRelationships,
       );
     } else {
-      ambiguousIndices.push(i);
+      if (mustSkipAiCategorization(row, resolutionCtx)) {
+        const resolved = resolveFinalCategory({ row, context: resolutionCtx });
+        logCategoryResolution(resolved.audit);
+        out[i] = finalizeRow(row, i, resolved.category, resolved.source, 1);
+      } else {
+        ambiguousIndices.push(i);
+      }
     }
   }
 
   if (ambiguousIndices.length === 0) {
-    return out;
+    return applyFinalResolutionPass(out, rows, resolutionCtx);
   }
 
   const ambiguousRows = ambiguousIndices.map((i) => rows[i]);
@@ -823,7 +845,7 @@ export async function categorizeGmailInboxRows(
       const i = ambiguousIndices[j];
       out[i] = classifyAmbiguousRow(rows[i], i, undefined);
     }
-    return out;
+    return applyFinalResolutionPass(out, rows, resolutionCtx);
   }
 
   const aiMap = await openAiClassifyBatch(ambiguousRows, apiKey);
@@ -832,18 +854,74 @@ export async function categorizeGmailInboxRows(
     warnFallback("AI batch failed");
     for (let j = 0; j < ambiguousIndices.length; j++) {
       const i = ambiguousIndices[j];
+      if (mustSkipAiCategorization(rows[i], resolutionCtx)) {
+        const resolved = resolveFinalCategory({ row: rows[i], context: resolutionCtx });
+        logCategoryResolution(resolved.audit);
+        out[i] = finalizeRow(rows[i], i, resolved.category, resolved.source, 1);
+        continue;
+      }
       out[i] = classifyAmbiguousRow(rows[i], i, undefined);
     }
-    return out;
+    return applyFinalResolutionPass(out, rows, resolutionCtx);
   }
 
   for (let j = 0; j < ambiguousIndices.length; j++) {
     const i = ambiguousIndices[j];
+    if (mustSkipAiCategorization(rows[i], resolutionCtx)) {
+      const resolved = resolveFinalCategory({ row: rows[i], context: resolutionCtx });
+      logCategoryResolution(resolved.audit);
+      out[i] = finalizeRow(rows[i], i, resolved.category, resolved.source, 1);
+      continue;
+    }
     const got = aiMap.get(j);
     out[i] = classifyAmbiguousRow(rows[i], i, got);
   }
 
-  return out;
+  return applyFinalResolutionPass(out, rows, resolutionCtx);
+}
+
+/** Last gate: user overrides and sender rules always win over any pipeline/AI output. */
+function applyFinalResolutionPass(
+  out: GmailInboxRowCategorized[],
+  rows: GmailInboxRow[],
+  context: CategoryResolutionContext,
+): GmailInboxRowCategorized[] {
+  const resolved = out.map((categorized, index) => {
+    const row = rows[index];
+    const pipelineSource = categorized.categorySource;
+    const isAiLike =
+      pipelineSource === "ai" ||
+      pipelineSource === "heuristic" ||
+      pipelineSource === "ai_coerced" ||
+      pipelineSource === "rule" ||
+      pipelineSource === "intelligence_rule";
+
+    const result = resolveFinalCategory({
+      row,
+      pipelineCategory: categorized.category,
+      pipelineSource,
+      aiCategory: isAiLike ? categorized.category : null,
+      aiSource: pipelineSource,
+      context,
+    });
+
+    logCategoryResolution(result.audit);
+
+    if (result.source !== categorized.categorySource || result.category !== categorized.category) {
+      return {
+        ...categorized,
+        category: result.category,
+        categorySource: result.source,
+        categoryConfidence:
+          result.source === "manual_override" || result.source === "sender_rule"
+            ? 1
+            : categorized.categoryConfidence,
+      };
+    }
+    return categorized;
+  });
+
+  return stampEmailOverridesOnMessages(resolved, context.emailOverrides);
 }
 
 /** @deprecated Use intelligentFallbackCategory */

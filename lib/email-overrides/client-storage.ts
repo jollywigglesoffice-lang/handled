@@ -39,15 +39,34 @@ export function removeClientEmailOverride(emailId: string): void {
 export function emailOverridesHeaders(): HeadersInit {
   const overrides = loadClientEmailOverrides();
   if (overrides.length === 0) return {};
-  return {
-    [EMAIL_OVERRIDES_HEADER]: JSON.stringify(overrides),
-  };
+  try {
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(overrides))));
+    return { [EMAIL_OVERRIDES_HEADER]: encoded };
+  } catch {
+    return {};
+  }
 }
 
 export function parseEmailOverridesHeader(raw: string | null): EmailCategoryOverride[] {
   if (!raw?.trim()) return [];
+  const trimmed = raw.trim();
+
+  const tryParseJson = (json: string): EmailCategoryOverride[] => {
+    try {
+      return parseEmailOverridesJson(JSON.parse(json));
+    } catch {
+      return [];
+    }
+  };
+
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+    const direct = tryParseJson(trimmed);
+    if (direct.length) return direct;
+  }
+
   try {
-    return parseEmailOverridesJson(JSON.parse(raw));
+    const json = decodeURIComponent(escape(atob(trimmed)));
+    return tryParseJson(json);
   } catch {
     return [];
   }

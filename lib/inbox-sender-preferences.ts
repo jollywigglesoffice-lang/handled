@@ -3,6 +3,7 @@ import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { senderRulesToInboxRules } from "@/lib/sender-rules/to-inbox-rules";
 import type { SenderRule } from "@/lib/sender-rules/types";
 import { parseSenderDomain, parseSenderEmail } from "@/lib/inbox-user-rules/match";
+import { logSenderRuleDebug, resolveSenderIdentity } from "@/lib/sender-identity";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
 
 function preferenceToSenderRule(pref: SenderPreference): SenderRule {
@@ -44,27 +45,50 @@ export function preferenceFromSender(
   category: InboxAiCategory,
   label?: string,
 ): SenderPreference {
-  const senderEmail = parseSenderEmail(sender) || sender.trim().toLowerCase();
-  const senderDomain = parseSenderDomain(sender);
-  const now = Date.now();
-  return {
+  const identity = resolveSenderIdentity(sender);
+  const senderEmail = identity.email || identity.ruleKey;
+  const senderDomain = identity.domain;
+  const pref: SenderPreference = {
     id: newPrefId(),
     senderEmail,
     senderDomain,
     category,
     label,
     enabled: true,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
   };
+  logSenderRuleDebug("preferenceFromSender", {
+    inputSender: sender,
+    senderEmail: pref.senderEmail,
+    senderDomain: pref.senderDomain,
+    category,
+    hasEmail: identity.hasEmail,
+    ruleKey: identity.ruleKey,
+  });
+  return pref;
 }
 
 export function senderMatchesPreference(row: Pick<GmailInboxRow, "sender">, pref: SenderPreference): boolean {
-  const email = parseSenderEmail(row.sender);
-  const domain = parseSenderDomain(row.sender);
-  if (pref.senderEmail && email && email === pref.senderEmail) return true;
-  if (pref.senderDomain && domain && domain === pref.senderDomain) return true;
-  if (pref.senderEmail && row.sender.toLowerCase().includes(pref.senderEmail)) return true;
+  const rowIdentity = resolveSenderIdentity(row.sender);
+  const prefEmail = pref.senderEmail?.trim().toLowerCase() ?? "";
+  const prefDomain = pref.senderDomain?.trim().toLowerCase() ?? "";
+
+  if (!prefEmail && !prefDomain) return false;
+
+  if (prefEmail.includes("@")) {
+    if (rowIdentity.email && rowIdentity.email === prefEmail) return true;
+    if (rowIdentity.raw.toLowerCase().includes(prefEmail)) return true;
+  }
+
+  if (prefDomain && rowIdentity.domain && rowIdentity.domain === prefDomain) return true;
+
+  if (prefEmail) {
+    if (rowIdentity.ruleKey && rowIdentity.ruleKey === prefEmail) return true;
+    if (rowIdentity.displayName && rowIdentity.displayName.toLowerCase() === prefEmail) return true;
+    if (rowIdentity.raw.toLowerCase().includes(prefEmail)) return true;
+  }
+
   return false;
 }
 

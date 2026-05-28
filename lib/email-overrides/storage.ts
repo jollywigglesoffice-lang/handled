@@ -65,3 +65,33 @@ export function mergeEmailOverrides(
   }
   return [...byId.values()];
 }
+
+/** Local device edits win ties — used when server timestamps may be missing or stale. */
+export function mergeEmailOverridesLocalWins(
+  local: EmailCategoryOverride[],
+  server: EmailCategoryOverride[],
+): EmailCategoryOverride[] {
+  const byId = new Map<string, EmailCategoryOverride>();
+  for (const o of server) {
+    byId.set(o.emailId, o);
+  }
+  for (const o of local) {
+    const existing = byId.get(o.emailId);
+    if (!existing) {
+      byId.set(o.emailId, o);
+      continue;
+    }
+    const localTs = new Date(o.updatedAt).getTime();
+    const serverTs = new Date(existing.updatedAt).getTime();
+    if (localTs >= serverTs) {
+      byId.set(o.emailId, o);
+    }
+  }
+  return [...byId.values()];
+}
+
+export function overridesMapFromRecords(
+  records: EmailCategoryOverride[],
+): Record<string, InboxAiCategory> {
+  return overridesToCategoryMap(records);
+}

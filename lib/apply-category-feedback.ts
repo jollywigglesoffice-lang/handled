@@ -1,3 +1,9 @@
+import { protectedApiHeaders } from "@/lib/auth/protected-api-headers";
+import {
+  logSenderRuleDebug,
+  resolveSenderIdentity,
+  senderIdentityForTeachHandled,
+} from "@/lib/sender-identity";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import { persistEmailOverrideToAccount } from "@/lib/email-overrides/client-sync";
@@ -31,17 +37,25 @@ export type CategoryFeedbackResult = {
   rules?: InboxUserRule[];
   affectedCount?: number;
   learnedSender?: boolean;
-  /** Shown when the user repeatedly corrects the same sender (e.g. school → needs attention). */
   senderLearningSuggestion?: string;
 };
 
 async function persistSenderRule(input: {
   sender: string;
   chosenCategory: InboxAiCategory;
-  clientPreferences?: ReturnType<typeof loadClientSenderPreferences>;
-}): Promise<{ ok: boolean; learnedSender: boolean }> {
+  emailId?: string;
+  subject?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const identity = resolveSenderIdentity(input.sender);
+  if (!identity.ruleKey) {
+    logSenderRuleDebug("persistSenderRule blocked — no sender identity", {
+      sender: input.sender,
+    });
+    return { ok: false, error: "Could not identify sender — try correcting this email only." };
+  }
+
   const mergedPrefs = mergeSenderPreferences(
-    input.clientPreferences ?? loadClientSenderPreferences(),
+    loadClientSenderPreferences(),
     preferenceFromSender(
       input.sender,
       input.chosenCategory,
@@ -50,24 +64,57 @@ async function persistSenderRule(input: {
   );
   saveClientSenderPreferences(mergedPrefs);
 
+  const payload = {
+    action: "correct_category",
+    emailId: input.emailId ?? "",
+    sender: input.sender,
+    subject: input.subject ?? "",
+    guessedCategory: input.chosenCategory,
+    category: input.chosenCategory,
+    scope: "sender" as const,
+    clientPreferences: mergedPrefs,
+    clientRules: loadClientInboxRules(),
+  };
+
+  logSenderRuleDebug("teachHandled payload (client → /api/inbox-feedback)", {
+    ...senderIdentityForTeachHandled({
+      emailId: input.emailId,
+      sender: input.sender,
+      subject: input.subject,
+      scope: "sender",
+      category: input.chosenCategory,
+    }),
+    preferenceCount: mergedPrefs.length,
+  });
+
   const res = await fetch("/api/inbox-feedback", {
     method: "POST",
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      action: "correct_category",
-      emailId: "",
-      sender: input.sender,
-      subject: "",
-      guessedCategory: input.chosenCategory,
-      category: input.chosenCategory,
-      scope: "sender",
-      clientPreferences: mergedPrefs,
-      clientRules: loadClientInboxRules(),
-    }),
+    headers: {
+      ...(await protectedApiHeaders()),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   });
 
-  return { ok: res.ok, learnedSender: res.ok };
+  const data = (await res.json().catch(() => ({}))) as { error?: string; learnedSender?: boolean };
+
+  if (res.ok) {
+    logSenderRuleDebug("sender-rule save result", {
+      ok: true,
+      status: res.status,
+      learnedSender: data.learnedSender,
+      preferenceCount: mergedPrefs.length,
+    });
+    return { ok: true };
+  }
+
+  logSenderRuleDebug("sender-rule save failure", {
+    ok: false,
+    status: res.status,
+    error: data.error,
+  });
+  return { ok: false, error: data.error ?? `HTTP ${res.status}` };
 }
 
 export async function submitCategoryFeedback(
@@ -79,16 +126,11 @@ export async function submitCategoryFeedback(
     chosenCategory: input.chosenCategory,
   });
 
-  let effectiveScope: CategoryApplyScope = input.scope;
-
-  if (
+  const autoLearnSender =
     input.scope === "this_email" &&
-    shouldAutoLearnSenderRule(learningRecord, input.chosenCategory)
-  ) {
-    effectiveScope = "sender";
-  }
+    shouldAutoLearnSenderRule(learningRecord, input.chosenCategory);
 
-  if (effectiveScope === "this_email") {
+  if (input.scope === "this_email" || autoLearnSender) {
     await persistEmailOverrideToAccount({
       emailId: input.emailId,
       overriddenCategory: input.chosenCategory,
@@ -96,47 +138,34 @@ export async function submitCategoryFeedback(
     });
   }
 
-  if (effectiveScope === "sender") {
-    const senderResult = await persistSenderRule({
+  if (input.scope === "sender" || autoLearnSender) {
+    const senderSave = await persistSenderRule({
       sender: input.sender,
       chosenCategory: input.chosenCategory,
+      emailId: input.emailId,
+      subject: input.subject,
     });
-    if (senderResult.ok) {
+    if (senderSave.ok) {
       return {
-        message:
-          input.scope === "this_email"
-            ? "Saved — future mail from this sender will follow your choice."
-            : "Learned sender rule saved — matching emails updated.",
+        message: autoLearnSender
+          ? "Saved — future mail from this sender will follow your choice."
+          : "Learned sender rule saved — matching emails updated.",
         learnedSender: true,
         affectedCount: input.scope === "this_email" ? 1 : undefined,
       };
     }
     if (input.scope === "sender") {
-      throw new Error("Could not save sender preference");
+      throw new Error(senderSave.error ?? "Could not save sender preference");
     }
-  }
-
-  const clientPrefs = loadClientSenderPreferences();
-  const mergedPrefs =
-    input.scope === "sender"
-      ? mergeSenderPreferences(
-          clientPrefs,
-          preferenceFromSender(
-            input.sender,
-            input.chosenCategory,
-            `Always: ${input.chosenCategory.replace(/_/g, " ")}`,
-          ),
-        )
-      : clientPrefs;
-
-  if (input.scope === "sender") {
-    saveClientSenderPreferences(mergedPrefs);
   }
 
   const res = await fetch("/api/inbox-feedback", {
     method: "POST",
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      ...(await protectedApiHeaders()),
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
       action: "correct_category",
       emailId: input.emailId,
@@ -146,7 +175,6 @@ export async function submitCategoryFeedback(
       guessedCategory: input.guessedCategory,
       category: input.chosenCategory,
       scope: input.scope,
-      clientPreferences: input.scope === "sender" ? mergedPrefs : undefined,
       clientRules: loadClientInboxRules(),
     }),
   });
@@ -156,7 +184,6 @@ export async function submitCategoryFeedback(
     rules?: InboxUserRule[];
     error?: string;
     learnedSender?: boolean;
-    override?: { emailId: string };
   };
 
   if (data.rules?.length) {
@@ -187,7 +214,7 @@ export async function submitCategoryFeedback(
   return {
     message: data.message ?? scopeMessages[input.scope],
     rules: data.rules,
-    learnedSender: data.learnedSender ?? input.scope === "sender",
+    learnedSender: data.learnedSender ?? autoLearnSender,
     affectedCount: input.scope === "this_email" ? 1 : undefined,
     senderLearningSuggestion,
   };

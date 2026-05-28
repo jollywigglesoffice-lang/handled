@@ -17,9 +17,27 @@ import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
 import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
-import { applyCategoryOverrides } from "@/lib/inbox-buckets";
-import { loadClientEmailOverrideMap } from "@/lib/email-overrides/client-storage";
+import { resolveAllInboxMessagesForDisplay } from "@/lib/final-category-resolution";
 import {
+  loadClientSenderPreferences,
+  senderPreferencesToRules,
+} from "@/lib/inbox-sender-preferences";
+import { syncSenderPreferencesFromAccount } from "@/lib/sender-rules/client-sync";
+import { logSenderRuleDebug, resolveSenderIdentity } from "@/lib/sender-identity";
+import {
+  loadClientEmailOverrideMap,
+  loadClientEmailOverrides,
+  saveClientEmailOverrides,
+  upsertClientEmailOverride,
+} from "@/lib/email-overrides/client-storage";
+import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-messages";
+import {
+  mergeEmailOverridesLocalWins,
+  overridesToCategoryMap,
+} from "@/lib/email-overrides/storage";
+import type { EmailCategoryOverride } from "@/lib/email-overrides/types";
+import {
+  persistEmailOverrideToAccount,
   removeEmailOverrideFromAccount,
   syncEmailOverridesFromAccount,
 } from "@/lib/email-overrides/client-sync";
@@ -380,8 +398,9 @@ export default function EmailsInboxPage() {
   const [inboxMode, setInboxMode] = useState<InboxMode>("loading");
   const [gmailMessages, setGmailMessages] = useState<GmailInboxMessage[]>([]);
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, InboxAiCategory>>(
-    () => loadClientEmailOverrideMap(),
+    {},
   );
+  const [senderPrefsVersion, setSenderPrefsVersion] = useState(0);
   const [persistenceReady, setPersistenceReady] = useState(false);
   const [workflowMode, setWorkflowMode] = useState(readWorkflowModeFromStorage);
   const [gmailError, setGmailError] = useState("");
@@ -411,6 +430,8 @@ export default function EmailsInboxPage() {
       });
       const body = (await res.json()) as {
         messages?: GmailInboxMessage[];
+        categoryOverrides?: Record<string, InboxAiCategory>;
+        emailOverrideRecords?: EmailCategoryOverride[];
         error?: string;
         message?: string;
       };
@@ -480,7 +501,37 @@ export default function EmailsInboxPage() {
             (r as { relationship?: SenderRelationshipProfile }).relationship ?? undefined,
         };
       });
-      setGmailMessages(msgs);
+      const localRecords = loadClientEmailOverrides();
+      const serverRecords =
+        body.emailOverrideRecords ??
+        Object.entries(body.categoryOverrides ?? {}).map(([emailId, overriddenCategory]) => ({
+          emailId,
+          originalCategory: null,
+          overriddenCategory,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }));
+      const mergedRecords = mergeEmailOverridesLocalWins(localRecords, serverRecords);
+      const mergedOverrideMap = overridesToCategoryMap(mergedRecords);
+      saveClientEmailOverrides(mergedRecords);
+      setCategoryOverrides(mergedOverrideMap);
+
+      const stampedMsgs = stampEmailOverridesOnMessages(msgs, mergedOverrideMap);
+      setGmailMessages(stampedMsgs);
+
+      for (const local of localRecords) {
+        const server = serverRecords.find((s) => s.emailId === local.emailId);
+        if (
+          !server ||
+          new Date(local.updatedAt).getTime() > new Date(server.updatedAt).getTime()
+        ) {
+          void persistEmailOverrideToAccount({
+            emailId: local.emailId,
+            overriddenCategory: local.overriddenCategory,
+            originalCategory: local.originalCategory,
+          });
+        }
+      }
       setInboxMode(msgs.length ? "gmail" : "gmail_empty");
       setLastSyncedAt(new Date().toISOString());
     } catch (e) {
@@ -493,6 +544,10 @@ export default function EmailsInboxPage() {
   }, []);
 
   useEffect(() => {
+    setCategoryOverrides(loadClientEmailOverrideMap());
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
       const {
@@ -501,14 +556,20 @@ export default function EmailsInboxPage() {
       if (session?.provider_token) {
         saveGoogleProviderToken(session.provider_token);
       }
-      const [mode, overrides] = await Promise.all([
+      const [mode, overrides, senderPrefs] = await Promise.all([
         syncWorkflowModeFromAccount(),
         session ? syncEmailOverridesFromAccount() : Promise.resolve(loadClientEmailOverrideMap()),
         session ? syncSenderRelationshipsFromAccount() : Promise.resolve([]),
+        session ? syncSenderPreferencesFromAccount() : Promise.resolve(loadClientSenderPreferences()),
       ]);
       if (cancelled) return;
       setWorkflowMode(mode);
       setCategoryOverrides(overrides);
+      setSenderPrefsVersion((v) => v + 1);
+      logSenderRuleDebug("inbox persistence ready", {
+        overrideCount: Object.keys(overrides).length,
+        senderPrefCount: senderPrefs.length,
+      });
       setPersistenceReady(true);
     })();
     return () => {
@@ -533,6 +594,10 @@ export default function EmailsInboxPage() {
       const overrides = await syncEmailOverridesFromAccount();
       setCategoryOverrides(overrides);
     };
+    const onSenderPrefsChange = async () => {
+      await syncSenderPreferencesFromAccount();
+      setSenderPrefsVersion((v) => v + 1);
+    };
     window.addEventListener("handled-workflow-mode-changed", onModeChange);
     window.addEventListener("handled-inbox-rules-changed", onRulesChange);
     window.addEventListener("handled-inbox-refresh-requested", onRulesChange);
@@ -543,7 +608,7 @@ export default function EmailsInboxPage() {
       window.removeEventListener("handled-workflow-mode-changed", onModeChange);
       window.removeEventListener("handled-inbox-rules-changed", onRulesChange);
       window.removeEventListener("handled-inbox-refresh-requested", onRulesChange);
-      window.removeEventListener("handled-sender-preferences-changed", onRulesChange);
+      window.removeEventListener("handled-sender-preferences-changed", onSenderPrefsChange);
       window.removeEventListener("handled-email-overrides-changed", onOverridesChange);
       window.removeEventListener("handled-sender-relationships-changed", onRulesChange);
     };
@@ -605,9 +670,23 @@ export default function EmailsInboxPage() {
     };
   }, [inboxLoading, loadingMicroMessages.length]);
 
+  useEffect(() => {
+    const bump = () => setSenderPrefsVersion((v) => v + 1);
+    window.addEventListener("handled-sender-preferences-changed", bump);
+    return () => window.removeEventListener("handled-sender-preferences-changed", bump);
+  }, []);
+
+  const categoryResolutionContext = useMemo(() => {
+    const fromStorage = loadClientEmailOverrideMap();
+    return {
+      emailOverrides: { ...fromStorage, ...categoryOverrides },
+      senderRules: senderPreferencesToRules(loadClientSenderPreferences()),
+    };
+  }, [categoryOverrides, senderPrefsVersion]);
+
   const messagesWithOverrides = useMemo(
-    () => applyCategoryOverrides(gmailMessages, categoryOverrides),
-    [gmailMessages, categoryOverrides],
+    () => resolveAllInboxMessagesForDisplay(gmailMessages, categoryResolutionContext),
+    [gmailMessages, categoryResolutionContext],
   );
 
   const { buckets: gmailBuckets, isCountsPending } = useStableInboxBuckets({
@@ -632,6 +711,11 @@ export default function EmailsInboxPage() {
   const handleCategoryChange = useCallback(
     (id: string, category: InboxAiCategory, options?: InboxCategoryChangeOptions) => {
       if (options?.scope === "sender" && options.sender) {
+        logSenderRuleDebug("handleCategoryChange sender scope", {
+          emailId: id,
+          ...resolveSenderIdentity(options.sender),
+          category,
+        });
         setGmailMessages((prev) => {
           const { messages, affectedIds } = applySenderRuleToMessages(
             prev,
@@ -650,6 +734,14 @@ export default function EmailsInboxPage() {
         return;
       }
 
+      const now = new Date().toISOString();
+      upsertClientEmailOverride({
+        emailId: id,
+        originalCategory: null,
+        overriddenCategory: category,
+        createdAt: now,
+        updatedAt: now,
+      });
       setCategoryOverrides((prev) => ({ ...prev, [id]: category }));
       setGmailMessages((prev) =>
         prev.map((m) =>
@@ -658,6 +750,10 @@ export default function EmailsInboxPage() {
             : m,
         ),
       );
+      void persistEmailOverrideToAccount({
+        emailId: id,
+        overriddenCategory: category,
+      });
     },
     [],
   );

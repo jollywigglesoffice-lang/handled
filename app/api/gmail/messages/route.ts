@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
+import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-messages";
+
+export const dynamic = "force-dynamic";
 import { gmailGetMessageMetadata, gmailListInboxIds } from "@/lib/gmail-api";
 import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
@@ -59,9 +62,14 @@ export async function GET(request: Request) {
     });
 
     if (process.env.NODE_ENV === "development") {
+      const overrideCount = Object.keys(rulesCtx.emailOverrides).length;
+      console.log(
+        `[api/gmail/messages] ${overrideCount} email override(s), ${rulesCtx.senderRules.length} sender rule(s)`,
+      );
       console.log(
         "[api/gmail/messages] sample final categories for UI:",
         categorized.slice(0, 8).map((m) => ({
+          id: m.id,
           subject: m.subject?.slice(0, 50),
           category: m.category,
           source: m.categorySource,
@@ -74,9 +82,7 @@ export async function GET(request: Request) {
       categorized.map((m) => ({ ...m, category: m.category })),
     );
 
-    return applyAuthCookies(
-      NextResponse.json({
-      messages: withTimeline.map((m) => {
+    const messages = withTimeline.map((m) => {
         const withCalendar = enrichMessageWithCalendarAwareness(m);
         const enriched = enrichMessageWithActionIntelligence(withCalendar, {
           category: m.category,
@@ -90,8 +96,26 @@ export async function GET(request: Request) {
             m.listUnsubscribe,
           ),
         };
+      });
+
+    const messagesForClient = stampEmailOverridesOnMessages(
+      messages,
+      rulesCtx.emailOverrides,
+    );
+
+    if (process.env.NODE_ENV === "development") {
+      const stamped = messagesForClient.filter((m) => m.categorySource === "manual_override").length;
+      if (stamped > 0) {
+        console.log(`[api/gmail/messages] stamped ${stamped} manual override(s) onto response`);
+      }
+    }
+
+    return applyAuthCookies(
+      NextResponse.json({
+        messages: messagesForClient,
+        categoryOverrides: rulesCtx.emailOverrides,
+        emailOverrideRecords: rulesCtx.emailOverrideRecords,
       }),
-    }),
     );
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "Gmail request failed";

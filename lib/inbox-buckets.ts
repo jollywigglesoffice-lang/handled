@@ -144,10 +144,18 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
 export function applyCategoryOverrides<
   T extends InboxBucketMessage & { categorySource?: string },
 >(messages: T[], overrides: Record<string, InboxAiCategory>): T[] {
-  if (Object.keys(overrides).length === 0) return messages;
+  if (Object.keys(overrides).length === 0) {
+    return messages;
+  }
   return messages.map((m) => {
     const override = overrides[m.id];
+    if (m.categorySource === "manual_override" && !override) {
+      return m;
+    }
     if (!override) return m;
+    if (m.category === override && m.categorySource === "manual_override") {
+      return m;
+    }
     return {
       ...m,
       category: override,

@@ -10,6 +10,7 @@ import {
 import type { CategorySource } from "@/lib/inbox-ai-categories";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
 import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
+import { logSenderRuleDebug, senderIdentityForTeachHandled } from "@/lib/sender-identity";
 import { persistEmailOverrideToAccount } from "@/lib/email-overrides/client-sync";
 import {
   clearSenderLearningSuggestion,
@@ -128,6 +129,18 @@ export function GmailInboxCard({
       const options: InboxCategoryChangeOptions =
         scope === "sender" ? { scope, sender: message.sender } : { scope };
 
+      logSenderRuleDebug("category menu apply (click handler)", {
+        ...senderIdentityForTeachHandled({
+          emailId: message.id,
+          sender: message.sender,
+          subject: message.subject,
+          scope,
+          category: chosen,
+        }),
+        guessedCategory: guessedRef.current,
+        categorySource: message.categorySource,
+      });
+
       onCategoryChange(message.id, chosen, options);
       setSaveStatus("saving");
 
@@ -140,6 +153,7 @@ export function GmailInboxCard({
       }
 
       try {
+        logSenderRuleDebug("submitCategoryFeedback starting", { scope, emailId: message.id });
         const result = await submitCategoryFeedback({
           emailId: message.id,
           sender: message.sender,
@@ -148,6 +162,11 @@ export function GmailInboxCard({
           guessedCategory: guessedRef.current,
           chosenCategory: chosen,
           scope,
+        });
+        logSenderRuleDebug("submitCategoryFeedback done", {
+          scope,
+          learnedSender: result.learnedSender,
+          message: result.message,
         });
         const extra =
           scope === "sender" ? " Matching emails in your inbox were updated." : "";
@@ -165,11 +184,13 @@ export function GmailInboxCard({
           window.dispatchEvent(new Event("handled-sender-preferences-changed"));
           window.dispatchEvent(new Event("handled-inbox-refresh-requested"));
         }
-      } catch {
+      } catch (error) {
+        const errMsg = error instanceof Error ? error.message : "Could not save";
+        logSenderRuleDebug("submitCategoryFeedback failed", { scope, error: errMsg });
         setFeedback(
           scope === "sender"
-            ? "Saved on this device — will sync when online."
-            : "Could not save — try again.",
+            ? errMsg || "Saved on this device — will sync when online."
+            : errMsg || "Could not save — try again.",
         );
         setSaveStatus(scope === "this_email" ? "offline" : "error");
       }

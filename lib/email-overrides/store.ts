@@ -58,10 +58,10 @@ async function saveToJsonColumn(
   if (sync.error) return { ok: false, error: sync.error };
 
   const supabase = await getSupabaseAdmin();
-  const { error } = await supabase.from("users").upsert({
-    id: userId,
-    email_overrides_json: overrides,
-  });
+  const { error } = await supabase
+    .from("users")
+    .update({ email_overrides_json: overrides })
+    .eq("id", userId);
 
   if (error) return { ok: false, error: error.message };
   return { ok: true };

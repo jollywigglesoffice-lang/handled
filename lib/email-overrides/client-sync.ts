@@ -1,3 +1,4 @@
+import { protectedApiHeaders } from "@/lib/auth/protected-api-headers";
 import {
   loadClientEmailOverrides,
   loadClientEmailOverrideMap,
@@ -5,7 +6,10 @@ import {
   saveClientEmailOverrides,
   upsertClientEmailOverride,
 } from "@/lib/email-overrides/client-storage";
-import { mergeEmailOverrides, overridesToCategoryMap } from "@/lib/email-overrides/storage";
+import {
+  mergeEmailOverridesLocalWins,
+  overridesToCategoryMap,
+} from "@/lib/email-overrides/storage";
 import type { EmailCategoryOverride } from "@/lib/email-overrides/types";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 
@@ -15,10 +19,22 @@ export async function syncEmailOverridesFromAccount(): Promise<Record<string, In
   if (typeof window === "undefined") return local;
 
   try {
-    const res = await fetch("/api/email-overrides", { credentials: "same-origin" });
-    const data = (await res.json()) as { overrides?: EmailCategoryOverride[] };
+    const res = await fetch("/api/email-overrides", {
+      credentials: "same-origin",
+      headers: await protectedApiHeaders(),
+    });
+    const data = (await res.json()) as {
+      overrides?: EmailCategoryOverride[];
+      error?: string;
+    };
+    if (!res.ok) {
+      console.warn("[email-overrides] sync GET failed", res.status, data.error);
+    }
     if (res.ok && Array.isArray(data.overrides)) {
-      const merged = mergeEmailOverrides(loadClientEmailOverrides(), data.overrides);
+      const merged = mergeEmailOverridesLocalWins(
+        loadClientEmailOverrides(),
+        data.overrides,
+      );
       saveClientEmailOverrides(merged);
       return overridesToCategoryMap(merged);
     }
@@ -48,7 +64,10 @@ export async function persistEmailOverrideToAccount(input: {
     const res = await fetch("/api/email-overrides", {
       method: "POST",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        ...(await protectedApiHeaders()),
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(input),
     });
     const data = (await res.json()) as {
@@ -63,6 +82,11 @@ export async function persistEmailOverrideToAccount(input: {
       return { ok: true, message: data.message ?? "Saved" };
     }
 
+    console.warn(
+      "[email-overrides] server save failed",
+      res.status,
+      data.error ?? "unknown",
+    );
     return {
       ok: false,
       message: data.error ?? "Saved on this device — will sync when online.",
@@ -80,7 +104,11 @@ export async function removeEmailOverrideFromAccount(
   try {
     const res = await fetch(
       `/api/email-overrides?emailId=${encodeURIComponent(emailId)}`,
-      { method: "DELETE", credentials: "same-origin" },
+      {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: await protectedApiHeaders(),
+      },
     );
     const data = (await res.json()) as { ok?: boolean; message?: string; error?: string };
     if (res.ok) {

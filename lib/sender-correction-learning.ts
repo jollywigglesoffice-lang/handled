@@ -1,5 +1,5 @@
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
-import { parseSenderEmail } from "@/lib/inbox-user-rules/match";
+import { resolveSenderIdentity } from "@/lib/sender-identity";
 import { suggestSenderAutoRuleMessage } from "@/lib/inbox-sender-onboarding";
 
 const STORAGE_KEY = "handled_sender_correction_learning_v1";
@@ -17,16 +17,12 @@ export type SenderCorrectionRecord = {
 };
 
 function senderKey(sender: string): string {
-  const email = parseSenderEmail(sender);
-  if (email) return email.toLowerCase();
-  return sender.trim().toLowerCase().slice(0, 120);
+  return resolveSenderIdentity(sender).ruleKey.slice(0, 120);
 }
 
 function displayLabelFromSender(sender: string): string {
-  const m = sender.match(/^["']?([^"'<]+?)["']?\s*</);
-  if (m?.[1]) return m[1].trim();
-  const email = parseSenderEmail(sender);
-  return email?.split("@")[0] ?? sender.slice(0, 40);
+  const identity = resolveSenderIdentity(sender);
+  return identity.displayName || identity.email.split("@")[0] || sender.slice(0, 40);
 }
 
 function normalizeRecord(raw: Partial<SenderCorrectionRecord>): SenderCorrectionRecord {

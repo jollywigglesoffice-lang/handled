@@ -15,23 +15,14 @@ import { parseSenderEmail } from "@/lib/inbox-user-rules/match";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
 import { saveEmailOverrideForUser } from "@/lib/email-overrides/store";
 import { SETUP_SQL as EMAIL_OVERRIDES_SETUP_SQL } from "@/lib/email-overrides/store";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireRouteAuth } from "@/lib/api/route-auth";
+import {
+  logSenderRuleDebug,
+  resolveSenderIdentity,
+  senderIdentityForTeachHandled,
+} from "@/lib/sender-identity";
 
 const SETUP_SQL = "supabase/sql/sender_rules.sql";
-
-async function requireUserId(): Promise<{ userId: string } | { error: NextResponse }> {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) {
-    return { error: NextResponse.json({ error: "Server misconfigured" }, { status: 500 }) };
-  }
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.user?.id) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
-  return { userId: session.user.id };
-}
 
 function newRuleId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -62,7 +53,7 @@ function upsertSimilarSubjectRule(
 }
 
 export async function POST(request: Request) {
-  const auth = await requireUserId();
+  const auth = await requireRouteAuth(request);
   if ("error" in auth) return auth.error;
 
   let body: {
@@ -89,9 +80,36 @@ export async function POST(request: Request) {
   const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
   const action = body.action ?? "correct_category";
   const scope: CategoryApplyScope = body.scope ?? (body.alwaysForSender ? "sender" : "this_email");
+  const senderIdentity = resolveSenderIdentity(sender);
+
+  logSenderRuleDebug("inbox-feedback POST", {
+    ...senderIdentityForTeachHandled({
+      emailId: body.emailId,
+      sender: sender ?? "",
+      subject: body.subject,
+      scope,
+      category,
+    }),
+    action,
+  });
 
   if (!sender) {
-    return NextResponse.json({ error: "sender required" }, { status: 400 });
+    return auth.applyAuthCookies(
+      NextResponse.json({ error: "sender required" }, { status: 400 }),
+    );
+  }
+
+  if (scope === "sender" && !senderIdentity.ruleKey) {
+    logSenderRuleDebug("sender scope rejected — no ruleKey", { sender });
+    return auth.applyAuthCookies(
+      NextResponse.json(
+        {
+          error:
+            "Could not identify sender email or name — use “this email only” or connect a sender with an email address.",
+        },
+        { status: 400 },
+      ),
+    );
   }
 
   if (action === "correct_category" && scope === "this_email") {
@@ -118,14 +136,16 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({
-      ok: true,
-      category,
-      scope,
-      override: saved.override,
-      message: "Saved",
-      affectedCount: 1,
-    });
+    return auth.applyAuthCookies(
+      NextResponse.json({
+        ok: true,
+        category,
+        scope,
+        override: saved.override,
+        message: "Saved",
+        affectedCount: 1,
+      }),
+    );
   }
 
   let prefsToSave = await loadSenderRulesForUser(auth.userId);
@@ -177,6 +197,15 @@ export async function POST(request: Request) {
       ? await saveSenderRulesForUser(auth.userId, prefsToSave)
       : { ok: true as const, storageMode: "sender_rules_table" as const };
 
+  if (scope === "sender") {
+    logSenderRuleDebug("sender-rule save result (server)", {
+      ok: prefSave.ok,
+      storageMode: "storageMode" in prefSave ? prefSave.storageMode : undefined,
+      error: !prefSave.ok && "error" in prefSave ? prefSave.error : undefined,
+      ruleCount: prefsToSave.length,
+    });
+  }
+
   const { rules: existingRules } = await loadAllInboxUserRulesForUser(auth.userId);
   let mergedRules = existingRules;
 
@@ -197,35 +226,39 @@ export async function POST(request: Request) {
     similar: "Handled will match similar subject lines going forward.",
   };
 
-  return NextResponse.json({
-    ok: true,
-    category,
-    sender,
-    scope,
-    preferences: scope === "sender" ? preferences : undefined,
-    rules: scope === "similar" ? mergedRules : undefined,
-    preferenceStorage:
-      scope === "sender" && "storageMode" in prefSave
-        ? prefSave.ok
-          ? prefSave.storageMode
-          : "client_local"
-        : undefined,
-    rulesStorage:
-      scope === "similar" && rulesSave.ok
-        ? "storageMode" in rulesSave
-          ? rulesSave.storageMode
-          : "users_json_column"
-        : undefined,
-    setupSqlPath: SETUP_SQL,
-    message: messages[scope],
-    learnedSender: scope === "sender",
-  });
+  return auth.applyAuthCookies(
+    NextResponse.json({
+      ok: true,
+      category,
+      sender,
+      scope,
+      preferences: scope === "sender" ? preferences : undefined,
+      rules: scope === "similar" ? mergedRules : undefined,
+      preferenceStorage:
+        scope === "sender" && "storageMode" in prefSave
+          ? prefSave.ok
+            ? prefSave.storageMode
+            : "client_local"
+          : undefined,
+      rulesStorage:
+        scope === "similar" && rulesSave.ok
+          ? "storageMode" in rulesSave
+            ? rulesSave.storageMode
+            : "users_json_column"
+          : undefined,
+      setupSqlPath: SETUP_SQL,
+      message: messages[scope],
+      learnedSender: scope === "sender",
+    }),
+  );
 }
 
-export async function GET() {
-  const auth = await requireUserId();
+export async function GET(request: Request) {
+  const auth = await requireRouteAuth(request);
   if ("error" in auth) return auth.error;
 
   const rules = await loadSenderRulesForUser(auth.userId);
-  return NextResponse.json({ preferences: rulesToPreferences(rules) });
+  return auth.applyAuthCookies(
+    NextResponse.json({ preferences: rulesToPreferences(rules) }),
+  );
 }

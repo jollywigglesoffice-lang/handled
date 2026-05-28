@@ -5,6 +5,7 @@ import {
   htmlToPlainText,
   type GmailMimePart,
 } from "@/lib/gmail-extract-body";
+import { formatGmailSender } from "@/lib/sender-identity";
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -43,13 +44,9 @@ function headerValue(
   return h?.value?.trim() ?? "";
 }
 
+/** @deprecated use formatGmailSender — kept for callers that import parseFrom */
 function parseFrom(from: string): string {
-  if (!from) return "Unknown sender";
-  const m = from.match(/^"?([^"<]+)"?\s*<[^>]+>/);
-  if (m?.[1]) return m[1].trim();
-  const emailOnly = from.match(/<([^>]+)>/);
-  if (emailOnly?.[1]) return emailOnly[1].trim();
-  return from;
+  return formatGmailSender(from);
 }
 
 export async function gmailListInboxIds(
