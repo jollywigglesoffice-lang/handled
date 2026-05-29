@@ -71,6 +71,14 @@ import {
 } from "@/lib/inbox-ai-categories";
 import { applySenderRuleToMessages } from "@/lib/sender-rules/apply-to-messages";
 import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
+import { buildCategoryUndoSnapshot } from "@/lib/category-undo/snapshot";
+import {
+  mergeUndoMessages,
+  persistCategoryUndo,
+} from "@/lib/category-undo/persist-undo";
+import { saveClientSenderPreferences } from "@/lib/inbox-sender-preferences";
+import { CategoryUndoToast } from "@/app/emails/category-undo-toast";
+import { useCategoryUndo } from "@/app/emails/use-category-undo";
 
 type GmailInboxMessage = {
   id: string;
@@ -708,58 +716,93 @@ export default function EmailsInboxPage() {
     isInitialLoading: false,
   });
 
+  const inboxLocale = uiLanguage === "it" ? "it" : "en";
+
+  const {
+    active: undoToast,
+    movedMessage: undoMovedMessage,
+    undoLabel,
+    offerCategoryUndo,
+    performUndo,
+    dismiss: dismissUndoToast,
+    registerUndoHandler,
+  } = useCategoryUndo(inboxLocale);
+
+  useEffect(() => {
+    registerUndoHandler(async (snapshot) => {
+      setGmailMessages((prev) => mergeUndoMessages(prev, snapshot));
+      setCategoryOverrides(snapshot.previousOverrides);
+      saveClientEmailOverrides(snapshot.previousEmailOverrides);
+      saveClientSenderPreferences(snapshot.previousSenderPrefs);
+      setSenderPrefsVersion((v) => v + 1);
+      await persistCategoryUndo(snapshot);
+    });
+  }, [registerUndoHandler]);
+
   const handleCategoryChange = useCallback(
     (id: string, category: InboxAiCategory, options?: InboxCategoryChangeOptions) => {
-      if (options?.scope === "sender" && options.sender) {
+      const scope = options?.scope ?? "this_email";
+
+      const snapshot = buildCategoryUndoSnapshot({
+        scope,
+        triggerEmailId: id,
+        senderLine: options?.sender,
+        newCategory: category,
+        messages: gmailMessages,
+        categoryOverrides,
+      });
+
+      if (scope === "sender" && options?.sender) {
         logSenderRuleDebug("handleCategoryChange sender scope", {
           emailId: id,
           ...resolveSenderIdentity(options.sender),
           category,
         });
-        setGmailMessages((prev) => {
-          const { messages, affectedIds } = applySenderRuleToMessages(
-            prev,
-            options.sender!,
-            category,
-          );
-          setCategoryOverrides((ov) => {
-            const next = { ...ov };
-            for (const affectedId of affectedIds) {
-              next[affectedId] = category;
-            }
-            return next;
-          });
-          return messages;
+        const { messages, affectedIds } = applySenderRuleToMessages(
+          gmailMessages,
+          options.sender,
+          category,
+        );
+        setGmailMessages(messages);
+        setCategoryOverrides((ov) => {
+          const next = { ...ov };
+          for (const affectedId of affectedIds) {
+            next[affectedId] = category;
+          }
+          return next;
         });
-        return;
+      } else {
+        const now = new Date().toISOString();
+        upsertClientEmailOverride({
+          emailId: id,
+          originalCategory: options?.guessedCategory ?? null,
+          overriddenCategory: category,
+          createdAt: now,
+          updatedAt: now,
+        });
+        setCategoryOverrides((prev) => ({ ...prev, [id]: category }));
+        setGmailMessages((prev) =>
+          prev.map((m) =>
+            m.id === id
+              ? { ...m, category, categorySource: "manual_override" as const }
+              : m,
+          ),
+        );
+        void persistEmailOverrideToAccount({
+          emailId: id,
+          overriddenCategory: category,
+          originalCategory: options?.guessedCategory,
+        });
       }
 
-      const now = new Date().toISOString();
-      upsertClientEmailOverride({
-        emailId: id,
-        originalCategory: null,
-        overriddenCategory: category,
-        createdAt: now,
-        updatedAt: now,
-      });
-      setCategoryOverrides((prev) => ({ ...prev, [id]: category }));
-      setGmailMessages((prev) =>
-        prev.map((m) =>
-          m.id === id
-            ? { ...m, category, categorySource: "manual_override" as const }
-            : m,
-        ),
-      );
-      void persistEmailOverrideToAccount({
-        emailId: id,
-        overriddenCategory: category,
-      });
+      offerCategoryUndo(snapshot, category);
     },
-    [],
+    [gmailMessages, categoryOverrides, offerCategoryUndo],
   );
 
   const handleResetCategoryOverride = useCallback(
     async (id: string) => {
+      dismissUndoToast();
       await removeEmailOverrideFromAccount(id);
       setCategoryOverrides((prev) => {
         const next = { ...prev };
@@ -768,12 +811,11 @@ export default function EmailsInboxPage() {
       });
       void loadInbox({ silent: true });
     },
-    [loadInbox],
+    [loadInbox, dismissUndoToast],
   );
 
   const activeBuckets = inboxMode === "gmail" ? gmailBuckets : mockBuckets;
 
-  const inboxLocale = uiLanguage === "it" ? "it" : "en";
   const attentionSnapshot: AttentionSnapshot = useMemo(
     () => ({
       needsAttention: activeBuckets.todayAttentionCount,
@@ -1042,6 +1084,15 @@ export default function EmailsInboxPage() {
           </section>
         ) : null}
       </div>
+
+      {undoToast ? (
+        <CategoryUndoToast
+          message={undoMovedMessage}
+          undoLabel={undoLabel}
+          onUndo={() => void performUndo()}
+          onDismiss={dismissUndoToast}
+        />
+      ) : null}
     </main>
   );
 }

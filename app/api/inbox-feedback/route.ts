@@ -80,6 +80,38 @@ export async function POST(request: Request) {
   const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
   const action = body.action ?? "correct_category";
   const scope: CategoryApplyScope = body.scope ?? (body.alwaysForSender ? "sender" : "this_email");
+
+  if (action === "restore_sender_preferences") {
+    const clientPrefs = body.clientPreferences ?? [];
+    if (!Array.isArray(clientPrefs)) {
+      return auth.applyAuthCookies(
+        NextResponse.json({ error: "clientPreferences must be an array" }, { status: 400 }),
+      );
+    }
+    const prefsToSave = clientPrefs.map((cp) => ({
+      id: cp.id,
+      senderEmail: cp.senderEmail,
+      senderDomain: cp.senderDomain,
+      targetCategory: normalizeInboxAiCategory(cp.category),
+      label: cp.label,
+      enabled: cp.enabled !== false,
+      createdAt: cp.createdAt,
+      updatedAt: cp.updatedAt ?? Date.now(),
+    }));
+    const saved = await saveSenderRulesForUser(auth.userId, prefsToSave);
+    if (!saved.ok) {
+      return auth.applyAuthCookies(
+        NextResponse.json({ error: saved.error }, { status: 502 }),
+      );
+    }
+    return auth.applyAuthCookies(
+      NextResponse.json({
+        ok: true,
+        preferences: rulesToPreferences(prefsToSave),
+        message: "Sender preferences restored.",
+      }),
+    );
+  }
   const senderIdentity = resolveSenderIdentity(sender);
 
   logSenderRuleDebug("inbox-feedback POST", {

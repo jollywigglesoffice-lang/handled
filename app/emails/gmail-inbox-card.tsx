@@ -11,7 +11,6 @@ import type { CategorySource } from "@/lib/inbox-ai-categories";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
 import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
 import { logSenderRuleDebug, senderIdentityForTeachHandled } from "@/lib/sender-identity";
-import { persistEmailOverrideToAccount } from "@/lib/email-overrides/client-sync";
 import {
   clearSenderLearningSuggestion,
   getSenderLearningSuggestion,
@@ -126,8 +125,11 @@ export function GmailInboxCard({
 
   const handleApply = useCallback(
     async (chosen: InboxAiCategory, scope: CategoryApplyScope) => {
-      const options: InboxCategoryChangeOptions =
-        scope === "sender" ? { scope, sender: message.sender } : { scope };
+      const options: InboxCategoryChangeOptions = {
+        scope,
+        guessedCategory: guessedRef.current,
+        ...(scope === "sender" ? { sender: message.sender } : {}),
+      };
 
       logSenderRuleDebug("category menu apply (click handler)", {
         ...senderIdentityForTeachHandled({
@@ -143,14 +145,6 @@ export function GmailInboxCard({
 
       onCategoryChange(message.id, chosen, options);
       setSaveStatus("saving");
-
-      if (scope === "this_email") {
-        void persistEmailOverrideToAccount({
-          emailId: message.id,
-          overriddenCategory: chosen,
-          originalCategory: guessedRef.current,
-        });
-      }
 
       try {
         logSenderRuleDebug("submitCategoryFeedback starting", { scope, emailId: message.id });
