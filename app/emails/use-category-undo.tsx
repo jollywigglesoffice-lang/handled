@@ -9,6 +9,7 @@ const UNDO_VISIBLE_MS = 5000;
 type ActiveUndoToast = {
   snapshot: CategoryUndoSnapshot;
   categoryLabel: string;
+  count: number;
 };
 
 export function useCategoryUndo(locale: "en" | "it") {
@@ -34,10 +35,10 @@ export function useCategoryUndo(locale: "en" | "it") {
   );
 
   const offerCategoryUndo = useCallback(
-    (snapshot: CategoryUndoSnapshot, newCategory: InboxAiCategory) => {
+    (snapshot: CategoryUndoSnapshot, newCategory: InboxAiCategory, count = 1) => {
       if (timerRef.current) clearTimeout(timerRef.current);
       const categoryLabel = inboxCategorySectionTitle(newCategory, locale);
-      setActive({ snapshot, categoryLabel });
+      setActive({ snapshot, categoryLabel, count });
       timerRef.current = setTimeout(() => {
         setActive(null);
         timerRef.current = null;
@@ -57,10 +58,16 @@ export function useCategoryUndo(locale: "en" | "it") {
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
 
+  const count = active?.count ?? 1;
+  const label = active?.categoryLabel ?? "";
   const movedMessage =
-    locale === "it"
-      ? `Spostato in ${active?.categoryLabel ?? ""}`
-      : `Moved to ${active?.categoryLabel ?? ""}`;
+    count > 1
+      ? locale === "it"
+        ? `${count} email spostate in ${label}`
+        : `Moved ${count} emails to ${label}`
+      : locale === "it"
+        ? `Spostato in ${label}`
+        : `Moved to ${label}`;
 
   const undoLabel = locale === "it" ? "Annulla" : "Undo";
 

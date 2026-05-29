@@ -20,11 +20,21 @@ export function buildCategoryUndoSnapshot(input: {
   newCategory: InboxAiCategory;
   messages: MessageRow[];
   categoryOverrides: Record<string, InboxAiCategory>;
+  /** Bulk selection — overrides scope-based affected resolution. */
+  explicitAffectedIds?: string[];
 }): CategoryUndoSnapshot {
-  const { scope, triggerEmailId, senderLine, newCategory, messages, categoryOverrides } = input;
+  const {
+    scope,
+    triggerEmailId,
+    senderLine,
+    newCategory,
+    messages,
+    categoryOverrides,
+    explicitAffectedIds,
+  } = input;
 
-  let affectedIds = [triggerEmailId];
-  if (scope === "sender" && senderLine) {
+  let affectedIds = explicitAffectedIds ?? [triggerEmailId];
+  if (!explicitAffectedIds && scope === "sender" && senderLine) {
     const pref = preferenceFromSender(senderLine, newCategory);
     affectedIds = messages
       .filter((m) => senderMatchesPreference({ sender: m.sender }, pref))

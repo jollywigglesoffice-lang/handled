@@ -82,6 +82,10 @@ type GmailInboxCardProps = {
     options?: InboxCategoryChangeOptions,
   ) => void;
   onResetOverride?: (id: string) => void | Promise<void>;
+  selected?: boolean;
+  selectionMode?: boolean;
+  onToggleSelect?: (id: string) => void;
+  isUnread?: boolean;
 };
 
 export function GmailInboxCard({
@@ -89,6 +93,10 @@ export function GmailInboxCard({
   locale,
   onCategoryChange,
   onResetOverride,
+  selected = false,
+  selectionMode = false,
+  onToggleSelect,
+  isUnread = false,
 }: GmailInboxCardProps) {
   const [feedback, setFeedback] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatusState>("idle");
@@ -224,10 +232,37 @@ export function GmailInboxCard({
     }
   }, [message.sender, handleApply]);
 
+  const selectLabel =
+    locale === "it"
+      ? `Seleziona email da ${message.sender}`
+      : `Select email from ${message.sender}`;
+
   return (
-    <div
-      className={`rounded-xl border border-[#E2E8F0] p-4 shadow-sm transition-[border-color,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:p-5 hover:border-accent/40 hover:shadow-md ${accent}`}
-    >
+    <div className="group relative flex items-start gap-2">
+      {onToggleSelect ? (
+        <div
+          className={`flex shrink-0 items-center self-stretch pl-0.5 pt-4 transition-opacity duration-150 sm:pt-5 ${
+            selected || selectionMode
+              ? "opacity-100"
+              : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(message.id)}
+            aria-label={selectLabel}
+            className="h-4 w-4 cursor-pointer rounded border-gray-300 text-[#9733ff] accent-[#9733ff] focus:ring-2 focus:ring-[#9733ff] focus:ring-offset-1"
+          />
+        </div>
+      ) : null}
+      <div
+        className={`flex-1 rounded-xl border p-4 shadow-sm transition-[border-color,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:p-5 hover:border-accent/40 hover:shadow-md ${accent} ${
+          selected
+            ? "border-accent/60 ring-2 ring-[#9733ff]/30"
+            : "border-[#E2E8F0]"
+        }`}
+      >
       <article className="space-y-2">
         <CardHeader
           message={message}
@@ -237,6 +272,7 @@ export function GmailInboxCard({
           showNewsletterBadge={showNewsletterBadge}
           badgeLabel={badgeLabel}
           locale={locale}
+          isUnread={isUnread}
           onOpenCorrection={() => setShowCorrection(true)}
         />
 
@@ -343,6 +379,7 @@ export function GmailInboxCard({
           {feedback ? <p className="text-xs text-emerald-700">{feedback}</p> : null}
         </div>
       </article>
+      </div>
     </div>
   );
 }
@@ -405,6 +442,7 @@ function CardHeader({
   showNewsletterBadge,
   badgeLabel,
   locale,
+  isUnread = false,
   onOpenCorrection,
 }: {
   message: GmailCardMessage;
@@ -414,11 +452,25 @@ function CardHeader({
   showNewsletterBadge: boolean;
   badgeLabel: string;
   locale: "en" | "it";
+  isUnread?: boolean;
   onOpenCorrection: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-sm font-medium text-gray-500">{message.sender}</p>
+      <p
+        className={`flex items-center gap-1.5 text-sm ${
+          isUnread ? "font-semibold text-[#0F172A]" : "font-medium text-gray-500"
+        }`}
+      >
+        {isUnread ? (
+          <span
+            aria-hidden
+            className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#9733ff]"
+            title={locale === "it" ? "Da leggere" : "Unread"}
+          />
+        ) : null}
+        {message.sender}
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         {message.timelineIntelligence?.active &&
         (message.timelineIntelligence.conversationStatus === "escalating" ||

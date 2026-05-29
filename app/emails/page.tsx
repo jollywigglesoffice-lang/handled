@@ -79,6 +79,14 @@ import {
 import { saveClientSenderPreferences } from "@/lib/inbox-sender-preferences";
 import { CategoryUndoToast } from "@/app/emails/category-undo-toast";
 import { useCategoryUndo } from "@/app/emails/use-category-undo";
+import { useInboxSelection } from "@/app/emails/use-inbox-selection";
+import { BulkActionBar } from "@/app/emails/bulk-action-bar";
+import {
+  loadReadStateMap,
+  setReadStateForIds,
+  READ_STATE_EVENT,
+  type ReadStateMap,
+} from "@/lib/read-state/client-storage";
 
 type GmailInboxMessage = {
   id: string;
@@ -739,6 +747,80 @@ export default function EmailsInboxPage() {
     });
   }, [registerUndoHandler]);
 
+  const selection = useInboxSelection();
+
+  const [readStateMap, setReadStateMap] = useState<ReadStateMap>({});
+  useEffect(() => {
+    const sync = () => setReadStateMap(loadReadStateMap());
+    sync();
+    window.addEventListener(READ_STATE_EVENT, sync);
+    return () => window.removeEventListener(READ_STATE_EVENT, sync);
+  }, []);
+
+  const handleBulkCategoryChange = useCallback(
+    (category: InboxAiCategory) => {
+      const ids = [...selection.selectedIds];
+      if (ids.length === 0) return;
+
+      const snapshot = buildCategoryUndoSnapshot({
+        scope: "this_email",
+        triggerEmailId: ids[0],
+        newCategory: category,
+        messages: gmailMessages,
+        categoryOverrides,
+        explicitAffectedIds: ids,
+      });
+
+      const now = new Date().toISOString();
+      for (const id of ids) {
+        upsertClientEmailOverride({
+          emailId: id,
+          originalCategory: null,
+          overriddenCategory: category,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      const idSet = new Set(ids);
+      setCategoryOverrides((prev) => {
+        const next = { ...prev };
+        for (const id of ids) next[id] = category;
+        return next;
+      });
+      setGmailMessages((prev) =>
+        prev.map((m) =>
+          idSet.has(m.id)
+            ? { ...m, category, categorySource: "manual_override" as const }
+            : m,
+        ),
+      );
+
+      for (const id of ids) {
+        void persistEmailOverrideToAccount({
+          emailId: id,
+          overriddenCategory: category,
+        });
+      }
+
+      offerCategoryUndo(snapshot, category, ids.length);
+      selection.clear();
+    },
+    [selection, gmailMessages, categoryOverrides, offerCategoryUndo],
+  );
+
+  const handleBulkMarkRead = useCallback(() => {
+    setReadStateForIds([...selection.selectedIds], "read");
+  }, [selection.selectedIds]);
+
+  const handleBulkMarkUnread = useCallback(() => {
+    setReadStateForIds([...selection.selectedIds], "unread");
+  }, [selection.selectedIds]);
+
+  const handleSelectAllVisible = useCallback(() => {
+    selection.selectAll(gmailBuckets.allVisible.map((m) => m.id));
+  }, [selection, gmailBuckets.allVisible]);
+
   const handleCategoryChange = useCallback(
     (id: string, category: InboxAiCategory, options?: InboxCategoryChangeOptions) => {
       const scope = options?.scope ?? "this_email";
@@ -993,6 +1075,10 @@ export default function EmailsInboxPage() {
                             locale={uiLanguage === "it" ? "it" : "en"}
                             onCategoryChange={handleCategoryChange}
                             onResetOverride={handleResetCategoryOverride}
+                            selected={selection.isSelected(message.id)}
+                            selectionMode={selection.selectionMode}
+                            onToggleSelect={selection.toggle}
+                            isUnread={readStateMap[message.id] === "unread"}
                           />
                         </div>
                       ))}
@@ -1091,6 +1177,19 @@ export default function EmailsInboxPage() {
           undoLabel={undoLabel}
           onUndo={() => void performUndo()}
           onDismiss={dismissUndoToast}
+        />
+      ) : null}
+
+      {inboxMode === "gmail" && !undoToast ? (
+        <BulkActionBar
+          count={selection.count}
+          totalVisible={gmailBuckets.allVisible.length}
+          locale={inboxLocale}
+          onMoveTo={handleBulkCategoryChange}
+          onMarkRead={handleBulkMarkRead}
+          onMarkUnread={handleBulkMarkUnread}
+          onSelectAllVisible={handleSelectAllVisible}
+          onClear={selection.clear}
         />
       ) : null}
     </main>
