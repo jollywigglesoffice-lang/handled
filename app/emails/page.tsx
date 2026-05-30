@@ -60,6 +60,12 @@ import {
   type AttentionSnapshot,
 } from "@/lib/attention-calm";
 import { healthyCompletionState } from "@/lib/daily-rhythm";
+import { InboxEmptyState } from "@/app/emails/inbox-empty-state";
+import {
+  categoryEmptyMessage,
+  inboxCompletionCopy,
+  rotatingCompletionSeed,
+} from "@/lib/empty-states";
 import { calmInboxErrorFromRaw } from "@/lib/calm-messages";
 import { uiLocaleFromLanguage } from "@/lib/ui-copy";
 import {
@@ -362,32 +368,13 @@ function EmptyNeedsAttentionState({ show, locale }: { show: boolean; locale: "en
   const completion = healthyCompletionState(locale);
 
   return (
-    <div
-      className={`flex min-h-52 flex-col items-center justify-center space-y-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-8 text-center transition-all duration-700 ${
-        show ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
-      }`}
-    >
-      <span
-        aria-hidden="true"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#CBD5E1] bg-[#FFFFFF] shadow-sm"
-      >
-        <svg viewBox="0 0 20 20" className="h-4 w-4 text-[#64748B]" fill="none">
-          <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.4" />
-          <path
-            d="M6.9 10.2l2.1 2.1 4.2-4.4"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </span>
-      <p className="text-xl font-medium text-[#0F172A]">{completion.title}</p>
-      <p className="text-sm leading-relaxed text-gray-500">{completion.subtitle}</p>
-      {completion.footer ? (
-        <p className="pt-1 text-xs text-gray-400">{completion.footer}</p>
-      ) : null}
-    </div>
+    <InboxEmptyState
+      show={show}
+      tone="attention"
+      title={completion.title}
+      subtitle={completion.subtitle}
+      footer={completion.footer}
+    />
   );
 }
 
@@ -726,6 +713,11 @@ export default function EmailsInboxPage() {
 
   const inboxLocale = uiLanguage === "it" ? "it" : "en";
 
+  const completionCopy = useMemo(
+    () => inboxCompletionCopy(inboxLocale, rotatingCompletionSeed()),
+    [inboxLocale],
+  );
+
   const {
     active: undoToast,
     movedMessage: undoMovedMessage,
@@ -1038,13 +1030,11 @@ export default function EmailsInboxPage() {
               </button>
             </div>
           ) : inboxMode === "gmail_empty" ? (
-            <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm">
-              <h2 className="mb-2 flex items-center gap-2 text-lg font-medium text-[#0F172A]">
-                <SectionIcon title="Needs Your Attention" />
-                Inbox
-              </h2>
-              <p className="text-sm leading-relaxed text-gray-600">{ui.home.emptyGmailInbox}</p>
-            </div>
+            <InboxEmptyState
+              tone="calm"
+              title={completionCopy.title}
+              subtitle={completionCopy.subtitle}
+            />
           ) : inboxMode === "gmail" ? (
             <div className="space-y-8">
               <InboxSyncBar
@@ -1052,6 +1042,22 @@ export default function EmailsInboxPage() {
                 isRefreshing={isRefreshing}
                 onRefresh={() => void loadInbox({ silent: true })}
               />
+              {gmailBuckets.counts.needs_attention === 0 &&
+              gmailBuckets.allVisible.length > 0 ? (
+                <section className="space-y-3">
+                  <GmailCategorySectionHeader
+                    category="needs_attention"
+                    locale={uiLanguage}
+                    count={0}
+                  />
+                  <InboxEmptyState
+                    compact
+                    tone="attention"
+                    title={categoryEmptyMessage("needs_attention", inboxLocale)}
+                    subtitle={completionCopy.subtitle}
+                  />
+                </section>
+              ) : null}
               {gmailBuckets.categoryOrder.map((category) => {
                 const list = gmailBuckets.byCategory[category];
                 if (!list.length) return null;
