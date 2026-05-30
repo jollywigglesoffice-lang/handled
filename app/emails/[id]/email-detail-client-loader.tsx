@@ -12,6 +12,8 @@ import { ensureApiSessionCookies } from "@/lib/auth/ensure-api-session";
 import { readEmailPreview, type EmailPreviewCache } from "@/lib/email-preview-cache";
 import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
 import { safeFetchJson } from "@/lib/safe-json-response";
+import { loadReadStateMap } from "@/lib/read-state/client-storage";
+import { markEmailsRead } from "@/lib/read-state/gmail-sync";
 
 type GmailDetailApiBody = {
   found?: boolean;
@@ -134,6 +136,13 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
   useEffect(() => {
     void loadEmail();
   }, [loadEmail]);
+
+  // Opening an email marks it read locally + removes Gmail's UNREAD label.
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    if (loadReadStateMap()[emailId] === "read") return;
+    markEmailsRead([emailId]);
+  }, [state.status, emailId]);
 
   const skeletonPreview = useMemo(() => preview, [preview]);
 

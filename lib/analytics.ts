@@ -10,7 +10,11 @@ export type AnalyticsEvent =
   | "inbox_zero_started"
   | "inbox_zero_completed"
   | "clear_promotions_used"
-  | "quick_reply_queue_started";
+  | "quick_reply_queue_started"
+  | "email_marked_read"
+  | "email_marked_unread"
+  | "gmail_sync_success"
+  | "gmail_sync_failed";
 
 type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;
 

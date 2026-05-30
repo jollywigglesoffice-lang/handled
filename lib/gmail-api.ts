@@ -49,6 +49,37 @@ function parseFrom(from: string): string {
   return formatGmailSender(from);
 }
 
+/**
+ * Add/remove labels on one or more messages. Uses Gmail's batchModify so the
+ * same call works for a single id or many (e.g. the UNREAD label for read-state).
+ */
+export async function gmailBatchModifyLabels(
+  accessToken: string,
+  ids: string[],
+  labels: { add?: string[]; remove?: string[] },
+): Promise<void> {
+  if (ids.length === 0) return;
+
+  const res = await fetch(`${GMAIL_BASE}/messages/batchModify`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ids,
+      addLabelIds: labels.add ?? [],
+      removeLabelIds: labels.remove ?? [],
+    }),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gmail batchModify failed: ${res.status} ${text}`);
+  }
+}
+
 export async function gmailListInboxIds(
   accessToken: string,
   maxResults = 20,

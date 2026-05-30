@@ -74,6 +74,7 @@ import {
   inboxCategorySectionSubtitle,
   inboxCategorySectionTitle,
   normalizeInboxAiCategory,
+  INBOX_AI_CATEGORY_VALUES,
 } from "@/lib/inbox-ai-categories";
 import { applySenderRuleToMessages } from "@/lib/sender-rules/apply-to-messages";
 import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
@@ -89,10 +90,10 @@ import { useInboxSelection } from "@/app/emails/use-inbox-selection";
 import { BulkActionBar } from "@/app/emails/bulk-action-bar";
 import {
   loadReadStateMap,
-  setReadStateForIds,
   READ_STATE_EVENT,
   type ReadStateMap,
 } from "@/lib/read-state/client-storage";
+import { markEmailsRead, markEmailsUnread } from "@/lib/read-state/gmail-sync";
 import {
   loadDismissedIds,
   addDismissedIds,
@@ -102,6 +103,7 @@ import {
 import { trackEvent } from "@/lib/analytics";
 import { InboxSummaryCard } from "@/app/emails/inbox-summary-card";
 import { InboxZeroMode, type InboxZeroStep } from "@/app/emails/inbox-zero-mode";
+import { CategoryTabs, type CategoryTab } from "@/app/emails/category-tabs";
 
 type GmailInboxMessage = {
   id: string;
@@ -128,6 +130,32 @@ type InboxMode =
   | "mock"
   | "no_google"
   | "gmail_error";
+
+const CATEGORY_TAB_KEY = "handled_category_tab_v1";
+const VALID_TABS: ReadonlySet<string> = new Set([
+  "all",
+  ...INBOX_AI_CATEGORY_VALUES,
+]);
+
+function loadCategoryTab(): CategoryTab {
+  if (typeof window === "undefined") return "all";
+  try {
+    const raw = localStorage.getItem(CATEGORY_TAB_KEY);
+    if (raw && VALID_TABS.has(raw)) return raw as CategoryTab;
+  } catch {
+    /* ignore */
+  }
+  return "all";
+}
+
+function saveCategoryTab(tab: CategoryTab): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CATEGORY_TAB_KEY, tab);
+  } catch {
+    /* ignore */
+  }
+}
 
 function SectionIcon({ title }: { title: InboxSectionTitle }) {
   if (title === "Needs Your Attention") {
@@ -317,6 +345,66 @@ function GmailCategorySectionHeader({
         </span>
       </div>
     </div>
+  );
+}
+
+function GmailCategorySection({
+  category,
+  list,
+  uiLanguage,
+  count,
+  onSelectAll,
+  showContent,
+  selection,
+  readStateMap,
+  onCategoryChange,
+  onResetOverride,
+}: {
+  category: InboxAiCategory;
+  list: GmailCardMessage[];
+  uiLanguage: "en" | "it";
+  count: number;
+  onSelectAll: () => void;
+  showContent: boolean;
+  selection: ReturnType<typeof useInboxSelection>;
+  readStateMap: ReadStateMap;
+  onCategoryChange: (
+    id: string,
+    category: InboxAiCategory,
+    options?: InboxCategoryChangeOptions,
+  ) => void;
+  onResetOverride: (id: string) => void;
+}) {
+  return (
+    <section className="space-y-3">
+      <GmailCategorySectionHeader
+        category={category}
+        locale={uiLanguage}
+        count={count}
+        onSelectAll={onSelectAll}
+      />
+      <div className="space-y-2">
+        {list.map((message) => (
+          <div
+            key={message.id}
+            className={`transition-opacity duration-500 ${
+              showContent ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            <GmailInboxCard
+              message={message}
+              locale={uiLanguage === "it" ? "it" : "en"}
+              onCategoryChange={onCategoryChange}
+              onResetOverride={onResetOverride}
+              selected={selection.isSelected(message.id)}
+              selectionMode={selection.selectionMode}
+              onToggleSelect={selection.toggle}
+              isUnread={readStateMap[message.id] === "unread"}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -783,6 +871,14 @@ export default function EmailsInboxPage() {
     return () => window.removeEventListener(READ_STATE_EVENT, sync);
   }, []);
 
+  const [activeCategoryTab, setActiveCategoryTab] = useState<CategoryTab>(() =>
+    loadCategoryTab(),
+  );
+  const handleCategoryTabChange = useCallback((tab: CategoryTab) => {
+    setActiveCategoryTab(tab);
+    saveCategoryTab(tab);
+  }, []);
+
   // Core move: persist overrides + update UI for a set of ids. No undo/toast.
   const applyCategoryToIds = useCallback(
     (ids: string[], category: InboxAiCategory) => {
@@ -846,24 +942,24 @@ export default function EmailsInboxPage() {
   );
 
   const handleBulkMarkRead = useCallback(() => {
-    setReadStateForIds([...selection.selectedIds], "read");
-    trackEvent("bulk_action_used", {
-      bulk_action_type: "mark_read",
-      count: selection.count,
-    });
-  }, [selection.selectedIds, selection.count]);
+    const ids = [...selection.selectedIds];
+    markEmailsRead(ids);
+    trackEvent("bulk_action_used", { bulk_action_type: "mark_read", count: ids.length });
+  }, [selection.selectedIds]);
 
   const handleBulkMarkUnread = useCallback(() => {
-    setReadStateForIds([...selection.selectedIds], "unread");
-    trackEvent("bulk_action_used", {
-      bulk_action_type: "mark_unread",
-      count: selection.count,
-    });
-  }, [selection.selectedIds, selection.count]);
+    const ids = [...selection.selectedIds];
+    markEmailsUnread(ids);
+    trackEvent("bulk_action_used", { bulk_action_type: "mark_unread", count: ids.length });
+  }, [selection.selectedIds]);
 
   const handleSelectAllVisible = useCallback(() => {
-    selection.selectAll(gmailBuckets.allVisible.map((m) => m.id));
-  }, [selection, gmailBuckets.allVisible]);
+    const source =
+      activeCategoryTab === "all"
+        ? gmailBuckets.allVisible
+        : gmailBuckets.byCategory[activeCategoryTab] ?? [];
+    selection.selectAll(source.map((m) => m.id));
+  }, [selection, gmailBuckets.allVisible, gmailBuckets.byCategory, activeCategoryTab]);
 
   const handleSelectAllInSection = useCallback(
     (category: InboxAiCategory) => {
@@ -1020,7 +1116,7 @@ export default function EmailsInboxPage() {
         return next;
       });
       markEmailHandled(id);
-      setReadStateForIds([id], "read");
+      markEmailsRead([id]);
     },
     [markEmailHandled],
   );
@@ -1328,65 +1424,78 @@ export default function EmailsInboxPage() {
                 onHandleQuickReplies={handleStartQuickReplies}
                 onInboxZero={handleStartInboxZero}
               />
-              {gmailBuckets.counts.needs_attention === 0 &&
-              gmailBuckets.allVisible.length > 0 ? (
-                <section className="space-y-3">
-                  <GmailCategorySectionHeader
-                    category="needs_attention"
-                    locale={uiLanguage}
-                    count={0}
-                  />
-                  <InboxEmptyState
-                    compact
-                    tone="attention"
-                    title={categoryEmptyMessage("needs_attention", inboxLocale)}
-                    subtitle={completionCopy.subtitle}
-                  />
-                </section>
-              ) : null}
-              {gmailBuckets.categoryOrder.map((category) => {
-                const list = gmailBuckets.byCategory[category];
-                if (!list.length) return null;
-                return (
-                  <section key={category} className="space-y-3">
-                    <GmailCategorySectionHeader
-                      category={category}
-                      locale={uiLanguage}
-                      count={gmailBuckets.counts[category]}
-                      onSelectAll={() => handleSelectAllInSection(category)}
+              <CategoryTabs
+                active={activeCategoryTab}
+                counts={gmailBuckets.counts}
+                total={gmailBuckets.allVisible.length}
+                locale={inboxLocale}
+                onChange={handleCategoryTabChange}
+              />
+              {activeCategoryTab === "all" ? (
+                <>
+                  {gmailBuckets.counts.needs_attention === 0 &&
+                  gmailBuckets.allVisible.length > 0 ? (
+                    <section className="space-y-3">
+                      <GmailCategorySectionHeader
+                        category="needs_attention"
+                        locale={uiLanguage}
+                        count={0}
+                      />
+                      <InboxEmptyState
+                        compact
+                        tone="attention"
+                        title={categoryEmptyMessage("needs_attention", inboxLocale)}
+                        subtitle={completionCopy.subtitle}
+                      />
+                    </section>
+                  ) : null}
+                  {gmailBuckets.categoryOrder.map((category) => {
+                    const list = gmailBuckets.byCategory[category];
+                    if (!list.length) return null;
+                    return (
+                      <GmailCategorySection
+                        key={category}
+                        category={category}
+                        list={list}
+                        uiLanguage={uiLanguage}
+                        count={gmailBuckets.counts[category]}
+                        onSelectAll={() => handleSelectAllInSection(category)}
+                        showContent={showContent}
+                        selection={selection}
+                        readStateMap={readStateMap}
+                        onCategoryChange={handleCategoryChange}
+                        onResetOverride={handleResetCategoryOverride}
+                      />
+                    );
+                  })}
+                  {gmailBuckets.showClutterSection ? (
+                    <InboxClutterSection
+                      messages={gmailBuckets.clutterEmails as GmailCardMessage[]}
+                      locale={uiLanguage === "it" ? "it" : "en"}
+                      onCategoryChange={handleCategoryChange}
+                      defaultCollapsed
                     />
-                    <div className="space-y-2">
-                      {list.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`transition-opacity duration-500 ${
-                            showContent ? "opacity-100" : "opacity-0"
-                          }`}
-                        >
-                          <GmailInboxCard
-                            message={message}
-                            locale={uiLanguage === "it" ? "it" : "en"}
-                            onCategoryChange={handleCategoryChange}
-                            onResetOverride={handleResetCategoryOverride}
-                            selected={selection.isSelected(message.id)}
-                            selectionMode={selection.selectionMode}
-                            onToggleSelect={selection.toggle}
-                            isUnread={readStateMap[message.id] === "unread"}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                );
-              })}
-              {gmailBuckets.showClutterSection ? (
-                <InboxClutterSection
-                  messages={gmailBuckets.clutterEmails as GmailCardMessage[]}
-                  locale={uiLanguage === "it" ? "it" : "en"}
+                  ) : null}
+                </>
+              ) : (gmailBuckets.byCategory[activeCategoryTab] ?? []).length > 0 ? (
+                <GmailCategorySection
+                  category={activeCategoryTab}
+                  list={gmailBuckets.byCategory[activeCategoryTab]}
+                  uiLanguage={uiLanguage}
+                  count={gmailBuckets.counts[activeCategoryTab]}
+                  onSelectAll={() => handleSelectAllInSection(activeCategoryTab)}
+                  showContent={showContent}
+                  selection={selection}
+                  readStateMap={readStateMap}
                   onCategoryChange={handleCategoryChange}
-                  defaultCollapsed
+                  onResetOverride={handleResetCategoryOverride}
                 />
-              ) : null}
+              ) : (
+                <InboxEmptyState
+                  tone="calm"
+                  title={categoryEmptyMessage(activeCategoryTab, inboxLocale)}
+                />
+              )}
               <InboxSecondaryTools
                 messages={messagesWithOverrides as GmailCardMessage[]}
                 gmailMessages={gmailMessages as GmailCardMessage[]}
