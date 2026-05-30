@@ -3,14 +3,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { inboxCategorySectionTitle, type InboxAiCategory } from "@/lib/inbox-ai-categories";
 import type { CategoryUndoSnapshot } from "@/lib/category-undo/types";
+import { trackEvent } from "@/lib/analytics";
 
-const UNDO_VISIBLE_MS = 5000;
+const UNDO_VISIBLE_MS = 8000;
 
-type ActiveUndoToast = {
-  snapshot: CategoryUndoSnapshot;
-  categoryLabel: string;
-  count: number;
-};
+type ActiveUndoToast =
+  | {
+      kind: "category";
+      snapshot: CategoryUndoSnapshot;
+      message: string;
+      actionType: string;
+    }
+  | {
+      kind: "action";
+      message: string;
+      onUndo: () => void | Promise<void>;
+      actionType: string;
+    };
 
 export function useCategoryUndo(locale: "en" | "it") {
   const [active, setActive] = useState<ActiveUndoToast | null>(null);
@@ -34,48 +43,68 @@ export function useCategoryUndo(locale: "en" | "it") {
     [],
   );
 
+  const arm = useCallback((next: ActiveUndoToast) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setActive(next);
+    timerRef.current = setTimeout(() => {
+      setActive(null);
+      timerRef.current = null;
+    }, UNDO_VISIBLE_MS);
+  }, []);
+
   const offerCategoryUndo = useCallback(
     (snapshot: CategoryUndoSnapshot, newCategory: InboxAiCategory, count = 1) => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      const categoryLabel = inboxCategorySectionTitle(newCategory, locale);
-      setActive({ snapshot, categoryLabel, count });
-      timerRef.current = setTimeout(() => {
-        setActive(null);
-        timerRef.current = null;
-      }, UNDO_VISIBLE_MS);
+      const label = inboxCategorySectionTitle(newCategory, locale);
+      const message =
+        count > 1
+          ? locale === "it"
+            ? `${count} email spostate in ${label}`
+            : `Moved ${count} emails to ${label}`
+          : locale === "it"
+            ? `Spostato in ${label}`
+            : `Moved to ${label}`;
+      arm({ kind: "category", snapshot, message, actionType: "move" });
     },
-    [locale],
+    [locale, arm],
+  );
+
+  /** Generic reversible action (archive, delete, …) with a custom undo. */
+  const offerActionUndo = useCallback(
+    (input: { message: string; actionType: string; onUndo: () => void | Promise<void> }) => {
+      arm({
+        kind: "action",
+        message: input.message,
+        actionType: input.actionType,
+        onUndo: input.onUndo,
+      });
+    },
+    [arm],
   );
 
   const performUndo = useCallback(async () => {
-    if (!active || !undoHandlerRef.current) return;
-    const snapshot = active.snapshot;
+    if (!active) return;
+    const current = active;
     dismiss();
-    await undoHandlerRef.current(snapshot);
+    trackEvent("bulk_action_undo", { bulk_action_type: current.actionType });
+    if (current.kind === "category") {
+      await undoHandlerRef.current?.(current.snapshot);
+    } else {
+      await current.onUndo();
+    }
   }, [active, dismiss]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
 
-  const count = active?.count ?? 1;
-  const label = active?.categoryLabel ?? "";
-  const movedMessage =
-    count > 1
-      ? locale === "it"
-        ? `${count} email spostate in ${label}`
-        : `Moved ${count} emails to ${label}`
-      : locale === "it"
-        ? `Spostato in ${label}`
-        : `Moved to ${label}`;
-
   const undoLabel = locale === "it" ? "Annulla" : "Undo";
 
   return {
     active,
-    movedMessage,
+    undoMessage: active?.message ?? "",
     undoLabel,
     offerCategoryUndo,
+    offerActionUndo,
     performUndo,
     dismiss,
     registerUndoHandler,

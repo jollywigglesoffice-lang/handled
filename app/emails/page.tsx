@@ -93,6 +93,13 @@ import {
   READ_STATE_EVENT,
   type ReadStateMap,
 } from "@/lib/read-state/client-storage";
+import {
+  loadDismissedIds,
+  addDismissedIds,
+  removeDismissedIds,
+  DISMISSED_EVENT,
+} from "@/lib/dismissed/client-storage";
+import { trackEvent } from "@/lib/analytics";
 
 type GmailInboxMessage = {
   id: string;
@@ -265,10 +272,12 @@ function GmailCategorySectionHeader({
   category,
   locale,
   count,
+  onSelectAll,
 }: {
   category: InboxAiCategory;
   locale: "en" | "it";
   count: number;
+  onSelectAll?: () => void;
 }) {
   const subtitle = inboxCategorySectionSubtitle(category, locale);
   const isPrimary =
@@ -277,7 +286,7 @@ function GmailCategorySectionHeader({
     category === "handled";
 
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-2">
+    <div className="group/section flex flex-wrap items-baseline justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2">
         {isPrimary ? (
           <GmailSectionLeadingIcon category={category} />
@@ -291,9 +300,20 @@ function GmailCategorySectionHeader({
           ) : null}
         </div>
       </div>
-      <span className="text-xs text-gray-400">
-        {calmSectionCountLabel(count, category, locale)}
-      </span>
+      <div className="flex items-center gap-3">
+        {onSelectAll && count > 0 ? (
+          <button
+            type="button"
+            onClick={onSelectAll}
+            className="rounded-md px-1.5 py-0.5 text-xs font-medium text-gray-400 opacity-0 transition hover:text-accent focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 group-hover/section:opacity-100"
+          >
+            {locale === "it" ? "Seleziona tutte" : "Select all"}
+          </button>
+        ) : null}
+        <span className="text-xs text-gray-400">
+          {calmSectionCountLabel(count, category, locale)}
+        </span>
+      </div>
     </div>
   );
 }
@@ -385,7 +405,7 @@ export default function EmailsInboxPage() {
     () => loadingRhythmMessages(uiLanguage === "it" ? "it" : "en"),
     [uiLanguage],
   );
-  const { handledEmailIds } = useHandledEmails();
+  const { handledEmailIds, markEmailHandled } = useHandledEmails();
 
   const inboxSections = getInboxSections().map((section) => ({
     ...section,
@@ -687,10 +707,21 @@ export default function EmailsInboxPage() {
     };
   }, [categoryOverrides, senderPrefsVersion]);
 
-  const messagesWithOverrides = useMemo(
-    () => resolveAllInboxMessagesForDisplay(gmailMessages, categoryResolutionContext),
-    [gmailMessages, categoryResolutionContext],
-  );
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const sync = () => setDismissedIds(loadDismissedIds());
+    sync();
+    window.addEventListener(DISMISSED_EVENT, sync);
+    return () => window.removeEventListener(DISMISSED_EVENT, sync);
+  }, []);
+
+  const messagesWithOverrides = useMemo(() => {
+    const visible =
+      dismissedIds.size === 0
+        ? gmailMessages
+        : gmailMessages.filter((m) => !dismissedIds.has(m.id));
+    return resolveAllInboxMessagesForDisplay(visible, categoryResolutionContext);
+  }, [gmailMessages, categoryResolutionContext, dismissedIds]);
 
   const { buckets: gmailBuckets, isCountsPending } = useStableInboxBuckets({
     messages: messagesWithOverrides,
@@ -720,9 +751,10 @@ export default function EmailsInboxPage() {
 
   const {
     active: undoToast,
-    movedMessage: undoMovedMessage,
+    undoMessage,
     undoLabel,
     offerCategoryUndo,
+    offerActionUndo,
     performUndo,
     dismiss: dismissUndoToast,
     registerUndoHandler,
@@ -795,6 +827,10 @@ export default function EmailsInboxPage() {
         });
       }
 
+      trackEvent("bulk_action_used", {
+        bulk_action_type: `move:${category}`,
+        count: ids.length,
+      });
       offerCategoryUndo(snapshot, category, ids.length);
       selection.clear();
     },
@@ -803,15 +839,137 @@ export default function EmailsInboxPage() {
 
   const handleBulkMarkRead = useCallback(() => {
     setReadStateForIds([...selection.selectedIds], "read");
-  }, [selection.selectedIds]);
+    trackEvent("bulk_action_used", {
+      bulk_action_type: "mark_read",
+      count: selection.count,
+    });
+  }, [selection.selectedIds, selection.count]);
 
   const handleBulkMarkUnread = useCallback(() => {
     setReadStateForIds([...selection.selectedIds], "unread");
-  }, [selection.selectedIds]);
+    trackEvent("bulk_action_used", {
+      bulk_action_type: "mark_unread",
+      count: selection.count,
+    });
+  }, [selection.selectedIds, selection.count]);
 
   const handleSelectAllVisible = useCallback(() => {
     selection.selectAll(gmailBuckets.allVisible.map((m) => m.id));
   }, [selection, gmailBuckets.allVisible]);
+
+  const handleSelectAllInSection = useCallback(
+    (category: InboxAiCategory) => {
+      const ids = (gmailBuckets.byCategory[category] ?? []).map((m) => m.id);
+      if (ids.length) selection.selectMany(ids);
+    },
+    [selection, gmailBuckets.byCategory],
+  );
+
+  const handleBulkHandled = useCallback(() => {
+    handleBulkCategoryChange("handled");
+  }, [handleBulkCategoryChange]);
+
+  // Archive / Delete: optimistic local dismissal, fully reversible via undo.
+  const dismissSelected = useCallback(
+    (actionType: "archive" | "delete") => {
+      const ids = [...selection.selectedIds];
+      if (ids.length === 0) return;
+
+      addDismissedIds(ids);
+      setDismissedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.add(id);
+        return next;
+      });
+      if (actionType === "archive") {
+        for (const id of ids) markEmailHandled(id);
+      }
+
+      trackEvent("bulk_action_used", { bulk_action_type: actionType, count: ids.length });
+
+      const n = ids.length;
+      const verb =
+        actionType === "archive"
+          ? inboxLocale === "it"
+            ? n > 1
+              ? `${n} email archiviate`
+              : "Email archiviata"
+            : n > 1
+              ? `Archived ${n} emails`
+              : "Archived"
+          : inboxLocale === "it"
+            ? n > 1
+              ? `${n} email eliminate`
+              : "Email eliminata"
+            : n > 1
+              ? `Deleted ${n} emails`
+              : "Deleted";
+
+      offerActionUndo({
+        message: verb,
+        actionType,
+        onUndo: () => {
+          removeDismissedIds(ids);
+          setDismissedIds((prev) => {
+            const next = new Set(prev);
+            for (const id of ids) next.delete(id);
+            return next;
+          });
+        },
+      });
+      selection.clear();
+    },
+    [selection, markEmailHandled, inboxLocale, offerActionUndo],
+  );
+
+  const handleBulkArchive = useCallback(() => dismissSelected("archive"), [dismissSelected]);
+  const handleBulkDelete = useCallback(() => dismissSelected("delete"), [dismissSelected]);
+
+  // Bulk keyboard shortcuts. (Esc → clear is handled in useInboxSelection.)
+  useEffect(() => {
+    if (inboxMode !== "gmail") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      const hasSelection = selection.count > 0;
+
+      if (key === "a") {
+        e.preventDefault();
+        handleSelectAllVisible();
+        return;
+      }
+      if (!hasSelection) return;
+
+      if (key === "h") {
+        e.preventDefault();
+        handleBulkHandled();
+      } else if (key === "p") {
+        e.preventDefault();
+        handleBulkCategoryChange("promotion");
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        handleBulkArchive();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    inboxMode,
+    selection.count,
+    handleSelectAllVisible,
+    handleBulkHandled,
+    handleBulkCategoryChange,
+    handleBulkArchive,
+  ]);
 
   const handleCategoryChange = useCallback(
     (id: string, category: InboxAiCategory, options?: InboxCategoryChangeOptions) => {
@@ -1067,6 +1225,7 @@ export default function EmailsInboxPage() {
                       category={category}
                       locale={uiLanguage}
                       count={gmailBuckets.counts[category]}
+                      onSelectAll={() => handleSelectAllInSection(category)}
                     />
                     <div className="space-y-2">
                       {list.map((message) => (
@@ -1179,7 +1338,7 @@ export default function EmailsInboxPage() {
 
       {undoToast ? (
         <CategoryUndoToast
-          message={undoMovedMessage}
+          message={undoMessage}
           undoLabel={undoLabel}
           onUndo={() => void performUndo()}
           onDismiss={dismissUndoToast}
@@ -1192,6 +1351,9 @@ export default function EmailsInboxPage() {
           totalVisible={gmailBuckets.allVisible.length}
           locale={inboxLocale}
           onMoveTo={handleBulkCategoryChange}
+          onMarkHandled={handleBulkHandled}
+          onArchive={handleBulkArchive}
+          onDelete={handleBulkDelete}
           onMarkRead={handleBulkMarkRead}
           onMarkUnread={handleBulkMarkUnread}
           onSelectAllVisible={handleSelectAllVisible}
