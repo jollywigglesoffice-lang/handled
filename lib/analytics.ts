@@ -6,7 +6,11 @@
 export type AnalyticsEvent =
   | "bulk_action_used"
   | "bulk_action_undo"
-  | "bulk_action_type";
+  | "bulk_action_type"
+  | "inbox_zero_started"
+  | "inbox_zero_completed"
+  | "clear_promotions_used"
+  | "quick_reply_queue_started";
 
 type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;
 

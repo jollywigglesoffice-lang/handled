@@ -53,16 +53,22 @@ export function useCategoryUndo(locale: "en" | "it") {
   }, []);
 
   const offerCategoryUndo = useCallback(
-    (snapshot: CategoryUndoSnapshot, newCategory: InboxAiCategory, count = 1) => {
+    (
+      snapshot: CategoryUndoSnapshot,
+      newCategory: InboxAiCategory,
+      count = 1,
+      customMessage?: string,
+    ) => {
       const label = inboxCategorySectionTitle(newCategory, locale);
       const message =
-        count > 1
+        customMessage ??
+        (count > 1
           ? locale === "it"
             ? `${count} email spostate in ${label}`
             : `Moved ${count} emails to ${label}`
           : locale === "it"
             ? `Spostato in ${label}`
-            : `Moved to ${label}`;
+            : `Moved to ${label}`);
       arm({ kind: "category", snapshot, message, actionType: "move" });
     },
     [locale, arm],

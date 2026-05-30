@@ -100,6 +100,8 @@ import {
   DISMISSED_EVENT,
 } from "@/lib/dismissed/client-storage";
 import { trackEvent } from "@/lib/analytics";
+import { InboxSummaryCard } from "@/app/emails/inbox-summary-card";
+import { InboxZeroMode, type InboxZeroStep } from "@/app/emails/inbox-zero-mode";
 
 type GmailInboxMessage = {
   id: string;
@@ -781,20 +783,10 @@ export default function EmailsInboxPage() {
     return () => window.removeEventListener(READ_STATE_EVENT, sync);
   }, []);
 
-  const handleBulkCategoryChange = useCallback(
-    (category: InboxAiCategory) => {
-      const ids = [...selection.selectedIds];
+  // Core move: persist overrides + update UI for a set of ids. No undo/toast.
+  const applyCategoryToIds = useCallback(
+    (ids: string[], category: InboxAiCategory) => {
       if (ids.length === 0) return;
-
-      const snapshot = buildCategoryUndoSnapshot({
-        scope: "this_email",
-        triggerEmailId: ids[0],
-        newCategory: category,
-        messages: gmailMessages,
-        categoryOverrides,
-        explicitAffectedIds: ids,
-      });
-
       const now = new Date().toISOString();
       for (const id of ids) {
         upsertClientEmailOverride({
@@ -821,11 +813,27 @@ export default function EmailsInboxPage() {
       );
 
       for (const id of ids) {
-        void persistEmailOverrideToAccount({
-          emailId: id,
-          overriddenCategory: category,
-        });
+        void persistEmailOverrideToAccount({ emailId: id, overriddenCategory: category });
       }
+    },
+    [],
+  );
+
+  const handleBulkCategoryChange = useCallback(
+    (category: InboxAiCategory) => {
+      const ids = [...selection.selectedIds];
+      if (ids.length === 0) return;
+
+      const snapshot = buildCategoryUndoSnapshot({
+        scope: "this_email",
+        triggerEmailId: ids[0],
+        newCategory: category,
+        messages: gmailMessages,
+        categoryOverrides,
+        explicitAffectedIds: ids,
+      });
+
+      applyCategoryToIds(ids, category);
 
       trackEvent("bulk_action_used", {
         bulk_action_type: `move:${category}`,
@@ -834,7 +842,7 @@ export default function EmailsInboxPage() {
       offerCategoryUndo(snapshot, category, ids.length);
       selection.clear();
     },
-    [selection, gmailMessages, categoryOverrides, offerCategoryUndo],
+    [selection, gmailMessages, categoryOverrides, offerCategoryUndo, applyCategoryToIds],
   );
 
   const handleBulkMarkRead = useCallback(() => {
@@ -925,9 +933,121 @@ export default function EmailsInboxPage() {
   const handleBulkArchive = useCallback(() => dismissSelected("archive"), [dismissSelected]);
   const handleBulkDelete = useCallback(() => dismissSelected("delete"), [dismissSelected]);
 
+  // ---- Inbox Zero enhancement layer ----
+  const [zeroSession, setZeroSession] = useState<{
+    mode: "quick_replies" | "inbox_zero";
+    steps: InboxZeroStep[];
+  } | null>(null);
+
+  // One-click: move all visible promotions to Handled, with undo.
+  const handleClearPromotions = useCallback(() => {
+    const ids = (gmailBuckets.byCategory.promotion ?? []).map((m) => m.id);
+    if (ids.length === 0) return;
+
+    const snapshot = buildCategoryUndoSnapshot({
+      scope: "this_email",
+      triggerEmailId: ids[0],
+      newCategory: "handled",
+      messages: gmailMessages,
+      categoryOverrides,
+      explicitAffectedIds: ids,
+    });
+
+    applyCategoryToIds(ids, "handled");
+    trackEvent("clear_promotions_used", { count: ids.length });
+
+    const message =
+      inboxLocale === "it"
+        ? `${ids.length} email svuotate`
+        : `${ids.length} email${ids.length === 1 ? "" : "s"} cleared`;
+    offerCategoryUndo(snapshot, "handled", ids.length, message);
+    selection.clear();
+  }, [
+    gmailBuckets.byCategory,
+    gmailMessages,
+    categoryOverrides,
+    applyCategoryToIds,
+    offerCategoryUndo,
+    inboxLocale,
+    selection,
+  ]);
+
+  const handleStartQuickReplies = useCallback(() => {
+    const emails = gmailBuckets.byCategory.quick_reply ?? [];
+    if (emails.length === 0) return;
+    const steps: InboxZeroStep[] = emails.map((message) => ({
+      kind: "email",
+      category: "quick_reply",
+      message: message as GmailCardMessage,
+    }));
+    trackEvent("quick_reply_queue_started", { count: emails.length });
+    setZeroSession({ mode: "quick_replies", steps });
+  }, [gmailBuckets.byCategory]);
+
+  const handleStartInboxZero = useCallback(() => {
+    const quickReplies = gmailBuckets.byCategory.quick_reply ?? [];
+    const needsAttention = gmailBuckets.byCategory.needs_attention ?? [];
+    const promotions = gmailBuckets.byCategory.promotion ?? [];
+
+    const steps: InboxZeroStep[] = [
+      ...quickReplies.map((message) => ({
+        kind: "email" as const,
+        category: "quick_reply" as const,
+        message: message as GmailCardMessage,
+      })),
+      ...needsAttention.map((message) => ({
+        kind: "email" as const,
+        category: "needs_attention" as const,
+        message: message as GmailCardMessage,
+      })),
+    ];
+    if (promotions.length > 0) {
+      steps.push({ kind: "cleanup", emails: promotions as GmailCardMessage[] });
+    }
+    if (steps.length === 0) return;
+
+    trackEvent("inbox_zero_started", { steps: steps.length });
+    setZeroSession({ mode: "inbox_zero", steps });
+  }, [gmailBuckets.byCategory]);
+
+  // Completing an email in a session clears it from the inbox (reversible via dismissed store).
+  const completeEmailInZero = useCallback(
+    (id: string) => {
+      addDismissedIds([id]);
+      setDismissedIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      markEmailHandled(id);
+      setReadStateForIds([id], "read");
+    },
+    [markEmailHandled],
+  );
+
+  const clearPromotionsInZero = useCallback(
+    (ids: string[]) => {
+      applyCategoryToIds(ids, "handled");
+      trackEvent("clear_promotions_used", { count: ids.length, source: "inbox_zero" });
+    },
+    [applyCategoryToIds],
+  );
+
+  const handleZeroFinished = useCallback(
+    (stats: { processed: number; timeSavedSeconds: number }) => {
+      if (zeroSession?.mode === "inbox_zero") {
+        trackEvent("inbox_zero_completed", {
+          processed: stats.processed,
+          time_saved_seconds: stats.timeSavedSeconds,
+        });
+      }
+    },
+    [zeroSession?.mode],
+  );
+
   // Bulk keyboard shortcuts. (Esc → clear is handled in useInboxSelection.)
   useEffect(() => {
-    if (inboxMode !== "gmail") return;
+    if (inboxMode !== "gmail" || zeroSession) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
@@ -964,6 +1084,7 @@ export default function EmailsInboxPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     inboxMode,
+    zeroSession,
     selection.count,
     handleSelectAllVisible,
     handleBulkHandled,
@@ -1200,6 +1321,13 @@ export default function EmailsInboxPage() {
                 isRefreshing={isRefreshing}
                 onRefresh={() => void loadInbox({ silent: true })}
               />
+              <InboxSummaryCard
+                counts={gmailBuckets.counts}
+                locale={inboxLocale}
+                onClearPromotions={handleClearPromotions}
+                onHandleQuickReplies={handleStartQuickReplies}
+                onInboxZero={handleStartInboxZero}
+              />
               {gmailBuckets.counts.needs_attention === 0 &&
               gmailBuckets.allVisible.length > 0 ? (
                 <section className="space-y-3">
@@ -1358,6 +1486,18 @@ export default function EmailsInboxPage() {
           onMarkUnread={handleBulkMarkUnread}
           onSelectAllVisible={handleSelectAllVisible}
           onClear={selection.clear}
+        />
+      ) : null}
+
+      {zeroSession ? (
+        <InboxZeroMode
+          steps={zeroSession.steps}
+          mode={zeroSession.mode}
+          locale={inboxLocale}
+          onCompleteEmail={completeEmailInZero}
+          onClearPromotions={clearPromotionsInZero}
+          onFinished={handleZeroFinished}
+          onClose={() => setZeroSession(null)}
         />
       ) : null}
     </main>
