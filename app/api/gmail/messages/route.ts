@@ -3,7 +3,10 @@ import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
 import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-messages";
 
 export const dynamic = "force-dynamic";
-import { gmailGetMessageMetadata, gmailListInboxIds } from "@/lib/gmail-api";
+import { gmailGetMessagesMetadata, gmailListInboxPage } from "@/lib/gmail-api";
+
+/** Newest inbox messages fetched per page. */
+const INBOX_PAGE_SIZE = 200;
 import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
@@ -32,10 +35,16 @@ export async function GET(request: Request) {
 
   const accessToken = auth.providerToken!;
 
+  const pageToken = new URL(request.url).searchParams.get("pageToken");
+
   try {
-    const ids = await gmailListInboxIds(accessToken, 20);
-    const rows = await Promise.all(
-      ids.map((m) => gmailGetMessageMetadata(accessToken, m.id)),
+    const { items, nextPageToken } = await gmailListInboxPage(accessToken, {
+      maxResults: INBOX_PAGE_SIZE,
+      pageToken,
+    });
+    const rows = await gmailGetMessagesMetadata(
+      accessToken,
+      items.map((m) => m.id),
     );
     rows.sort((a, b) => b.internalDateMs - a.internalDateMs);
 
@@ -115,6 +124,7 @@ export async function GET(request: Request) {
         messages: messagesForClient,
         categoryOverrides: rulesCtx.emailOverrides,
         emailOverrideRecords: rulesCtx.emailOverrideRecords,
+        nextPageToken,
       }),
     );
   } catch (e: unknown) {

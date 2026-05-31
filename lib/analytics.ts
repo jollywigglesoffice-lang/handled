@@ -14,7 +14,8 @@ export type AnalyticsEvent =
   | "email_marked_read"
   | "email_marked_unread"
   | "gmail_sync_success"
-  | "gmail_sync_failed";
+  | "gmail_sync_failed"
+  | "inbox_load_more";
 
 type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;
 

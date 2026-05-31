@@ -519,14 +519,24 @@ export default function EmailsInboxPage() {
   const [gmailError, setGmailError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Pagination plumbing (Gmail nextPageToken). UI only exposes a manual
+  // "load more" for now — no infinite scroll yet.
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [messageIndex, setMessageIndex] = useState(0);
   const [showMicroMessage, setShowMicroMessage] = useState(true);
 
-  const loadInbox = useCallback(async (options?: { silent?: boolean }) => {
-    if (!options?.silent) {
+  const loadInbox = useCallback(
+    async (options?: { silent?: boolean; pageToken?: string | null; append?: boolean }) => {
+    const append = Boolean(options?.append);
+    if (!options?.silent && !append) {
       setInboxMode("loading");
     }
-    setIsRefreshing(true);
+    if (append) {
+      setIsLoadingMore(true);
+    } else {
+      setIsRefreshing(true);
+    }
     setGmailError("");
 
     const hasSession = await ensureApiSessionCookies();
@@ -537,7 +547,10 @@ export default function EmailsInboxPage() {
         return;
       }
 
-      const res = await fetch("/api/gmail/messages", {
+      const url = options?.pageToken
+        ? `/api/gmail/messages?pageToken=${encodeURIComponent(options.pageToken)}`
+        : "/api/gmail/messages";
+      const res = await fetch(url, {
         credentials: "include",
         headers: await inboxFetchHeaders(),
       });
@@ -545,6 +558,7 @@ export default function EmailsInboxPage() {
         messages?: GmailInboxMessage[];
         categoryOverrides?: Record<string, InboxAiCategory>;
         emailOverrideRecords?: EmailCategoryOverride[];
+        nextPageToken?: string | null;
         error?: string;
         message?: string;
       };
@@ -630,7 +644,16 @@ export default function EmailsInboxPage() {
       setCategoryOverrides(mergedOverrideMap);
 
       const stampedMsgs = stampEmailOverridesOnMessages(msgs, mergedOverrideMap);
-      setGmailMessages(stampedMsgs);
+      if (append) {
+        setGmailMessages((prev) => {
+          const seen = new Set(prev.map((m) => m.id));
+          const additions = stampedMsgs.filter((m) => !seen.has(m.id));
+          return [...prev, ...additions];
+        });
+      } else {
+        setGmailMessages(stampedMsgs);
+      }
+      setNextPageToken(body.nextPageToken ?? null);
 
       for (const local of localRecords) {
         const server = serverRecords.find((s) => s.emailId === local.emailId);
@@ -645,16 +668,31 @@ export default function EmailsInboxPage() {
           });
         }
       }
-      setInboxMode(msgs.length ? "gmail" : "gmail_empty");
+      if (append) {
+        setInboxMode("gmail");
+      } else {
+        setInboxMode(msgs.length ? "gmail" : "gmail_empty");
+      }
       setLastSyncedAt(new Date().toISOString());
     } catch (e) {
       console.error("[inbox] gmail load", e);
-      setGmailError("Network error while loading inbox.");
-      setInboxMode("gmail_error");
+      if (!append) {
+        setGmailError("Network error while loading inbox.");
+        setInboxMode("gmail_error");
+      }
     } finally {
       setIsRefreshing(false);
+      setIsLoadingMore(false);
     }
-  }, []);
+  },
+  [],
+);
+
+  const handleLoadMore = useCallback(() => {
+    if (!nextPageToken || isLoadingMore) return;
+    trackEvent("inbox_load_more", { has_token: true });
+    void loadInbox({ pageToken: nextPageToken, append: true });
+  }, [nextPageToken, isLoadingMore, loadInbox]);
 
   useEffect(() => {
     setCategoryOverrides(loadClientEmailOverrideMap());
@@ -1417,6 +1455,11 @@ export default function EmailsInboxPage() {
                 isRefreshing={isRefreshing}
                 onRefresh={() => void loadInbox({ silent: true })}
               />
+              <p className="text-xs text-gray-400">
+                {inboxLocale === "it"
+                  ? `Mostrando le ${gmailMessages.length} email più recenti`
+                  : `Showing newest ${gmailMessages.length} inbox emails`}
+              </p>
               <InboxSummaryCard
                 counts={gmailBuckets.counts}
                 locale={inboxLocale}
@@ -1503,6 +1546,24 @@ export default function EmailsInboxPage() {
                 locale={uiLanguage === "it" ? "it" : "en"}
                 onCategoryChange={handleCategoryChange}
               />
+              {nextPageToken ? (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    disabled={isLoadingMore}
+                    className="rounded-lg border border-border bg-card px-4 py-2 text-xs font-medium text-gray-600 transition hover:border-accent/40 hover:text-accent disabled:opacity-60"
+                  >
+                    {isLoadingMore
+                      ? inboxLocale === "it"
+                        ? "Caricamento…"
+                        : "Loading…"
+                      : inboxLocale === "it"
+                        ? "Carica altre email"
+                        : "Load more emails"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
             inboxSections.map((section) => (

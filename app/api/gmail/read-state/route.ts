@@ -58,6 +58,15 @@ export async function POST(request: Request) {
 
     const { gmailBatchModifyLabels } = await import("@/lib/gmail-api");
 
+    // TEMP DEBUG: trace the outgoing Gmail batchModify request.
+    console.log("[DEBUG read-state] →", {
+      ids,
+      count: ids.length,
+      state,
+      label: state === "read" ? "remove UNREAD" : "add UNREAD",
+      tokenPrefix: accessToken ? `${accessToken.slice(0, 12)}…` : "(none)",
+    });
+
     try {
       // Read  → remove the UNREAD label. Unread → add it back.
       await gmailBatchModifyLabels(
@@ -65,9 +74,42 @@ export async function POST(request: Request) {
         ids,
         state === "read" ? { remove: ["UNREAD"] } : { add: ["UNREAD"] },
       );
+      console.log("[DEBUG read-state] ✓ Gmail batchModify succeeded");
     } catch (gmailError) {
-      console.error("[api/gmail/read-state] gmail modify failed", gmailError);
       const message = gmailError instanceof Error ? gmailError.message : String(gmailError);
+
+      // TEMP DEBUG: parse the exact Gmail status + reason out of the error.
+      const statusMatch = message.match(/failed:\s*(\d{3})/);
+      const httpStatus = statusMatch ? Number(statusMatch[1]) : null;
+      let gmailStatus: string | null = null;
+      let gmailReason: string | null = null;
+      let gmailMessage: string | null = null;
+      const jsonStart = message.indexOf("{");
+      if (jsonStart !== -1) {
+        try {
+          const parsed = JSON.parse(message.slice(jsonStart)) as {
+            error?: {
+              status?: string;
+              message?: string;
+              errors?: Array<{ reason?: string }>;
+            };
+          };
+          gmailStatus = parsed.error?.status ?? null;
+          gmailMessage = parsed.error?.message ?? null;
+          gmailReason = parsed.error?.errors?.[0]?.reason ?? null;
+        } catch {
+          /* body wasn't JSON */
+        }
+      }
+
+      console.error("[DEBUG read-state] ✗ Gmail batchModify FAILED", {
+        httpStatus,
+        gmailStatus,
+        gmailReason,
+        gmailMessage,
+        rawError: message,
+      });
+
       return applyAuthCookies(
         NextResponse.json({ ok: false, error: message }, { status: 502 }),
       );

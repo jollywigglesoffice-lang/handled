@@ -14,6 +14,12 @@ export type GmailListItem = {
   threadId: string;
 };
 
+export type GmailListPage = {
+  items: GmailListItem[];
+  /** Pass to gmailListInboxPage to fetch the next page; null when no more. */
+  nextPageToken: string | null;
+};
+
 export type GmailInboxRow = {
   id: string;
   threadId: string;
@@ -80,13 +86,21 @@ export async function gmailBatchModifyLabels(
   }
 }
 
-export async function gmailListInboxIds(
+/**
+ * List inbox message ids for one page. Returns the page items plus Gmail's
+ * nextPageToken so callers can paginate (pass it back via options.pageToken).
+ */
+export async function gmailListInboxPage(
   accessToken: string,
-  maxResults = 20,
-): Promise<GmailListItem[]> {
+  options?: { maxResults?: number; pageToken?: string | null },
+): Promise<GmailListPage> {
+  const maxResults = options?.maxResults ?? 200;
   const url = new URL(`${GMAIL_BASE}/messages`);
   url.searchParams.set("maxResults", String(maxResults));
   url.searchParams.set("q", "in:inbox");
+  if (options?.pageToken) {
+    url.searchParams.set("pageToken", options.pageToken);
+  }
 
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -98,8 +112,50 @@ export async function gmailListInboxIds(
     throw new Error(`Gmail list failed: ${res.status} ${text}`);
   }
 
-  const data = (await res.json()) as { messages?: GmailListItem[] };
-  return data.messages ?? [];
+  const data = (await res.json()) as {
+    messages?: GmailListItem[];
+    nextPageToken?: string;
+  };
+  return {
+    items: data.messages ?? [],
+    nextPageToken: data.nextPageToken ?? null,
+  };
+}
+
+/** @deprecated use gmailListInboxPage (it also returns nextPageToken). */
+export async function gmailListInboxIds(
+  accessToken: string,
+  maxResults = 20,
+): Promise<GmailListItem[]> {
+  const { items } = await gmailListInboxPage(accessToken, { maxResults });
+  return items;
+}
+
+/**
+ * Fetch metadata for many message ids with bounded concurrency. Fetching a full
+ * inbox page (e.g. 200) all at once would open 200 simultaneous Gmail requests
+ * and invite 429/rate-limit errors, so we cap in-flight requests. Results keep
+ * the input order.
+ */
+export async function gmailGetMessagesMetadata(
+  accessToken: string,
+  ids: string[],
+  concurrency = 15,
+): Promise<GmailInboxRow[]> {
+  const rows = new Array<GmailInboxRow>(ids.length);
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (cursor < ids.length) {
+      const index = cursor;
+      cursor += 1;
+      rows[index] = await gmailGetMessageMetadata(accessToken, ids[index]);
+    }
+  }
+
+  const poolSize = Math.min(Math.max(concurrency, 1), ids.length);
+  await Promise.all(Array.from({ length: poolSize }, () => worker()));
+  return rows;
 }
 
 export async function gmailGetMessageMetadata(
