@@ -98,6 +98,17 @@ function warnFallback(reason: string, extra?: unknown) {
   console.warn("[categorize-inbox] FALLBACK:", reason, extra ?? "");
 }
 
+/**
+ * Per-row categorization logs are very chatty (a few lines × up to 200 rows).
+ * They're useful when debugging classification but pure overhead otherwise, so
+ * they're opt-in via CATEGORIZE_DEBUG=1 rather than tied to NODE_ENV.
+ */
+const CATEGORIZE_DEBUG = process.env.CATEGORIZE_DEBUG === "1";
+
+function debugCategorize(...args: unknown[]): void {
+  if (CATEGORIZE_DEBUG) console.log(...args);
+}
+
 function stripJsonFence(text: string): string {
   const t = text.trim();
   const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(t);
@@ -240,7 +251,7 @@ export function intelligentFallbackCategory(row: GmailInboxRow): {
     ) &&
     !mustNotAutoHandleRow(row)
   ) {
-    return { category: "handled", confidence: 0.7 };
+    return { category: "fyi", confidence: 0.7 };
   }
   if (
     /\b(thanks|thank you|sounds good|confirmed|received|\+1|lgtm)\b/i.test(hay) &&
@@ -301,11 +312,11 @@ function finalizeRow(
     coerced = intelligence.suggestedCategory;
   }
 
-  if (intelligence?.blockLowPriorityCategories && !intelligence.forcePromotional && (coerced === "handled" || coerced === "promotion" || coerced === "newsletter")) {
+  if (intelligence?.blockLowPriorityCategories && !intelligence.forcePromotional && (coerced === "handled" || coerced === "fyi" || coerced === "promotion" || coerced === "newsletter")) {
     coerced = intelligence.suggestedCategory;
   }
 
-  if (intelligence?.forceNeedsAttention && !intelligence?.forcePromotional && (coerced === "handled" || coerced === "promotion" || coerced === "newsletter")) {
+  if (intelligence?.forceNeedsAttention && !intelligence?.forcePromotional && (coerced === "handled" || coerced === "fyi" || coerced === "promotion" || coerced === "newsletter")) {
     coerced = "needs_attention";
   }
 
@@ -317,7 +328,7 @@ function finalizeRow(
   const reasonLabels = intelligence?.reasonLabels ?? [];
 
   if (reasons.length) {
-    console.log("CATEGORIZATION INTELLIGENCE:", {
+    debugCategorize("CATEGORIZATION INTELLIGENCE:", {
       subject: row.subject?.slice(0, 100),
       reasons: reasonLabels,
       priorityScore: intelligence?.priorityScore,
@@ -326,7 +337,7 @@ function finalizeRow(
     });
   }
 
-  console.log("FINAL CATEGORY:", coerced, {
+  debugCategorize("FINAL CATEGORY:", coerced, {
     subject: row.subject?.slice(0, 100),
     rowIndex,
     source,
@@ -361,7 +372,12 @@ function correctUrgentAiLabel(
 ): { category: InboxAiCategory; source: CategorySource; confidenceMul: number } {
   if (hasHighPriorityIntent(row)) {
     const intent = analyzeEmailIntent(row);
-    if (category === "handled" || category === "promotion" || category === "newsletter") {
+    if (
+      category === "handled" ||
+      category === "fyi" ||
+      category === "promotion" ||
+      category === "newsletter"
+    ) {
       return {
         category: intent.suggestedCategory,
         source: "ai_coerced",
@@ -387,7 +403,7 @@ function correctUrgentAiLabel(
 
   if (category === "needs_attention" && !looksLikeHumanConversation(row)) {
     const fb = intelligentFallbackCategory(row);
-    if (fb.category === "handled" && hasHighPriorityIntent(row)) {
+    if ((fb.category === "handled" || fb.category === "fyi") && hasHighPriorityIntent(row)) {
       return {
         category: analyzeEmailIntent(row).suggestedCategory,
         source: "ai_coerced",
@@ -403,26 +419,29 @@ function correctUrgentAiLabel(
 function buildAmbiguousAiPrompt(batchSize: number): string {
   return `You triage a real personal + work inbox. Messages may be in English, Italian, or mixed (EN/IT). These did NOT match deterministic rules.
 
-Use ONLY: needs_attention, quick_reply, newsletter, promotion, handled
+Use ONLY: needs_attention, quick_reply, fyi, newsletter, promotion, handled
 
 CULTURAL / PERSONAL PRIORITY (overrides business-startup bias):
 - School / teachers / parents (scuola, insegnante, colloquio, maestra, genitori, PTA, Alexandria-style school names) → needs_attention
 - Family, kids, childcare → needs_attention
 - Healthcare (ospedale, pediatra, appuntamento medico, hospital, pediatric) → needs_attention
 - Scheduling that needs a human decision (riunione, appuntamento, conferma, meeting) → needs_attention or quick_reply if only a short ack is needed
-- Payments/confirmations about school, health, or family → needs_attention (not handled)
+- Payments/confirmations about school, health, or family → needs_attention (not fyi)
 
 COMMERCIAL (only when clearly bulk/marketing):
 - promotion — marketing, sales, discounts, social app notifications
 - newsletter — digests, list mail, unsubscribe footers
 
+FYI (important to see, but no reply needed):
+- fyi — automated transactional confirmations the user would want to notice: order/shipping/delivery confirmations (es. "conferma spedizione", "il tuo ordine è stato spedito"), payment receipts, invoices, booking/appointment confirmations, account/security alerts. NO personal/school/health context and NO reply expected.
+
 LOW-RISK DEFAULT:
-- handled — only for clear automated FYI (receipts, shipping, noreply notifications) with NO personal/school/health context
+- handled — already-quiet, low-information automated noise that needs no notice
 - quick_reply — short acknowledgment suffices
 
-SAFETY: When unsure between handled and needs_attention for a plausible human/school/health sender, choose needs_attention. Missing important family or school mail is worse than a false positive.
+SAFETY: When unsure between fyi/handled and needs_attention for a plausible human/school/health sender, choose needs_attention. Missing important family or school mail is worse than a false positive.
 
-NEVER use handled for: school mail, teacher/parent messages, Italian urgency words (urgente, colloquio), or a named person writing about appointments.
+NEVER use fyi or handled for: school mail, teacher/parent messages, Italian urgency words (urgente, colloquio), or a named person writing about appointments.
 
 Return JSON only:
 {"classifications":[{"index":0,"category":"needs_attention","confidence":0.85},...]}
@@ -573,6 +592,44 @@ ${lines.join("\n\n")}`;
   }
 }
 
+/**
+ * Classify ambiguous rows in parallel chunks instead of one giant request.
+ * A single 200-message prompt to the model is slow (and risks truncation /
+ * timeout); several smaller prompts in parallel return far faster. Each row is
+ * classified independently, so chunking is behavior-equivalent. Returns a map
+ * keyed by the GLOBAL ambiguous index (0..rows.length-1).
+ */
+const AI_CLASSIFY_CHUNK_SIZE = 40;
+
+async function openAiClassifyChunked(
+  rows: GmailInboxRow[],
+  apiKey: string,
+): Promise<Map<number, { category: InboxAiCategory; confidence: number }>> {
+  if (rows.length <= AI_CLASSIFY_CHUNK_SIZE) {
+    return (await openAiClassifyBatch(rows, apiKey)) ?? new Map();
+  }
+
+  const chunks: Array<{ start: number; rows: GmailInboxRow[] }> = [];
+  for (let i = 0; i < rows.length; i += AI_CLASSIFY_CHUNK_SIZE) {
+    chunks.push({ start: i, rows: rows.slice(i, i + AI_CLASSIFY_CHUNK_SIZE) });
+  }
+
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      openAiClassifyBatch(chunk.rows, apiKey).then((map) => ({ start: chunk.start, map })),
+    ),
+  );
+
+  const merged = new Map<number, { category: InboxAiCategory; confidence: number }>();
+  for (const { start, map } of results) {
+    if (!map) continue;
+    for (const [localIndex, value] of map) {
+      merged.set(start + localIndex, value);
+    }
+  }
+  return merged;
+}
+
 export type CategorizeInboxOptions = {
   userRules?: InboxUserRule[];
   /** Learned sender rules — evaluated before keyword userRules. */
@@ -683,7 +740,7 @@ export async function categorizeGmailInboxRows(
     const preSource: CategorySource = "user_rule";
 
     if (userPre?.kind === "force") {
-      console.log("RULE MATCH:", userPre.category, {
+      debugCategorize("RULE MATCH:", userPre.category, {
         source: "user_pre",
         label: userPre.label,
       });
@@ -700,7 +757,7 @@ export async function categorizeGmailInboxRows(
       continue;
     }
     if (userPre?.kind === "block") {
-      console.log("RULE MATCH: block", { label: userPre.label });
+      debugCategorize("RULE MATCH: block", { label: userPre.label });
       out[i] = applyUserPostIfNeeded(
         row,
         i,
@@ -749,7 +806,7 @@ export async function categorizeGmailInboxRows(
     const rule = ruleClassify(row);
 
     if (rule) {
-      console.log("RULE MATCH:", rule.category, {
+      debugCategorize("RULE MATCH:", rule.category, {
         subject: row.subject?.slice(0, 100),
         matchType: rule.matchType,
         confidence: rule.confidence,
@@ -793,7 +850,7 @@ export async function categorizeGmailInboxRows(
     aiResult: { category: InboxAiCategory; confidence: number } | undefined,
   ): GmailInboxRowCategorized => {
     if (aiResult) {
-      console.log("AI CATEGORY:", aiResult.category, {
+      debugCategorize("AI CATEGORY:", aiResult.category, {
         subject: row.subject?.slice(0, 100),
         confidence: aiResult.confidence,
         rowIndex,
@@ -823,7 +880,7 @@ export async function categorizeGmailInboxRows(
     }
 
     const fb = intelligentFallbackCategory(row);
-    console.log("AI CATEGORY:", "(none — intelligent fallback)", {
+    debugCategorize("AI CATEGORY:", "(none — intelligent fallback)", {
       subject: row.subject?.slice(0, 100),
       fallback: fb.category,
     });
@@ -848,21 +905,10 @@ export async function categorizeGmailInboxRows(
     return applyFinalResolutionPass(out, rows, resolutionCtx);
   }
 
-  const aiMap = await openAiClassifyBatch(ambiguousRows, apiKey);
+  const aiMap = await openAiClassifyChunked(ambiguousRows, apiKey);
 
-  if (!aiMap) {
+  if (aiMap.size === 0) {
     warnFallback("AI batch failed");
-    for (let j = 0; j < ambiguousIndices.length; j++) {
-      const i = ambiguousIndices[j];
-      if (mustSkipAiCategorization(rows[i], resolutionCtx)) {
-        const resolved = resolveFinalCategory({ row: rows[i], context: resolutionCtx });
-        logCategoryResolution(resolved.audit);
-        out[i] = finalizeRow(rows[i], i, resolved.category, resolved.source, 1);
-        continue;
-      }
-      out[i] = classifyAmbiguousRow(rows[i], i, undefined);
-    }
-    return applyFinalResolutionPass(out, rows, resolutionCtx);
   }
 
   for (let j = 0; j < ambiguousIndices.length; j++) {

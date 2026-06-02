@@ -4,8 +4,9 @@ import { parseSenderDomain, parseSenderEmail } from "@/lib/inbox-user-rules/matc
 import type { CategorizationReasonCode } from "@/lib/categorization-intelligence/types";
 
 const CATEGORY_PRIORITY: Record<InboxAiCategory, number> = {
-  needs_attention: 4,
-  quick_reply: 3,
+  needs_attention: 5,
+  quick_reply: 4,
+  fyi: 3,
   handled: 2,
   newsletter: 1,
   promotion: 0,

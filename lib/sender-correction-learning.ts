@@ -67,8 +67,9 @@ export function recordSenderCategoryCorrection(input: {
   if (input.guessedCategory === input.chosenCategory) return null;
 
   const priority: Record<InboxAiCategory, number> = {
-    needs_attention: 4,
-    quick_reply: 3,
+    needs_attention: 5,
+    quick_reply: 4,
+    fyi: 3,
     handled: 2,
     newsletter: 1,
     promotion: 0,
@@ -83,6 +84,7 @@ export function recordSenderCategoryCorrection(input: {
   const bump =
     input.chosenCategory === "needs_attention" &&
     (input.guessedCategory === "handled" ||
+      input.guessedCategory === "fyi" ||
       input.guessedCategory === "newsletter" ||
       input.guessedCategory === "promotion")
       ? 1

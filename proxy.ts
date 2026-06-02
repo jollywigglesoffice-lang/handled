@@ -83,10 +83,20 @@ export async function proxy(request: NextRequest) {
     if (!oauthSupabase) {
       return NextResponse.redirect(new URL("/login?error=oauth", request.url));
     }
-    const { error } = await oauthSupabase.auth.exchangeCodeForSession(oauthCode);
+    const { data, error } = await oauthSupabase.auth.exchangeCodeForSession(oauthCode);
     if (error) {
       console.error("[proxy] exchangeCodeForSession", error);
       return NextResponse.redirect(new URL("/login?error=oauth", request.url));
+    }
+    // Capture the Google refresh token now — Supabase only surfaces
+    // provider_refresh_token at exchange time and never refreshes it for us.
+    try {
+      const { persistGoogleTokensFromSession } = await import(
+        "@/lib/google/google-access-token"
+      );
+      await persistGoogleTokensFromSession(data.session);
+    } catch (persistError) {
+      console.error("[proxy] persist Google tokens failed", persistError);
     }
     return redirectResponse;
   }

@@ -271,6 +271,15 @@ function GmailSectionLeadingIcon({ category }: { category: InboxAiCategory }) {
       </svg>
     );
   }
+  if (category === "fyi") {
+    return (
+      <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
+        <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="10" cy="6.6" r="0.9" fill="currentColor" />
+        <path d="M10 9.4v4.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
   if (category === "newsletter") {
     return (
       <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
@@ -313,6 +322,7 @@ function GmailCategorySectionHeader({
   const isPrimary =
     category === "needs_attention" ||
     category === "quick_reply" ||
+    category === "fyi" ||
     category === "handled";
 
   return (

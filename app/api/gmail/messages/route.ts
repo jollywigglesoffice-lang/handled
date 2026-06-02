@@ -9,6 +9,7 @@ import { gmailGetMessagesMetadata, gmailListInboxPage } from "@/lib/gmail-api";
 const INBOX_PAGE_SIZE = 200;
 import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
+import { withGoogleAuthRetry } from "@/lib/google/google-access-token";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 import { parseWorkflowModeHeader } from "@/lib/workflow-mode-effects";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
@@ -26,25 +27,33 @@ export async function GET(request: Request) {
   }
 
   const { auth } = authResult;
-  const googleAuth = requireGoogleProviderToken(auth, {
+  const googleAuth = await requireGoogleProviderToken(auth, {
     message: "Sign in with Google to load your Gmail inbox.",
   });
   if (!googleAuth.ok) {
     return applyAuthCookies(googleAuth.response);
   }
 
-  const accessToken = auth.providerToken!;
+  const accessToken = googleAuth.accessToken;
 
   const pageToken = new URL(request.url).searchParams.get("pageToken");
 
   try {
-    const { items, nextPageToken } = await gmailListInboxPage(accessToken, {
-      maxResults: INBOX_PAGE_SIZE,
-      pageToken,
-    });
-    const rows = await gmailGetMessagesMetadata(
+    const { items, nextPageToken } = await withGoogleAuthRetry(
+      auth.user.id,
       accessToken,
-      items.map((m) => m.id),
+      (token) =>
+        gmailListInboxPage(token, {
+          maxResults: INBOX_PAGE_SIZE,
+          pageToken,
+        }),
+    );
+    const rows = await withGoogleAuthRetry(auth.user.id, accessToken, (token) =>
+      gmailGetMessagesMetadata(
+        token,
+        items.map((m) => m.id),
+        25,
+      ),
     );
     rows.sort((a, b) => b.internalDateMs - a.internalDateMs);
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
+import { withGoogleAuthRetry } from "@/lib/google/google-access-token";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 
 export const dynamic = "force-dynamic";
@@ -24,12 +25,12 @@ export async function POST(request: Request) {
     }
 
     const { auth } = authResult;
-    const googleAuth = requireGoogleProviderToken(auth);
+    const googleAuth = await requireGoogleProviderToken(auth);
     if (!googleAuth.ok) {
       return applyAuthCookies(googleAuth.response);
     }
 
-    const accessToken = auth.providerToken!;
+    const accessToken = googleAuth.accessToken;
 
     let body: ReadStateBody;
     try {
@@ -69,10 +70,12 @@ export async function POST(request: Request) {
 
     try {
       // Read  → remove the UNREAD label. Unread → add it back.
-      await gmailBatchModifyLabels(
-        accessToken,
-        ids,
-        state === "read" ? { remove: ["UNREAD"] } : { add: ["UNREAD"] },
+      await withGoogleAuthRetry(auth.user.id, accessToken, (token) =>
+        gmailBatchModifyLabels(
+          token,
+          ids,
+          state === "read" ? { remove: ["UNREAD"] } : { add: ["UNREAD"] },
+        ),
       );
       console.log("[DEBUG read-state] ✓ Gmail batchModify succeeded");
     } catch (gmailError) {

@@ -79,6 +79,15 @@ export function assessReplyNeed(input: {
     };
   }
 
+  if (category === "fyi") {
+    return {
+      recommended: false,
+      reason: "Confirmation or update — important to see, but nothing to send back.",
+      suggestedAction: "Skim and file — no reply needed.",
+      confidence: 0.9,
+    };
+  }
+
   if (category === "handled") {
     if (isTransactionalFyi(rowForSignals) && !hasUrgentHumanSignal(rowForSignals)) {
       return {

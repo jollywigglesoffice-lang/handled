@@ -20,6 +20,7 @@ type InboxSummaryCardProps = {
 const SUMMARY_ORDER: InboxAiCategory[] = [
   "needs_attention",
   "quick_reply",
+  "fyi",
   "handled",
   "promotion",
 ];

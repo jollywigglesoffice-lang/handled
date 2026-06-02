@@ -9,6 +9,7 @@ export type InboxZeroLocale = "en" | "it";
 const SECONDS_PER_EMAIL: Record<InboxAiCategory, number> = {
   needs_attention: 90,
   quick_reply: 40,
+  fyi: 10,
   handled: 8,
   newsletter: 6,
   promotion: 3,

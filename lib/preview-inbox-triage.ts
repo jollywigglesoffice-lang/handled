@@ -15,6 +15,7 @@ import { intelligentFallbackCategory } from "@/lib/categorize-inbox-messages";
 const CATEGORY_LABELS: Record<InboxAiCategory, string> = {
   needs_attention: "Needs your attention",
   quick_reply: "Quick reply",
+  fyi: "Good to know",
   newsletter: "Newsletters",
   promotion: "Promotions",
   handled: "Handled",

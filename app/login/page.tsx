@@ -63,7 +63,7 @@ export default function LoginPage() {
         options: {
           redirectTo,
           scopes:
-            "https://www.googleapis.com/auth/gmail.readonly openid email profile",
+            "https://www.googleapis.com/auth/gmail.modify openid email profile",
           queryParams: {
             access_type: "offline",
             prompt: "consent",

@@ -10,9 +10,10 @@ import { saveClientInboxRules } from "@/lib/inbox-rules-client-storage";
 const DESTINATION_LABELS: Record<InboxAiCategory, string> = {
   needs_attention: "Needs your attention",
   quick_reply: "Quick reply",
+  fyi: "Good to know (no reply needed)",
   newsletter: "Newsletters",
   promotion: "Promotions",
-  handled: "Handled (receipts & FYI)",
+  handled: "Handled (already quiet)",
 };
 
 const LOCAL_RULES_KEY = "handled_inbox_rules_v1";

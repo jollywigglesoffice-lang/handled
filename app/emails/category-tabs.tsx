@@ -10,6 +10,7 @@ export type CategoryTab = InboxAiCategory | "all";
 export const CATEGORY_TAB_ORDER: InboxAiCategory[] = [
   "needs_attention",
   "quick_reply",
+  "fyi",
   "handled",
   "promotion",
   "newsletter",

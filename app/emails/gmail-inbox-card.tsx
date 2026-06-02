@@ -61,6 +61,7 @@ export type GmailCardMessage = {
 const CATEGORY_ACCENT: Record<InboxAiCategory, string> = {
   needs_attention: "border-l-4 border-l-accent bg-accent-muted/25",
   quick_reply: "border-l-4 border-l-teal-500 bg-teal-50/40",
+  fyi: "border-l-4 border-l-sky-500 bg-sky-50/30",
   handled: "border-l-4 border-l-emerald-500 bg-emerald-50/30",
   newsletter: "border-l-4 border-l-slate-400 bg-slate-50/50",
   promotion: "border-l-4 border-l-amber-500 bg-amber-50/35",

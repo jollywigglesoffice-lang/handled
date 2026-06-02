@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
+import { withGoogleAuthRetry } from "@/lib/google/google-access-token";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 import { parseWorkflowMode, WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
 
@@ -30,12 +31,12 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const { auth } = authResult;
-    const googleAuth = requireGoogleProviderToken(auth);
+    const googleAuth = await requireGoogleProviderToken(auth);
     if (!googleAuth.ok) {
       return applyAuthCookies(googleAuth.response);
     }
 
-    const accessToken = auth.providerToken!;
+    const accessToken = googleAuth.accessToken;
     const workflowMode = parseWorkflowMode(request.headers.get(WORKFLOW_MODE_HEADER));
 
     const { gmailGetMessageFull } = await import("@/lib/gmail-api");
@@ -44,7 +45,9 @@ export async function GET(request: Request, context: RouteContext) {
 
     let msg;
     try {
-      msg = await gmailGetMessageFull(accessToken, id);
+      msg = await withGoogleAuthRetry(auth.user.id, accessToken, (token) =>
+        gmailGetMessageFull(token, id),
+      );
     } catch (gmailError) {
       console.error("EMAIL DETAIL LOAD ERROR:", gmailError);
       const message = gmailError instanceof Error ? gmailError.message : String(gmailError);

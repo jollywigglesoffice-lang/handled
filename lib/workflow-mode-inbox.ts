@@ -41,15 +41,15 @@ export function workflowModeTagline(mode: WorkflowMode): string {
 export function primaryCategoryOrderForMode(mode: WorkflowMode): InboxAiCategory[] {
   const profile = getWorkflowModeProfile(mode);
   if (profile.collapseClutterSections || profile.hidePromotionsInList) {
-    return ["needs_attention", "quick_reply", "handled"];
+    return ["needs_attention", "quick_reply", "fyi", "handled"];
   }
-  return ["needs_attention", "quick_reply", "handled", "newsletter", "promotion"];
+  return ["needs_attention", "quick_reply", "fyi", "handled", "newsletter", "promotion"];
 }
 
 export const GMAIL_CATEGORY_ORDER_BY_MODE: Record<WorkflowMode, InboxAiCategory[]> = {
-  assist: ["needs_attention", "quick_reply", "handled", "newsletter", "promotion"],
-  clean: ["needs_attention", "quick_reply", "handled", "newsletter", "promotion"],
-  handle: ["needs_attention", "quick_reply", "handled"],
+  assist: ["needs_attention", "quick_reply", "fyi", "handled", "newsletter", "promotion"],
+  clean: ["needs_attention", "quick_reply", "fyi", "handled", "newsletter", "promotion"],
+  handle: ["needs_attention", "quick_reply", "fyi", "handled"],
 };
 
 export function isClutterCategory(category: InboxAiCategory): boolean {

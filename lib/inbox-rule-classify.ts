@@ -236,7 +236,7 @@ export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
   const scores = computeInboxRuleScores(row);
 
   if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row) && !mustNotAutoHandle(row)) {
-    return { category: "handled", confidence: 0.9, scores, matchType: "hard" };
+    return { category: "fyi", confidence: 0.9, scores, matchType: "hard" };
   }
 
   if (isCommercialBulk(row) && !hasUrgentHumanSignal(row)) {
@@ -253,7 +253,7 @@ export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
   }
 
   if (isBillingLikely(row) && !mustNotAutoHandle(row)) {
-    return { category: "handled", confidence: 0.93, scores, matchType: "hard" };
+    return { category: "fyi", confidence: 0.93, scores, matchType: "hard" };
   }
 
   const { promotion, newsletter, handled } = scores;
@@ -342,18 +342,18 @@ export function hardPostAiCategory(row: GmailInboxRow): InboxAiCategory | null {
   if (mustNotAutoHandle(row)) {
     return analyzeEmailIntent(row).suggestedCategory;
   }
-  if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row)) return "handled";
+  if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row)) return "fyi";
   if (isCommercialBulk(row) && !hasUrgentHumanSignal(row)) {
     const scores = computeInboxRuleScores(row);
     return scores.newsletter > scores.promotion ? "newsletter" : "promotion";
   }
-  if (isBillingLikely(row) && !mustNotAutoHandle(row)) return "handled";
+  if (isBillingLikely(row) && !mustNotAutoHandle(row)) return "fyi";
 
   const scores = computeInboxRuleScores(row);
   const hay = emailHaystack(row);
 
   if (BILLING_VENDOR.test(row.sender) && /invoice|receipt|billing|charged|payment|subscription|renewed|amount due|summary/i.test(hay)) {
-    return "handled";
+    return "fyi";
   }
 
   if (KNOWN_BULK_PLATFORM.test(row.sender.toLowerCase()) && !isBillingLikely(row)) {
@@ -377,6 +377,7 @@ export function coerceNeedsAttentionCategory(
     const intent = analyzeEmailIntent(row);
     if (
       category === "handled" ||
+      category === "fyi" ||
       category === "promotion" ||
       category === "newsletter"
     ) {

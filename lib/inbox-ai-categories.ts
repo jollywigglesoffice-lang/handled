@@ -1,6 +1,7 @@
 export const INBOX_AI_CATEGORY_VALUES = [
   "needs_attention",
   "quick_reply",
+  "fyi",
   "newsletter",
   "promotion",
   "handled",
@@ -26,6 +27,7 @@ export type CategorySource =
 export const GMAIL_INBOX_SECTION_ORDER: InboxAiCategory[] = [
   "needs_attention",
   "quick_reply",
+  "fyi",
   "handled",
   "newsletter",
   "promotion",
@@ -63,11 +65,21 @@ function synonymToCategory(t: string): InboxAiCategory | null {
     t === "fyi" ||
     t === "informational" ||
     t === "info" ||
+    t === "notification" ||
+    t === "notifications" ||
+    t === "alert" ||
+    t === "update" ||
+    t === "confirmation" ||
+    t === "shipping" ||
+    t === "delivery" ||
+    t === "receipt"
+  ) {
+    return "fyi";
+  }
+  if (
     t === "no_action" ||
     t === "noaction" ||
     t === "automated" ||
-    t === "receipt" ||
-    t === "notification" ||
     t === "done" ||
     t === "complete"
   ) {
@@ -107,6 +119,7 @@ export function normalizeInboxAiCategory(raw: string): InboxAiCategory {
 const TITLES_EN: Record<InboxAiCategory, string> = {
   needs_attention: "Worth your attention",
   quick_reply: "Quick replies",
+  fyi: "Good to know",
   handled: "Can wait",
   newsletter: "Newsletters",
   promotion: "Promotions",
@@ -115,6 +128,7 @@ const TITLES_EN: Record<InboxAiCategory, string> = {
 const TITLES_IT: Record<InboxAiCategory, string> = {
   needs_attention: "Da vedere",
   quick_reply: "Risposte veloci",
+  fyi: "Da sapere",
   handled: "Possono aspettare",
   newsletter: "Newsletter",
   promotion: "Promozioni",
@@ -123,6 +137,7 @@ const TITLES_IT: Record<InboxAiCategory, string> = {
 const SUB_EN: Partial<Record<InboxAiCategory, string>> = {
   needs_attention: "Worth checking when you have a moment.",
   quick_reply: "Short replies — no heavy lifting.",
+  fyi: "Important updates — no reply needed.",
   handled: "Informational or already quiet — safe to skim later.",
   newsletter: "Digests and recurring reads — can likely wait.",
   promotion: "Offers and marketing — can likely wait.",
@@ -131,6 +146,7 @@ const SUB_EN: Partial<Record<InboxAiCategory, string>> = {
 const SUB_IT: Partial<Record<InboxAiCategory, string>> = {
   needs_attention: "Da controllare quando hai un momento.",
   quick_reply: "Risposte brevi — niente di pesante.",
+  fyi: "Aggiornamenti importanti — nessuna risposta necessaria.",
   handled: "Informativi o già tranquilli — puoi leggerli dopo.",
   newsletter: "Digest e letture ricorrenti — possono aspettare.",
   promotion: "Offerte e marketing — possono aspettare.",

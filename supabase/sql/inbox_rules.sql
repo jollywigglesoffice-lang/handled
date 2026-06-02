@@ -16,6 +16,7 @@ create table if not exists public.inbox_rules (
       or category in (
         'needs_attention',
         'quick_reply',
+        'fyi',
         'newsletter',
         'promotion',
         'handled'

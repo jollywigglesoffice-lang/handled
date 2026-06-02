@@ -10,6 +10,7 @@ const CATEGORY_EMPTY: Record<EmptyStateLocale, Record<InboxAiCategory, string>> 
   en: {
     needs_attention: "Nothing important appears to need your attention right now.",
     quick_reply: "No conversations seem to need a quick response.",
+    fyi: "No new updates to be aware of right now.",
     handled: "Everything here has already been taken care of.",
     newsletter: "No newsletters are waiting.",
     promotion: "No promotional emails are waiting.",
@@ -17,6 +18,7 @@ const CATEGORY_EMPTY: Record<EmptyStateLocale, Record<InboxAiCategory, string>> 
   it: {
     needs_attention: "Per ora niente di importante sembra aver bisogno di te.",
     quick_reply: "Nessuna conversazione sembra richiedere una risposta veloce.",
+    fyi: "Nessun nuovo aggiornamento da sapere per ora.",
     handled: "Qui è già stato sistemato tutto.",
     newsletter: "Nessuna newsletter in attesa.",
     promotion: "Nessuna email promozionale in attesa.",
