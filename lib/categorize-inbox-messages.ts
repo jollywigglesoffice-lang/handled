@@ -1,5 +1,10 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import {
+  EMPTY_CATEGORY_CATALOG,
+  personalCategoriesForAiPrompt,
+  type InboxCategoryCatalog,
+} from "@/lib/inbox-category-catalog";
+import {
   type CategorySource,
   type InboxAiCategory,
   parseInboxAiCategory,
@@ -416,10 +421,18 @@ function correctUrgentAiLabel(
   return { category, source: "ai", confidenceMul: 1 };
 }
 
-function buildAmbiguousAiPrompt(batchSize: number): string {
+function buildAmbiguousAiPrompt(
+  batchSize: number,
+  personalPromptBlock: string,
+): string {
+  const personalSection = personalPromptBlock
+    ? `\nPERSONAL CATEGORIES (use exact id when a strong topical match — only when clearly about that topic):\n${personalPromptBlock}\n`
+    : "";
+
   return `You triage a real personal + work inbox. Messages may be in English, Italian, or mixed (EN/IT). These did NOT match deterministic rules.
 
-Use ONLY: needs_attention, quick_reply, fyi, newsletter, promotion, handled
+Use system categories: needs_attention, quick_reply, fyi, newsletter, promotion, handled${personalPromptBlock ? " — plus the personal category ids listed below when they clearly fit." : ""}
+${personalSection}
 
 CULTURAL / PERSONAL PRIORITY (overrides business-startup bias):
 - School / teachers / parents (scuola, insegnante, colloquio, maestra, genitori, PTA, Alexandria-style school names) → needs_attention
@@ -452,6 +465,7 @@ Exactly ${batchSize} items, indices 0..${batchSize - 1}.`;
 function parseAiBatchIntoMap(
   list: RawClassification[],
   batchRowCount: number,
+  personalIds: readonly string[],
 ): Map<number, { category: InboxAiCategory; confidence: number }> {
   const byIndex = new Map<number, { category: InboxAiCategory; confidence: number }>();
   const byId = new Map<string, { category: InboxAiCategory; confidence: number }>();
@@ -460,7 +474,7 @@ function parseAiBatchIntoMap(
   for (let i = 0; i < list.length; i++) {
     const item = list[i];
     const rawCat = typeof item.category === "string" ? item.category : "";
-    const cat = parseInboxAiCategory(rawCat);
+    const cat = parseInboxAiCategory(rawCat, personalIds);
     if (!cat) continue;
     const conf = clamp01(item.confidence) ?? 0.72;
 
@@ -478,7 +492,7 @@ function parseAiBatchIntoMap(
     for (let i = 0; i < batchRowCount; i++) {
       if (!byIndex.has(i) && list[i]) {
         const rawCat = typeof list[i].category === "string" ? list[i].category! : "";
-        const cat = parseInboxAiCategory(rawCat);
+        const cat = parseInboxAiCategory(rawCat, personalIds);
         if (cat) {
           const conf = clamp01(list[i].confidence) ?? 0.72;
           byIndex.set(i, { category: cat, confidence: conf });
@@ -511,6 +525,7 @@ function parseAiBatchIntoMap(
 async function openAiClassifyBatch(
   rows: GmailInboxRow[],
   apiKey: string,
+  catalog: InboxCategoryCatalog,
 ): Promise<Map<number, { category: InboxAiCategory; confidence: number }> | null> {
   if (rows.length === 0) {
     return new Map();
@@ -523,7 +538,7 @@ async function openAiClassifyBatch(
     return `##${i + 1} (index ${i})\nid:${r.id}\nsender:${sender}\nsubject:${subject}\nsnippet:${snippet}`;
   });
 
-  const prompt = `${buildAmbiguousAiPrompt(rows.length)}
+  const prompt = `${buildAmbiguousAiPrompt(rows.length, personalCategoriesForAiPrompt(catalog))}
 
 Messages:
 ${lines.join("\n\n")}`;
@@ -583,7 +598,7 @@ ${lines.join("\n\n")}`;
     const list = extractClassificationsArray(parsed);
     if (!list.length) return null;
 
-    return parseAiBatchIntoMap(list, rows.length);
+    return parseAiBatchIntoMap(list, rows.length, catalog.personalIds);
   } catch (e) {
     warnFallback("openAiClassifyBatch exception", e);
     return null;
@@ -604,9 +619,10 @@ const AI_CLASSIFY_CHUNK_SIZE = 40;
 async function openAiClassifyChunked(
   rows: GmailInboxRow[],
   apiKey: string,
+  catalog: InboxCategoryCatalog,
 ): Promise<Map<number, { category: InboxAiCategory; confidence: number }>> {
   if (rows.length <= AI_CLASSIFY_CHUNK_SIZE) {
-    return (await openAiClassifyBatch(rows, apiKey)) ?? new Map();
+    return (await openAiClassifyBatch(rows, apiKey, catalog)) ?? new Map();
   }
 
   const chunks: Array<{ start: number; rows: GmailInboxRow[] }> = [];
@@ -616,7 +632,10 @@ async function openAiClassifyChunked(
 
   const results = await Promise.all(
     chunks.map((chunk) =>
-      openAiClassifyBatch(chunk.rows, apiKey).then((map) => ({ start: chunk.start, map })),
+      openAiClassifyBatch(chunk.rows, apiKey, catalog).then((map) => ({
+        start: chunk.start,
+        map,
+      })),
     ),
   );
 
@@ -638,6 +657,7 @@ export type CategorizeInboxOptions = {
   emailOverrides?: Record<string, InboxAiCategory>;
   senderRelationships?: SenderRelationship[];
   workflowMode?: WorkflowMode;
+  categoryCatalog?: InboxCategoryCatalog;
 };
 
 function applyUserPostIfNeeded(
@@ -698,6 +718,7 @@ export async function categorizeGmailInboxRows(
   const senderRelationships = options?.senderRelationships ?? [];
   const allUserRules = [...senderRules, ...userRules];
   const workflowMode = options?.workflowMode ?? "assist";
+  const catalog = options?.categoryCatalog ?? EMPTY_CATEGORY_CATALOG;
   const apiKey = getAiApiKey();
   logAiKeyStatus("categorize-inbox");
   const resolutionCtx: CategoryResolutionContext = { emailOverrides, senderRules };
@@ -905,7 +926,7 @@ export async function categorizeGmailInboxRows(
     return applyFinalResolutionPass(out, rows, resolutionCtx);
   }
 
-  const aiMap = await openAiClassifyChunked(ambiguousRows, apiKey);
+  const aiMap = await openAiClassifyChunked(ambiguousRows, apiKey, catalog);
 
   if (aiMap.size === 0) {
     warnFallback("AI batch failed");

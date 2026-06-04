@@ -66,15 +66,6 @@ export function recordSenderCategoryCorrection(input: {
 }): SenderCorrectionRecord | null {
   if (input.guessedCategory === input.chosenCategory) return null;
 
-  const priority: Record<InboxAiCategory, number> = {
-    needs_attention: 5,
-    quick_reply: 4,
-    fyi: 3,
-    handled: 2,
-    newsletter: 1,
-    promotion: 0,
-  };
-
   const key = senderKey(input.sender);
   const list = loadSenderCorrectionLearning();
   const existing = list.find((r) => r.senderKey === key);

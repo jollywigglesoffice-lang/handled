@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { buildInboxBuckets, type InboxBucketMessage, type InboxBuckets } from "@/lib/inbox-buckets";
+import type { InboxCategoryCatalog } from "@/lib/inbox-category-catalog";
+import { EMPTY_CATEGORY_CATALOG } from "@/lib/inbox-category-catalog";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 
 type Options<T extends InboxBucketMessage> = {
@@ -9,11 +11,11 @@ type Options<T extends InboxBucketMessage> = {
   workflowMode: WorkflowMode;
   isRefreshing: boolean;
   isInitialLoading: boolean;
+  catalog?: InboxCategoryCatalog;
 };
 
 export type StableInboxBucketsResult<T extends InboxBucketMessage> = {
   buckets: InboxBuckets<T>;
-  /** True while a refresh is in flight — UI may show prior counts */
   isCountsPending: boolean;
 };
 
@@ -26,10 +28,11 @@ export function useStableInboxBuckets<T extends InboxBucketMessage>({
   workflowMode,
   isRefreshing,
   isInitialLoading,
+  catalog = EMPTY_CATEGORY_CATALOG,
 }: Options<T>): StableInboxBucketsResult<T> {
   const live = useMemo(
-    () => buildInboxBuckets(messages, workflowMode),
-    [messages, workflowMode],
+    () => buildInboxBuckets(messages, workflowMode, catalog),
+    [messages, workflowMode, catalog],
   );
   const frozenRef = useRef<InboxBuckets<T>>(live);
 

@@ -2,13 +2,14 @@ import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 
 export type CategoryApplyScope = "this_email" | "sender" | "similar";
 
-export const CATEGORY_OPTIONS: InboxAiCategory[] = [
-  "needs_attention",
-  "quick_reply",
-  "promotion",
-  "newsletter",
-  "handled",
-];
+/**
+ * Static system-only picker order. UI should prefer `useInboxCategories().catalog.selectorOrder`
+ * so personal categories appear everywhere.
+ */
+export {
+  CATEGORY_OPTIONS,
+  INBOX_CATEGORY_SELECTOR_ORDER,
+} from "@/lib/inbox-ai-categories";
 
 /** Keywords from subject for "similar emails" rules */
 export function subjectKeywordsForSimilar(subject: string): string {
@@ -22,3 +23,5 @@ export function subjectKeywordsForSimilar(subject: string): string {
     .slice(0, 4);
   return words.join(", ");
 }
+
+export type { InboxAiCategory };

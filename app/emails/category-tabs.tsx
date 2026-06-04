@@ -1,30 +1,20 @@
 "use client";
 
-import {
-  inboxCategorySectionTitle,
-  type InboxAiCategory,
-} from "@/lib/inbox-ai-categories";
+import { useInboxCategories } from "@/app/inbox-categories-context";
+import { inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
 
 export type CategoryTab = InboxAiCategory | "all";
 
-export const CATEGORY_TAB_ORDER: InboxAiCategory[] = [
-  "needs_attention",
-  "quick_reply",
-  "fyi",
-  "handled",
-  "promotion",
-  "newsletter",
-];
-
 type CategoryTabsProps = {
   active: CategoryTab;
-  counts: Record<InboxAiCategory, number>;
+  counts: Record<string, number>;
   total: number;
   locale: "en" | "it";
   onChange: (tab: CategoryTab) => void;
 };
 
 export function CategoryTabs({ active, counts, total, locale, onChange }: CategoryTabsProps) {
+  const { catalog } = useInboxCategories();
   const allLabel = locale === "it" ? "Tutte" : "All";
 
   return (
@@ -38,10 +28,10 @@ export function CategoryTabs({ active, counts, total, locale, onChange }: Catego
         active={active === "all"}
         onClick={() => onChange("all")}
       />
-      {CATEGORY_TAB_ORDER.map((category) => (
+      {catalog.tabOrder.map((category) => (
         <TabPill
           key={category}
-          label={inboxCategorySectionTitle(category, locale)}
+          label={inboxCategoryTitle(category, locale, catalog)}
           count={counts[category] ?? 0}
           active={active === category}
           onClick={() => onChange(category)}

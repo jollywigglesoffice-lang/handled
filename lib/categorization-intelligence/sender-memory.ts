@@ -1,16 +1,10 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
-import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import {
+  inboxCategoryLearnPriority,
+  type InboxAiCategory,
+} from "@/lib/inbox-ai-categories";
 import { parseSenderDomain, parseSenderEmail } from "@/lib/inbox-user-rules/match";
 import type { CategorizationReasonCode } from "@/lib/categorization-intelligence/types";
-
-const CATEGORY_PRIORITY: Record<InboxAiCategory, number> = {
-  needs_attention: 5,
-  quick_reply: 4,
-  fyi: 3,
-  handled: 2,
-  newsletter: 1,
-  promotion: 0,
-};
 
 export type SenderMemoryHit = {
   boost: number;
@@ -54,13 +48,13 @@ export function applySenderMemory(
 
   for (const rule of rules) {
     if (!senderMatches(row, rule)) continue;
-    const pri = CATEGORY_PRIORITY[rule.targetCategory];
-    if (pri >= CATEGORY_PRIORITY.needs_attention) {
+    const pri = inboxCategoryLearnPriority(rule.targetCategory);
+    if (pri >= inboxCategoryLearnPriority("needs_attention")) {
       boost += 18 + pri * 4;
       reasonCodes.push("known_high_priority_sender");
       reasonLabels.push(`Known high-priority sender → ${rule.targetCategory.replace(/_/g, " ")}`);
       suggestedCategory = rule.targetCategory;
-    } else if (pri <= CATEGORY_PRIORITY.handled) {
+    } else if (pri <= inboxCategoryLearnPriority("handled")) {
       penalty += 12;
       reasonCodes.push("known_low_priority_sender");
       reasonLabels.push(`Known low-priority sender → ${rule.targetCategory.replace(/_/g, " ")}`);

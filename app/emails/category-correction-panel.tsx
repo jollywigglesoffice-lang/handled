@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useInboxCategories } from "@/app/inbox-categories-context";
+import type { CategoryApplyScope } from "@/lib/category-correction";
 import {
+  inboxCategoryTitle,
   type InboxAiCategory,
-  inboxCategorySectionTitle,
-} from "@/lib/inbox-ai-categories";
-import {
-  CATEGORY_OPTIONS,
-  type CategoryApplyScope,
-} from "@/lib/category-correction";
+  type InboxCategoryCatalog,
+} from "@/lib/inbox-category-catalog";
 
 export type CategoryCorrectionTarget = {
   id: string;
@@ -38,7 +37,8 @@ export function CategoryCorrectionPanel({
   const [scope, setScope] = useState<CategoryApplyScope | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const guessedLabel = inboxCategorySectionTitle(target.guessedCategory, "en");
+  const { catalog } = useInboxCategories();
+  const guessedLabel = inboxCategoryTitle(target.guessedCategory, "en", catalog);
   const step = chosen === null ? "pick_category" : scope === null ? "pick_scope" : "done";
 
   async function confirm(scopeValue: CategoryApplyScope) {
@@ -81,6 +81,7 @@ export function CategoryCorrectionPanel({
 
       {step === "pick_category" ? (
         <CategoryPickGrid
+          catalog={catalog}
           guessed={target.guessedCategory}
           onSelect={(cat) => {
             setChosen(cat);
@@ -94,7 +95,7 @@ export function CategoryCorrectionPanel({
       {step === "pick_scope" && chosen ? (
         <div className="mt-4 space-y-3">
           <p className="text-sm font-medium text-[#0F172A]">
-            Move to <span className="text-accent">{inboxCategorySectionTitle(chosen, "en")}</span> — how
+            Move to <span className="text-accent">{inboxCategoryTitle(chosen, "en", catalog)}</span> — how
             should Handled apply this?
           </p>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -142,15 +143,17 @@ export function CategoryCorrectionPanel({
 }
 
 function CategoryPickGrid({
+  catalog,
   guessed,
   onSelect,
 }: {
+  catalog: InboxCategoryCatalog;
   guessed: InboxAiCategory;
   onSelect: (c: InboxAiCategory) => void;
 }) {
   return (
     <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {CATEGORY_OPTIONS.map((cat) => (
+      {catalog.selectorOrder.map((cat) => (
         <button
           key={cat}
           type="button"
@@ -161,7 +164,7 @@ function CategoryPickGrid({
               : "border-[#E2E8F0] bg-white text-[#0F172A] hover:border-accent/20 hover:bg-accent-muted/30"
           }`}
         >
-          {inboxCategorySectionTitle(cat, "en")}
+          {inboxCategoryTitle(cat, "en", catalog)}
           {cat === guessed ? (
             <span className="ml-1 text-xs text-accent/80">(current guess)</span>
           ) : null}

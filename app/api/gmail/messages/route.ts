@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { EMPTY_CATEGORY_CATALOG } from "@/lib/inbox-category-catalog";
 import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
 import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-messages";
 
@@ -67,6 +68,8 @@ export async function GET(request: Request) {
           keywordRules: [],
           allRules: [],
           senderRelationships: [],
+          personalCategories: [],
+          categoryCatalog: EMPTY_CATEGORY_CATALOG,
         };
     const workflowMode = parseWorkflowModeHeader(
       request.headers.get(WORKFLOW_MODE_HEADER),
@@ -77,6 +80,7 @@ export async function GET(request: Request) {
       userRules: rulesCtx.keywordRules,
       senderRelationships: rulesCtx.senderRelationships,
       workflowMode,
+      categoryCatalog: rulesCtx.categoryCatalog,
     });
 
     if (process.env.NODE_ENV === "development") {
@@ -133,6 +137,7 @@ export async function GET(request: Request) {
         messages: messagesForClient,
         categoryOverrides: rulesCtx.emailOverrides,
         emailOverrideRecords: rulesCtx.emailOverrideRecords,
+        personalCategories: rulesCtx.personalCategories,
         nextPageToken,
       }),
     );

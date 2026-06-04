@@ -1,5 +1,8 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
-import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import {
+  inboxCategorySelectorLabel,
+  type InboxAiCategory,
+} from "@/lib/inbox-ai-categories";
 import {
   applyUserRulesPost,
   applyUserRulesPre,
@@ -12,14 +15,9 @@ import {
 } from "@/lib/inbox-rule-classify";
 import { intelligentFallbackCategory } from "@/lib/categorize-inbox-messages";
 
-const CATEGORY_LABELS: Record<InboxAiCategory, string> = {
-  needs_attention: "Needs your attention",
-  quick_reply: "Quick reply",
-  fyi: "Good to know",
-  newsletter: "Newsletters",
-  promotion: "Promotions",
-  handled: "Handled",
-};
+function categoryLabel(category: InboxAiCategory): string {
+  return inboxCategorySelectorLabel(category, "en");
+}
 
 export type TriagePreviewResult = {
   finalCategory: InboxAiCategory;
@@ -60,7 +58,7 @@ export function previewInboxTriage(
     const cat = coerceNeedsAttentionCategory(row, userPre.category);
     return {
       finalCategory: cat,
-      finalLabel: CATEGORY_LABELS[cat],
+      finalLabel: categoryLabel(cat),
       userRuleMatches,
       builtInLabel: null,
       builtInCategory: null,
@@ -70,7 +68,7 @@ export function previewInboxTriage(
   if (userPre?.kind === "block") {
     return {
       finalCategory: "handled",
-      finalLabel: CATEGORY_LABELS.handled,
+      finalLabel: categoryLabel("handled"),
       userRuleMatches,
       builtInLabel: null,
       builtInCategory: null,
@@ -89,14 +87,14 @@ export function previewInboxTriage(
     builtInCategory = system.category;
     builtInLabel =
       system.matchType === "hard"
-        ? `Built-in: ${CATEGORY_LABELS[system.category]} (strong match)`
-        : `Built-in: ${CATEGORY_LABELS[system.category]}`;
+        ? `Built-in: ${categoryLabel(system.category)} (strong match)`
+        : `Built-in: ${categoryLabel(system.category)}`;
     pipelineNote = "Automatic sorting matched this as commercial, social, or billing.";
   } else {
     const fb = intelligentFallbackCategory(row);
     category = fb.category;
     builtInCategory = fb.category;
-    builtInLabel = `Built-in fallback: ${CATEGORY_LABELS[fb.category]}`;
+    builtInLabel = `Built-in fallback: ${categoryLabel(fb.category)}`;
     pipelineNote = "No strong automatic match — used safe fallback rules.";
   }
 
@@ -110,7 +108,7 @@ export function previewInboxTriage(
 
   return {
     finalCategory: category,
-    finalLabel: CATEGORY_LABELS[category],
+    finalLabel: categoryLabel(category),
     userRuleMatches,
     builtInLabel,
     builtInCategory,
@@ -118,4 +116,3 @@ export function previewInboxTriage(
   };
 }
 
-export { CATEGORY_LABELS };

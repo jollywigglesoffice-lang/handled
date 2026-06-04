@@ -1,4 +1,14 @@
-import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import {
+  EMPTY_CATEGORY_CATALOG,
+  type InboxCategoryCatalog,
+} from "@/lib/inbox-category-catalog";
+import {
+  GMAIL_INBOX_SECTION_ORDER,
+  INBOX_CATEGORY_PRIMARY_ORDER,
+  INBOX_CLUTTER_CATEGORIES,
+  isSystemInboxCategory,
+  type InboxAiCategory,
+} from "@/lib/inbox-ai-categories";
 import { shouldHideForRelationship } from "@/lib/relationship-intelligence/effects";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import type { WorkflowMode } from "@/lib/workflow-mode";
@@ -9,7 +19,21 @@ export type InboxListMessage = {
   relationship?: SenderRelationshipProfile;
 };
 
-const CLUTTER_CATEGORIES: InboxAiCategory[] = ["newsletter", "promotion"];
+export { GMAIL_INBOX_SECTION_ORDER };
+
+export const GMAIL_CATEGORY_ORDER_BY_MODE: Record<WorkflowMode, InboxAiCategory[]> = {
+  assist: GMAIL_INBOX_SECTION_ORDER,
+  clean: GMAIL_INBOX_SECTION_ORDER,
+  handle: INBOX_CATEGORY_PRIMARY_ORDER,
+};
+
+export function gmailCategoryOrderForMode(
+  mode: WorkflowMode,
+  catalog: InboxCategoryCatalog,
+): InboxAiCategory[] {
+  if (mode === "handle") return catalog.primaryOrder;
+  return catalog.sectionOrder;
+}
 
 /** Whether to show this message in the main inbox list for the active workflow mode. */
 export function shouldShowMessageInWorkflow<T extends InboxListMessage>(
@@ -24,7 +48,7 @@ export function shouldShowMessageInWorkflow<T extends InboxListMessage>(
   }
   const profile = getWorkflowModeProfile(mode);
   if (profile.hidePromotionsInList) {
-    return !CLUTTER_CATEGORIES.includes(message.category);
+    return !INBOX_CLUTTER_CATEGORIES.includes(message.category);
   }
   return true;
 }
@@ -38,22 +62,22 @@ export function workflowModeTagline(mode: WorkflowMode): string {
 }
 
 /** Section order for non-clutter categories */
-export function primaryCategoryOrderForMode(mode: WorkflowMode): InboxAiCategory[] {
+export function primaryCategoryOrderForMode(
+  mode: WorkflowMode,
+  catalog: InboxCategoryCatalog = EMPTY_CATEGORY_CATALOG,
+): InboxAiCategory[] {
   const profile = getWorkflowModeProfile(mode);
   if (profile.collapseClutterSections || profile.hidePromotionsInList) {
-    return ["needs_attention", "quick_reply", "fyi", "handled"];
+    return catalog.primaryOrder;
   }
-  return ["needs_attention", "quick_reply", "fyi", "handled", "newsletter", "promotion"];
+  return catalog.sectionOrder;
 }
 
-export const GMAIL_CATEGORY_ORDER_BY_MODE: Record<WorkflowMode, InboxAiCategory[]> = {
-  assist: ["needs_attention", "quick_reply", "fyi", "handled", "newsletter", "promotion"],
-  clean: ["needs_attention", "quick_reply", "fyi", "handled", "newsletter", "promotion"],
-  handle: ["needs_attention", "quick_reply", "fyi", "handled"],
-};
-
 export function isClutterCategory(category: InboxAiCategory): boolean {
-  return CLUTTER_CATEGORIES.includes(category);
+  if (isSystemInboxCategory(category)) {
+    return INBOX_CLUTTER_CATEGORIES.includes(category);
+  }
+  return false;
 }
 
 export function shouldCollapseClutter(mode: WorkflowMode): boolean {

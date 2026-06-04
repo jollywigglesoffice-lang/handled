@@ -1,4 +1,5 @@
 -- Personalized inbox triage rules (per Auth user).
+-- Category CHECK values must match lib/inbox-ai-categories.ts (INBOX_AI_CATEGORY_VALUES).
 -- Run in Supabase SQL editor after `users` exists.
 
 create table if not exists public.inbox_rules (

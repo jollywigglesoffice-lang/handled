@@ -1,20 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { useInboxCategories } from "@/app/inbox-categories-context";
+import {
+  inboxCategorySelectorTitle,
+  type InboxAiCategory,
+  type InboxCategoryCatalog,
+} from "@/lib/inbox-category-catalog";
 import { previewInboxTriage } from "@/lib/preview-inbox-triage";
 import { INBOX_RULE_TEMPLATES, templateToRules } from "@/lib/inbox-rule-templates";
 import type { InboxUserRule } from "@/lib/inbox-user-rules";
 import { saveClientInboxRules } from "@/lib/inbox-rules-client-storage";
-
-const DESTINATION_LABELS: Record<InboxAiCategory, string> = {
-  needs_attention: "Needs your attention",
-  quick_reply: "Quick reply",
-  fyi: "Good to know (no reply needed)",
-  newsletter: "Newsletters",
-  promotion: "Promotions",
-  handled: "Handled (already quiet)",
-};
 
 const LOCAL_RULES_KEY = "handled_inbox_rules_v1";
 
@@ -55,6 +51,7 @@ function RuleEditor({
   onChange: (rule: InboxUserRule) => void;
   onRemove: () => void;
 }) {
+  const { catalog } = useInboxCategories();
   const destination = ruleDestination(rule);
 
   return (
@@ -118,9 +115,9 @@ function RuleEditor({
           }
           className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-sm"
         >
-          {(Object.keys(DESTINATION_LABELS) as InboxAiCategory[]).map((c) => (
+          {catalog.selectorOrder.map((c) => (
             <option key={c} value={c}>
-              {DESTINATION_LABELS[c]}
+              {inboxCategorySelectorTitle(c, "en", catalog)}
             </option>
           ))}
         </select>
@@ -129,7 +126,13 @@ function RuleEditor({
   );
 }
 
-function RuleTesterPanel({ rules }: { rules: InboxUserRule[] }) {
+function RuleTesterPanel({
+  rules,
+  catalog,
+}: {
+  rules: InboxUserRule[];
+  catalog: InboxCategoryCatalog;
+}) {
   const [sampleSender, setSampleSender] = useState("Instagram <notification@mail.instagram.com>");
   const [sampleSubject, setSampleSubject] = useState("You have 3 new notifications");
   const [sampleSnippet, setSampleSnippet] = useState("See who liked your photo. Unsubscribe");
@@ -188,7 +191,7 @@ function RuleTesterPanel({ rules }: { rules: InboxUserRule[] }) {
             <ul className="text-xs text-gray-800 space-y-1">
               {preview.userRuleMatches.map((m, i) => (
                 <li key={i}>
-                  ✓ <strong>{m.label}</strong> → {DESTINATION_LABELS[m.destination]}
+                  ✓ <strong>{m.label}</strong> → {inboxCategorySelectorTitle(m.destination, "en", catalog)}
                 </li>
               ))}
             </ul>
@@ -218,6 +221,7 @@ function RuleTesterPanel({ rules }: { rules: InboxUserRule[] }) {
 }
 
 export function InboxPrioritySettings() {
+  const { catalog } = useInboxCategories();
   const [rules, setRules] = useState<InboxUserRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -385,7 +389,7 @@ export function InboxPrioritySettings() {
         </div>
       </div>
 
-      {!loading ? <RuleTesterPanel rules={rules} /> : null}
+      {!loading ? <RuleTesterPanel rules={rules} catalog={catalog} /> : null}
 
       {loading ? (
         <p className="text-sm text-gray-400">Loading your rules…</p>

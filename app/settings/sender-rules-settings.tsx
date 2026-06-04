@@ -1,25 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  type InboxAiCategory,
-  inboxCategorySectionTitle,
-} from "@/lib/inbox-ai-categories";
+import { useInboxCategories } from "@/app/inbox-categories-context";
+import { inboxCategorySelectorTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
 import {
   loadClientSenderPreferences,
   saveClientSenderPreferences,
   type SenderPreference,
 } from "@/lib/inbox-sender-preferences";
 
-const CATEGORY_OPTIONS: InboxAiCategory[] = [
-  "needs_attention",
-  "quick_reply",
-  "promotion",
-  "newsletter",
-  "handled",
-];
-
 export function SenderRulesSettings() {
+  const { catalog } = useInboxCategories();
   const [rules, setRules] = useState<SenderPreference[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -150,9 +141,9 @@ export function SenderRulesSettings() {
                 }
                 className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-sm"
               >
-                {CATEGORY_OPTIONS.map((c) => (
+                {catalog.selectorOrder.map((c) => (
                   <option key={c} value={c}>
-                    {inboxCategorySectionTitle(c, "en")}
+                    {inboxCategorySelectorTitle(c, "en", catalog)}
                   </option>
                 ))}
               </select>

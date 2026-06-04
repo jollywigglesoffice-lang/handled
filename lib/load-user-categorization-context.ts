@@ -9,7 +9,11 @@ import {
   parseSenderPreferencesHeader,
   senderPreferencesToRules,
 } from "@/lib/inbox-sender-preferences";
+import { buildInboxCategoryCatalog } from "@/lib/inbox-category-catalog";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { parsePersonalCategoriesHeader } from "@/lib/personal-categories/client-storage";
+import { loadPersonalCategoriesForUser } from "@/lib/personal-categories/store";
+import type { PersonalInboxCategory } from "@/lib/personal-categories/types";
 import { loadSenderRulesForUser } from "@/lib/sender-rules/store";
 import { isLearnedSenderInboxRule, senderRulesToInboxRules } from "@/lib/sender-rules/to-inbox-rules";
 import { parseSenderRelationshipsHeader } from "@/lib/relationship-intelligence/client-storage";
@@ -29,6 +33,8 @@ export type CategorizationContext = {
   allRules: InboxUserRule[];
   /** Learned + manual sender relationships. */
   senderRelationships: SenderRelationship[];
+  personalCategories: PersonalInboxCategory[];
+  categoryCatalog: ReturnType<typeof buildInboxCategoryCatalog>;
 };
 
 function stripLearnedSenderDuplicates(rules: InboxUserRule[]): InboxUserRule[] {
@@ -85,6 +91,16 @@ export async function loadCategorizationContext(
   }
   const senderRelationships = [...relByKey.values()];
 
+  const clientPersonal = request
+    ? parsePersonalCategoriesHeader(
+        request.headers.get("x-handled-personal-categories"),
+      )
+    : [];
+  const serverPersonal = await loadPersonalCategoriesForUser(userId);
+  const personalCategories =
+    clientPersonal.length > 0 ? clientPersonal : serverPersonal;
+  const categoryCatalog = buildInboxCategoryCatalog(personalCategories);
+
   return {
     emailOverrides,
     emailOverrideRecords,
@@ -92,6 +108,8 @@ export async function loadCategorizationContext(
     keywordRules,
     allRules,
     senderRelationships,
+    personalCategories,
+    categoryCatalog,
   };
 }
 

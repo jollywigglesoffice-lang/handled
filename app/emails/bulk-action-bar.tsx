@@ -1,11 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CATEGORY_OPTIONS } from "@/lib/category-correction";
-import {
-  inboxCategorySectionTitle,
-  type InboxAiCategory,
-} from "@/lib/inbox-ai-categories";
+import { useInboxCategories } from "@/app/inbox-categories-context";
+import { inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
 
 type BulkActionBarProps = {
   count: number;
@@ -59,6 +56,7 @@ export function BulkActionBar({
   onSelectAllVisible,
   onClear,
 }: BulkActionBarProps) {
+  const { catalog } = useInboxCategories();
   const [menuOpen, setMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -117,7 +115,7 @@ export function BulkActionBar({
               role="menu"
               className="absolute bottom-full left-0 mb-2 w-56 overflow-hidden rounded-2xl border border-gray-100 bg-white p-1 shadow-[0_16px_48px_-16px_rgba(15,23,42,0.3)]"
             >
-              {CATEGORY_OPTIONS.map((category: InboxAiCategory) => (
+              {catalog.selectorOrder.map((category: InboxAiCategory) => (
                 <button
                   key={category}
                   type="button"
@@ -128,7 +126,7 @@ export function BulkActionBar({
                   }}
                   className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm text-[#0F172A] transition hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
                 >
-                  {inboxCategorySectionTitle(category, locale)}
+                  {inboxCategoryTitle(category, locale, catalog)}
                 </button>
               ))}
             </div>

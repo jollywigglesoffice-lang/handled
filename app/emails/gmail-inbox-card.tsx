@@ -3,10 +3,8 @@
 import Link from "next/link";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
-import {
-  type InboxAiCategory,
-  inboxCategorySectionTitle,
-} from "@/lib/inbox-ai-categories";
+import { useInboxCategories } from "@/app/inbox-categories-context";
+import { inboxCategoryAccent, inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
 import type { CategorySource } from "@/lib/inbox-ai-categories";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
 import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
@@ -58,15 +56,6 @@ export type GmailCardMessage = {
   relationship?: SenderRelationshipProfile;
 };
 
-const CATEGORY_ACCENT: Record<InboxAiCategory, string> = {
-  needs_attention: "border-l-4 border-l-accent bg-accent-muted/25",
-  quick_reply: "border-l-4 border-l-teal-500 bg-teal-50/40",
-  fyi: "border-l-4 border-l-sky-500 bg-sky-50/30",
-  handled: "border-l-4 border-l-emerald-500 bg-emerald-50/30",
-  newsletter: "border-l-4 border-l-slate-400 bg-slate-50/50",
-  promotion: "border-l-4 border-l-amber-500 bg-amber-50/35",
-};
-
 function formatInboxDate(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -109,9 +98,10 @@ export function GmailInboxCard({
     [message.sender, locale],
   );
   const ui = useUiCopy();
+  const { catalog } = useInboxCategories();
   const guessedRef = useRef(message.category);
-  const accent = CATEGORY_ACCENT[message.category];
-  const catLabel = inboxCategorySectionTitle(message.category, locale);
+  const accent = inboxCategoryAccent(message.category, catalog);
+  const catLabel = inboxCategoryTitle(message.category, locale, catalog);
   const learnedApplied = message.categorySource === "sender_rule";
   const manualOverride = message.categorySource === "manual_override";
   const workflowMode = readWorkflowModeFromStorage();

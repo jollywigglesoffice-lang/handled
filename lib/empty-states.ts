@@ -1,35 +1,18 @@
+import {
+  EMPTY_CATEGORY_CATALOG,
+  inboxCategoryEmptyCopy,
+  type InboxCategoryCatalog,
+} from "@/lib/inbox-category-catalog";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 
 export type EmptyStateLocale = "en" | "it";
 
-/**
- * Calm, contextual per-category empty copy.
- * Reinforces "nothing needs me" rather than "the box is empty".
- */
-const CATEGORY_EMPTY: Record<EmptyStateLocale, Record<InboxAiCategory, string>> = {
-  en: {
-    needs_attention: "Nothing important appears to need your attention right now.",
-    quick_reply: "No conversations seem to need a quick response.",
-    fyi: "No new updates to be aware of right now.",
-    handled: "Everything here has already been taken care of.",
-    newsletter: "No newsletters are waiting.",
-    promotion: "No promotional emails are waiting.",
-  },
-  it: {
-    needs_attention: "Per ora niente di importante sembra aver bisogno di te.",
-    quick_reply: "Nessuna conversazione sembra richiedere una risposta veloce.",
-    fyi: "Nessun nuovo aggiornamento da sapere per ora.",
-    handled: "Qui è già stato sistemato tutto.",
-    newsletter: "Nessuna newsletter in attesa.",
-    promotion: "Nessuna email promozionale in attesa.",
-  },
-};
-
 export function categoryEmptyMessage(
   category: InboxAiCategory,
   locale: EmptyStateLocale,
+  catalog: InboxCategoryCatalog = EMPTY_CATEGORY_CATALOG,
 ): string {
-  return CATEGORY_EMPTY[locale][category];
+  return inboxCategoryEmptyCopy(category, locale, catalog);
 }
 
 /**
@@ -71,10 +54,6 @@ export type InboxCompletionCopy = {
   subtitle: string;
 };
 
-/**
- * Pick a completion line. `seed` keeps it stable for a render/session while
- * still rotating naturally across visits (callers pass a time- or visit-based seed).
- */
 export function inboxCompletionCopy(
   locale: EmptyStateLocale,
   seed = Date.now(),
@@ -88,8 +67,6 @@ export function inboxCompletionCopy(
   };
 }
 
-/** Stable-per-session seed that still rotates between visits. */
 export function rotatingCompletionSeed(): number {
-  // Changes roughly every 20 minutes — natural rotation without flicker.
   return Math.floor(Date.now() / (1000 * 60 * 20));
 }

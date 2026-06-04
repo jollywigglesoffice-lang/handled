@@ -1,7 +1,10 @@
--- Adds the "fyi" (Good to know) inbox category to inbox_rules.category CHECK.
--- Canonical slug list: lib/inbox-ai-categories.ts → INBOX_AI_CATEGORY_VALUES
--- Run once in the Supabase SQL editor. Safe to re-run.
+-- Personal inbox categories (per user). System categories stay in code
+-- (lib/inbox-ai-categories.ts → SYSTEM_INBOX_CATEGORY_VALUES).
 
+alter table public.users
+  add column if not exists custom_categories_json jsonb not null default '[]'::jsonb;
+
+-- Allow inbox_rules to reference personal categories (custom:slug).
 alter table public.inbox_rules
   drop constraint if exists inbox_rules_category_check;
 
@@ -17,6 +20,7 @@ alter table public.inbox_rules
       'promotion',
       'handled'
     )
+    or category like 'custom:%'
   );
 
 notify pgrst, 'reload schema';

@@ -87,6 +87,9 @@ function normalizeMockCategory(
   const s = email.section.toLowerCase();
   if (s.includes("promotion")) return "promotion";
   if (s.includes("newsletter")) return "newsletter";
+  if (s.includes("good to know") || s.includes("fyi") || s.includes("da sapere")) {
+    return "fyi";
+  }
   if (s.includes("handled")) return "handled";
   if (s.includes("quick")) return "quick_reply";
   return "needs_attention";

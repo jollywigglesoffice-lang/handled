@@ -68,14 +68,15 @@ import {
 } from "@/lib/empty-states";
 import { calmInboxErrorFromRaw } from "@/lib/calm-messages";
 import { uiLocaleFromLanguage } from "@/lib/ui-copy";
+import { useInboxCategories } from "@/app/inbox-categories-context";
 import {
-  type CategorySource,
+  inboxCategorySubtitle,
+  inboxCategoryTitle,
   type InboxAiCategory,
-  inboxCategorySectionSubtitle,
-  inboxCategorySectionTitle,
-  normalizeInboxAiCategory,
-  INBOX_AI_CATEGORY_VALUES,
-} from "@/lib/inbox-ai-categories";
+} from "@/lib/inbox-category-catalog";
+import { type CategorySource, normalizeInboxAiCategory } from "@/lib/inbox-ai-categories";
+import { saveClientPersonalCategories } from "@/lib/personal-categories/client-storage";
+import { normalizePersonalCategoriesList } from "@/lib/personal-categories/storage";
 import { applySenderRuleToMessages } from "@/lib/sender-rules/apply-to-messages";
 import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
 import { buildCategoryUndoSnapshot } from "@/lib/category-undo/snapshot";
@@ -132,16 +133,12 @@ type InboxMode =
   | "gmail_error";
 
 const CATEGORY_TAB_KEY = "handled_category_tab_v1";
-const VALID_TABS: ReadonlySet<string> = new Set([
-  "all",
-  ...INBOX_AI_CATEGORY_VALUES,
-]);
 
-function loadCategoryTab(): CategoryTab {
+function loadCategoryTab(validIds: ReadonlySet<string>): CategoryTab {
   if (typeof window === "undefined") return "all";
   try {
     const raw = localStorage.getItem(CATEGORY_TAB_KEY);
-    if (raw && VALID_TABS.has(raw)) return raw as CategoryTab;
+    if (raw && (raw === "all" || validIds.has(raw))) return raw as CategoryTab;
   } catch {
     /* ignore */
   }
@@ -318,12 +315,14 @@ function GmailCategorySectionHeader({
   count: number;
   onSelectAll?: () => void;
 }) {
-  const subtitle = inboxCategorySectionSubtitle(category, locale);
+  const { catalog } = useInboxCategories();
+  const subtitle = inboxCategorySubtitle(category, locale, catalog);
   const isPrimary =
     category === "needs_attention" ||
     category === "quick_reply" ||
     category === "fyi" ||
-    category === "handled";
+    category === "handled" ||
+    catalog.personalIds.includes(category);
 
   return (
     <div className="group/section flex flex-wrap items-baseline justify-between gap-2">
@@ -333,7 +332,7 @@ function GmailCategorySectionHeader({
         ) : null}
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-gray-900">
-            {inboxCategorySectionTitle(category, locale)}
+            {inboxCategoryTitle(category, locale, catalog)}
           </h2>
           {subtitle && isPrimary ? (
             <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>
@@ -500,6 +499,11 @@ function EmptyNeedsAttentionState({ show, locale }: { show: boolean; locale: "en
 
 export default function EmailsInboxPage() {
   const ui = useUiCopy();
+  const { catalog } = useInboxCategories();
+  const validTabIds = useMemo(
+    () => new Set<string>(["all", ...catalog.allIds]),
+    [catalog],
+  );
   const { uiLanguage, setUiLanguage } = useUserPreferences();
   const loadingMicroMessages = useMemo(
     () => loadingRhythmMessages(uiLanguage === "it" ? "it" : "en"),
@@ -568,6 +572,7 @@ export default function EmailsInboxPage() {
         messages?: GmailInboxMessage[];
         categoryOverrides?: Record<string, InboxAiCategory>;
         emailOverrideRecords?: EmailCategoryOverride[];
+        personalCategories?: import("@/lib/personal-categories/types").PersonalInboxCategory[];
         nextPageToken?: string | null;
         error?: string;
         message?: string;
@@ -586,6 +591,13 @@ export default function EmailsInboxPage() {
         );
         setInboxMode("gmail_error");
         return;
+      }
+
+      if (body.personalCategories?.length) {
+        saveClientPersonalCategories(
+          normalizePersonalCategoriesList(body.personalCategories),
+        );
+        window.dispatchEvent(new Event("handled-personal-categories-changed"));
       }
 
       const msgsRaw = body.messages ?? [];
@@ -866,6 +878,7 @@ export default function EmailsInboxPage() {
     workflowMode,
     isRefreshing,
     isInitialLoading: inboxMode === "loading",
+    catalog,
   });
 
   const mockInboxMessages = useMemo(
@@ -878,6 +891,7 @@ export default function EmailsInboxPage() {
     workflowMode,
     isRefreshing: false,
     isInitialLoading: false,
+    catalog,
   });
 
   const inboxLocale = uiLanguage === "it" ? "it" : "en";
@@ -919,9 +933,11 @@ export default function EmailsInboxPage() {
     return () => window.removeEventListener(READ_STATE_EVENT, sync);
   }, []);
 
-  const [activeCategoryTab, setActiveCategoryTab] = useState<CategoryTab>(() =>
-    loadCategoryTab(),
-  );
+  const [activeCategoryTab, setActiveCategoryTab] = useState<CategoryTab>("all");
+  useEffect(() => {
+    setActiveCategoryTab(loadCategoryTab(validTabIds));
+  }, [validTabIds]);
+
   const handleCategoryTabChange = useCallback((tab: CategoryTab) => {
     setActiveCategoryTab(tab);
     saveCategoryTab(tab);
@@ -1497,7 +1513,7 @@ export default function EmailsInboxPage() {
                       <InboxEmptyState
                         compact
                         tone="attention"
-                        title={categoryEmptyMessage("needs_attention", inboxLocale)}
+                        title={categoryEmptyMessage("needs_attention", inboxLocale, catalog)}
                         subtitle={completionCopy.subtitle}
                       />
                     </section>
@@ -1546,7 +1562,7 @@ export default function EmailsInboxPage() {
               ) : (
                 <InboxEmptyState
                   tone="calm"
-                  title={categoryEmptyMessage(activeCategoryTab, inboxLocale)}
+                  title={categoryEmptyMessage(activeCategoryTab, inboxLocale, catalog)}
                 />
               )}
               <InboxSecondaryTools

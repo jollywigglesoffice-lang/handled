@@ -8,6 +8,7 @@ import { buildEmailSummary, heuristicEmailSummary } from "@/lib/email-summary";
 import { analyzeFollowUp } from "@/lib/follow-up/analyze";
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import type { GmailInboxRow } from "@/lib/gmail-api";
+import { EMPTY_CATEGORY_CATALOG } from "@/lib/inbox-category-catalog";
 import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { assessReplyNeed } from "@/lib/reply-necessity";
@@ -197,6 +198,8 @@ export async function enrichEmailDetailIntelligence(
       keywordRules: [],
       allRules: [],
       senderRelationships: [],
+      personalCategories: [],
+      categoryCatalog: EMPTY_CATEGORY_CATALOG,
     },
     warnings,
   );
@@ -210,6 +213,7 @@ export async function enrichEmailDetailIntelligence(
         userRules: rulesCtx.keywordRules,
         senderRelationships: rulesCtx.senderRelationships,
         workflowMode,
+        categoryCatalog: rulesCtx.categoryCatalog,
       });
       return rows[0];
     },

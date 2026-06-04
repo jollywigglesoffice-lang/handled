@@ -1,9 +1,7 @@
 "use client";
 
-import {
-  inboxCategorySectionTitle,
-  type InboxAiCategory,
-} from "@/lib/inbox-ai-categories";
+import { useInboxCategories } from "@/app/inbox-categories-context";
+import { inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
 import {
   estimateClearSeconds,
   formatDuration,
@@ -16,14 +14,6 @@ type InboxSummaryCardProps = {
   onHandleQuickReplies: () => void;
   onInboxZero: () => void;
 };
-
-const SUMMARY_ORDER: InboxAiCategory[] = [
-  "needs_attention",
-  "quick_reply",
-  "fyi",
-  "handled",
-  "promotion",
-];
 
 const COPY = {
   en: {
@@ -49,8 +39,9 @@ export function InboxSummaryCard({
   onHandleQuickReplies,
   onInboxZero,
 }: InboxSummaryCardProps) {
+  const { catalog } = useInboxCategories();
   const t = COPY[locale];
-  const rows = SUMMARY_ORDER.filter((category) => counts[category] > 0);
+  const rows = catalog.summaryOrder.filter((category) => counts[category] > 0);
   const total = rows.reduce((sum, category) => sum + counts[category], 0);
   if (total === 0) return null;
 
@@ -67,7 +58,7 @@ export function InboxSummaryCard({
                   {counts[category]}
                 </dt>
                 <dd className="text-sm text-gray-500">
-                  {inboxCategorySectionTitle(category, locale)}
+                  {inboxCategoryTitle(category, locale, catalog)}
                 </dd>
               </div>
             ))}

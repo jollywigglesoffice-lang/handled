@@ -1,10 +1,11 @@
 import {
-  INBOX_AI_CATEGORY_VALUES,
-  normalizeInboxAiCategory,
-  type InboxAiCategory,
-} from "@/lib/inbox-ai-categories";
+  resolveCategoryWithCatalog,
+  type InboxCategoryCatalog,
+} from "@/lib/inbox-category-catalog";
+import { EMPTY_CATEGORY_CATALOG, initCategoryBuckets, initCategoryCounts } from "@/lib/inbox-category-catalog";
+import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import {
-  GMAIL_CATEGORY_ORDER_BY_MODE,
+  gmailCategoryOrderForMode,
   isClutterCategory,
   primaryCategoryOrderForMode,
   shouldCollapseClutter,
@@ -20,36 +21,32 @@ export type InboxBucketMessage = {
 };
 
 export type InboxBuckets<T extends InboxBucketMessage> = {
-  /** Visible messages after workflow filter, in stable category order */
+  catalog: InboxCategoryCatalog;
   allVisible: T[];
-  byCategory: Record<InboxAiCategory, T[]>;
-  counts: Record<InboxAiCategory, number>;
+  byCategory: Record<string, T[]>;
+  counts: Record<string, number>;
   categoryOrder: InboxAiCategory[];
   needsAttentionEmails: T[];
   quickReplyEmails: T[];
   handledEmails: T[];
   newsletterEmails: T[];
   promotionEmails: T[];
-  /** Same as `counts.needs_attention` — use for Today card copy */
   todayAttentionCount: number;
-  /** needs_attention + quick_reply (if you need a broader priority metric) */
   priorityCount: number;
   totalVisible: number;
-  /** Newsletter + promotion grouped for Clean mode */
   clutterEmails: T[];
   clutterCount: number;
   showClutterSection: boolean;
 };
 
-function emptyBuckets<T extends InboxBucketMessage>(): InboxBuckets<T> {
-  const byCategory = Object.fromEntries(
-    INBOX_AI_CATEGORY_VALUES.map((c) => [c, [] as T[]]),
-  ) as Record<InboxAiCategory, T[]>;
-  const counts = Object.fromEntries(
-    INBOX_AI_CATEGORY_VALUES.map((c) => [c, 0]),
-  ) as Record<InboxAiCategory, number>;
+function emptyBuckets<T extends InboxBucketMessage>(
+  catalog: InboxCategoryCatalog,
+): InboxBuckets<T> {
+  const byCategory = initCategoryBuckets<T>(catalog);
+  const counts = initCategoryCounts(catalog);
 
   return {
+    catalog,
     allVisible: [],
     byCategory,
     counts,
@@ -75,63 +72,71 @@ function emptyBuckets<T extends InboxBucketMessage>(): InboxBuckets<T> {
 export function buildInboxBuckets<T extends InboxBucketMessage>(
   messages: T[],
   workflowMode: WorkflowMode,
+  catalog: InboxCategoryCatalog = EMPTY_CATEGORY_CATALOG,
 ): InboxBuckets<T> {
   if (messages.length === 0) {
-    return emptyBuckets();
+    return emptyBuckets(catalog);
   }
 
   const collapseClutter = shouldCollapseClutter(workflowMode);
 
   const clutterEmails = collapseClutter
     ? messages
-        .filter((m) => isClutterCategory(normalizeInboxAiCategory(m.category)))
-        .map((m) => ({ ...m, category: normalizeInboxAiCategory(m.category) }))
+        .filter((m) => isClutterCategory(m.category))
+        .map((m) => ({
+          ...m,
+          category: resolveCategoryWithCatalog(m.category, catalog),
+        }))
     : [];
 
   const visible = messages.filter((m) =>
     shouldShowMessageInWorkflow(
       {
-        category: normalizeInboxAiCategory(m.category),
+        category: resolveCategoryWithCatalog(m.category, catalog),
         relationship: m.relationship,
       },
       workflowMode,
     ),
   );
 
-  const byCategory = Object.fromEntries(
-    INBOX_AI_CATEGORY_VALUES.map((c) => [c, [] as T[]]),
-  ) as Record<InboxAiCategory, T[]>;
+  const byCategory = initCategoryBuckets<T>(catalog);
 
   for (const raw of visible) {
-    const category = normalizeInboxAiCategory(raw.category);
+    const category = resolveCategoryWithCatalog(raw.category, catalog);
     if (collapseClutter && isClutterCategory(category)) continue;
     const row = { ...raw, category };
+    if (!byCategory[category]) byCategory[category] = [];
     byCategory[category].push(row);
   }
 
-  const counts = Object.fromEntries(
-    INBOX_AI_CATEGORY_VALUES.map((c) => [c, byCategory[c].length]),
-  ) as Record<InboxAiCategory, number>;
+  const counts = { ...initCategoryCounts(catalog) };
+  for (const id of catalog.allIds) {
+    counts[id] = byCategory[id]?.length ?? 0;
+  }
+  for (const id of Object.keys(byCategory)) {
+    counts[id] = byCategory[id]?.length ?? 0;
+  }
 
   const orderSource = collapseClutter
-    ? primaryCategoryOrderForMode(workflowMode)
-    : GMAIL_CATEGORY_ORDER_BY_MODE[workflowMode];
+    ? primaryCategoryOrderForMode(workflowMode, catalog)
+    : gmailCategoryOrderForMode(workflowMode, catalog);
 
-  const categoryOrder = orderSource.filter((c) => byCategory[c].length > 0);
+  const categoryOrder = orderSource.filter((c) => (counts[c] ?? 0) > 0);
 
-  const needsAttentionEmails = byCategory.needs_attention;
-  const quickReplyEmails = byCategory.quick_reply;
+  const needsAttentionEmails = byCategory.needs_attention ?? [];
+  const quickReplyEmails = byCategory.quick_reply ?? [];
 
   return {
-    allVisible: categoryOrder.flatMap((c) => byCategory[c]),
+    catalog,
+    allVisible: categoryOrder.flatMap((c) => byCategory[c] ?? []),
     byCategory,
     counts,
     categoryOrder,
     needsAttentionEmails,
     quickReplyEmails,
-    handledEmails: byCategory.handled,
-    newsletterEmails: byCategory.newsletter,
-    promotionEmails: byCategory.promotion,
+    handledEmails: byCategory.handled ?? [],
+    newsletterEmails: byCategory.newsletter ?? [],
+    promotionEmails: byCategory.promotion ?? [],
     todayAttentionCount: needsAttentionEmails.length,
     priorityCount: needsAttentionEmails.length + quickReplyEmails.length,
     totalVisible: visible.length,
