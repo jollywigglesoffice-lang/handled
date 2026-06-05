@@ -34,6 +34,10 @@ import type { ConversationStatus } from "@/lib/timeline-intelligence";
 import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { saveEmailPreview } from "@/lib/email-preview-cache";
+import {
+  captureInboxReturnFromOpen,
+  type InboxReturnCapture,
+} from "@/lib/inbox-return-context";
 import { buildContinuityContext } from "@/lib/continuity-context";
 import { buildInboxGlanceLine } from "@/lib/glance-clarity";
 import { buildSituationSummary } from "@/lib/situational-understanding";
@@ -83,6 +87,7 @@ type GmailInboxCardProps = {
   selectionMode?: boolean;
   onToggleSelect?: (id: string) => void;
   readStateMap?: ReadStateMap;
+  inboxReturnCapture?: InboxReturnCapture;
 };
 
 export function GmailInboxCard({
@@ -94,6 +99,7 @@ export function GmailInboxCard({
   selectionMode = false,
   onToggleSelect,
   readStateMap = {},
+  inboxReturnCapture,
 }: GmailInboxCardProps) {
   const [feedback, setFeedback] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatusState>("idle");
@@ -249,6 +255,11 @@ export function GmailInboxCard({
 
   const panelsOpen = showCorrection || showRelationship || emailStatus.showDonePicker;
 
+  const captureReturn = useCallback(() => {
+    if (!inboxReturnCapture) return;
+    captureInboxReturnFromOpen(inboxReturnCapture, message.id);
+  }, [inboxReturnCapture, message.id]);
+
   return (
     <div className="group relative flex items-start gap-2">
       {onToggleSelect ? (
@@ -286,12 +297,14 @@ export function GmailInboxCard({
             locale={locale}
             isUnread={isUnread}
             lifecycle={emailStatus.lifecycle}
+            onOpenEmail={captureReturn}
           />
 
           <Link
             href={`/emails/${encodeURIComponent(message.id)}`}
             className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
             onClick={() => {
+              captureReturn();
               const preview = buildInboxMessagePreview(message, locale);
               saveEmailPreview({
                 id: message.id,
@@ -454,6 +467,7 @@ function CardHeader({
   locale,
   isUnread = false,
   lifecycle,
+  onOpenEmail,
 }: {
   message: GmailCardMessage;
   catLabel: string;
@@ -464,6 +478,7 @@ function CardHeader({
   locale: "en" | "it";
   isUnread?: boolean;
   lifecycle: EmailLifecycleState;
+  onOpenEmail?: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -491,6 +506,7 @@ function CardHeader({
           <Link
             href={`/emails/${encodeURIComponent(message.id)}`}
             className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-800 hover:bg-violet-100"
+            onClick={onOpenEmail}
           >
             {badgeLabel}
           </Link>

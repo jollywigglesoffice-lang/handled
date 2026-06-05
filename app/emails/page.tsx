@@ -108,6 +108,11 @@ import { trackEvent } from "@/lib/analytics";
 import { InboxSummaryCard } from "@/app/emails/inbox-summary-card";
 import { InboxZeroMode, type InboxZeroStep } from "@/app/emails/inbox-zero-mode";
 import { CategoryTabs, type CategoryTab } from "@/app/emails/category-tabs";
+import {
+  consumeInboxScrollRestore,
+  inboxEmailAnchorId,
+  scrollToInboxEmail,
+} from "@/lib/inbox-return-context";
 
 type GmailInboxMessage = {
   id: string;
@@ -371,6 +376,7 @@ function GmailCategorySection({
   readStateMap,
   onCategoryChange,
   onResetOverride,
+  activeCategoryTab,
 }: {
   category: InboxAiCategory;
   list: GmailCardMessage[];
@@ -386,6 +392,7 @@ function GmailCategorySection({
     options?: InboxCategoryChangeOptions,
   ) => void;
   onResetOverride: (id: string) => void;
+  activeCategoryTab: CategoryTab;
 }) {
   return (
     <section className="space-y-3">
@@ -399,6 +406,7 @@ function GmailCategorySection({
         {list.map((message) => (
           <div
             key={message.id}
+            id={inboxEmailAnchorId(message.id)}
             className={`transition-opacity duration-500 ${
               showContent ? "opacity-100" : "opacity-0"
             }`}
@@ -412,6 +420,7 @@ function GmailCategorySection({
               selectionMode={selection.selectionMode}
               onToggleSelect={selection.toggle}
               readStateMap={readStateMap}
+              inboxReturnCapture={{ view: "inbox", categoryTab: activeCategoryTab }}
             />
           </div>
         ))}
@@ -957,6 +966,24 @@ export default function EmailsInboxPage() {
     setActiveCategoryTab(tab);
     saveCategoryTab(tab);
   }, []);
+
+  useEffect(() => {
+    if (inboxLoading || !showContent || inboxMode !== "gmail") return;
+
+    const restore = consumeInboxScrollRestore();
+    if (!restore || restore.view !== "inbox") return;
+
+    if (restore.categoryTab && validTabIds.has(restore.categoryTab)) {
+      setActiveCategoryTab(restore.categoryTab as CategoryTab);
+      saveCategoryTab(restore.categoryTab as CategoryTab);
+    }
+
+    const timer = window.setTimeout(() => {
+      scrollToInboxEmail(restore.anchorEmailId, restore.scrollY);
+    }, 150);
+
+    return () => window.clearTimeout(timer);
+  }, [inboxLoading, showContent, inboxMode, validTabIds]);
 
   // Core move: persist overrides + update UI for a set of ids. No undo/toast.
   const applyCategoryToIds = useCallback(
@@ -1606,6 +1633,7 @@ export default function EmailsInboxPage() {
                         readStateMap={readStateMap}
                         onCategoryChange={handleCategoryChange}
                         onResetOverride={handleResetCategoryOverride}
+                        activeCategoryTab={activeCategoryTab}
                       />
                     );
                   })}
@@ -1616,6 +1644,7 @@ export default function EmailsInboxPage() {
                       onCategoryChange={handleCategoryChange}
                       readStateMap={readStateMap}
                       defaultCollapsed
+                      inboxReturnCapture={{ view: "inbox", categoryTab: activeCategoryTab }}
                     />
                   ) : null}
                 </>
@@ -1631,6 +1660,7 @@ export default function EmailsInboxPage() {
                   readStateMap={readStateMap}
                   onCategoryChange={handleCategoryChange}
                   onResetOverride={handleResetCategoryOverride}
+                  activeCategoryTab={activeCategoryTab}
                 />
               ) : (
                 <InboxEmptyState

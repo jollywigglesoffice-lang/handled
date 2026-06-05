@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCompletionWorkflow } from "@/app/completion-workflow-context";
+import { useInboxCategories } from "@/app/inbox-categories-context";
 import { EmailStatusBar } from "@/app/components/email-status-bar";
 import { IntentChips } from "@/app/components/intent-chips";
 import { EmailActions } from "./email-actions";
@@ -10,6 +13,7 @@ import { EmailDetailInsights } from "./email-detail-insights";
 import { RelationshipBadge } from "@/app/emails/relationship-badge";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import type { FakeEmail } from "@/lib/fake-emails";
+import type { CompletionActionId } from "@/lib/completion-actions/types";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
@@ -36,6 +40,14 @@ import {
   showExplicitNextStepLabel,
 } from "@/lib/intelligence-quiet";
 import { buildSituationBundle, buildSituationSummary } from "@/lib/situational-understanding";
+import {
+  inboxReturnDestinationLabel,
+  inboxReturnPath,
+  loadInboxReturnContext,
+  queueInboxScrollRestore,
+} from "@/lib/inbox-return-context";
+
+const DETAIL_RETURN_DELAY_MS = 650;
 
 export type EmailDetailPayload = FakeEmail & {
   bodyPlain?: string;
@@ -75,9 +87,13 @@ export function EmailDetailView({
     email.unsubscribeReplyDraft ?? "",
   );
   const ui = useUiCopy();
+  const router = useRouter();
+  const { notifyCompleted } = useCompletionWorkflow();
+  const { catalog } = useInboxCategories();
   const { uiLanguage } = useUserPreferences();
   const locale = uiLocaleFromLanguage(uiLanguage) === "it" ? "it" : "en";
   const workflowMode = readWorkflowModeFromStorage();
+  const returnContext = useMemo(() => loadInboxReturnContext(), []);
 
   useEffect(() => {
     recordEmailEngagement();
@@ -202,6 +218,39 @@ export function EmailDetailView({
   const shouldPrefetch =
     showActions && (email.replyRecommended ?? true) && category !== "handled";
 
+  const backHref = inboxReturnPath(returnContext);
+  const backLabel = useMemo(() => {
+    if (!returnContext) return ui.common.backToInbox;
+    const dest = inboxReturnDestinationLabel(returnContext, category, locale, catalog);
+    return locale === "it" ? `Torna a ${dest}` : `Back to ${dest}`;
+  }, [returnContext, category, locale, catalog, ui.common.backToInbox]);
+
+  const handleCompleted = useCallback(
+    ({ actionId, actionLabel }: { actionId: CompletionActionId; actionLabel: string }) => {
+      const returningTo = inboxReturnDestinationLabel(returnContext, category, locale, catalog);
+      notifyCompleted({
+        emailIds: [email.id],
+        actionId,
+        actionLabel,
+        locale,
+        returningTo,
+      });
+
+      const restoreCtx = returnContext ?? {
+        view: "inbox" as const,
+        categoryTab: "all",
+        scrollY: 0,
+        anchorEmailId: email.id,
+      };
+      queueInboxScrollRestore(restoreCtx);
+
+      window.setTimeout(() => {
+        router.push(inboxReturnPath(returnContext));
+      }, DETAIL_RETURN_DELAY_MS);
+    },
+    [returnContext, category, locale, catalog, notifyCompleted, email.id, router],
+  );
+
   useAnticipatoryPrefetch({
     emailId: email.id,
     enabled: shouldPrefetch,
@@ -211,10 +260,10 @@ export function EmailDetailView({
     <main className="min-h-screen bg-[#fafafa] calm-fade-in">
       <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-6 sm:px-6 sm:pt-10">
         <Link
-          href="/emails"
+          href={backHref}
           className="text-sm text-gray-400 transition-colors hover:text-gray-600"
         >
-          {ui.common.backToInbox}
+          {backLabel}
         </Link>
 
         <header className="mt-5 space-y-3">
@@ -226,6 +275,7 @@ export function EmailDetailView({
             category={category}
             locale={locale}
             variant="detail"
+            onCompleted={handleCompleted}
           />
 
           <p className="text-sm text-gray-500">{email.sender}</p>

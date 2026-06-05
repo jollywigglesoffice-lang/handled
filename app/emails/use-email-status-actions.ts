@@ -45,7 +45,7 @@ export type EmailStatusActionsInput = {
   category: InboxAiCategory;
   locale: "en" | "it";
   readStateMap?: ReadStateMap;
-  onCompleted?: () => void;
+  onCompleted?: (result: { actionId: CompletionActionId; actionLabel: string }) => void;
 };
 
 export function useEmailStatusActions({
@@ -115,8 +115,10 @@ export function useEmailStatusActions({
           },
         ]);
         setShowDonePicker(false);
-        notifyCompleted({ emailIds: [emailId], actionId, actionLabel, locale });
-        onCompleted?.();
+        if (!onCompleted) {
+          notifyCompleted({ emailIds: [emailId], actionId, actionLabel, locale });
+        }
+        onCompleted?.({ actionId, actionLabel });
       } finally {
         setBusy(false);
       }

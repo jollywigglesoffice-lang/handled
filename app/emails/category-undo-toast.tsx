@@ -21,7 +21,9 @@ export function CategoryUndoToast({
       className="pointer-events-none fixed inset-x-0 bottom-6 z-[100] flex justify-center px-4"
     >
       <div className="pointer-events-auto flex max-w-md items-center gap-4 rounded-xl border border-accent/20 bg-[#0F172A] px-4 py-3 text-sm text-white shadow-lg shadow-accent/10 ring-1 ring-accent/30">
-        <span className="min-w-0 flex-1 font-medium leading-snug">{message}</span>
+        <span className="min-w-0 flex-1 whitespace-pre-line font-medium leading-snug">
+          {message}
+        </span>
         <button
           type="button"
           onClick={onUndo}

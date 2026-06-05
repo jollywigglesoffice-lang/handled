@@ -28,6 +28,8 @@ type CompletionWorkflowContextValue = {
     actionId: CompletionActionId;
     actionLabel: string;
     locale: "en" | "it";
+    /** When set, shows a detail-page return toast (✓ action / marked completed / returning…). */
+    returningTo?: string;
   }) => void;
 };
 
@@ -52,17 +54,22 @@ export function CompletionWorkflowProvider({ children }: { children: React.React
       actionId,
       actionLabel,
       locale,
+      returningTo,
     }: {
       emailIds: string[];
       actionId: CompletionActionId;
       actionLabel: string;
       locale: "en" | "it";
+      returningTo?: string;
     }) => {
       if (!emailIds.length) return;
 
       const n = emailIds.length;
-      const message =
-        locale === "it"
+      const message = returningTo
+        ? locale === "it"
+          ? `✓ ${actionLabel}\nEmail completata\nTorno a ${returningTo}...`
+          : `✓ ${actionLabel}\nEmail marked completed\nReturning to ${returningTo}...`
+        : locale === "it"
           ? n === 1
             ? `Completata · ${actionLabel}`
             : `${n} email completate · ${actionLabel}`

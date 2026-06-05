@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AuthNav } from "@/app/components/auth-nav";
 import { useCompletionActions } from "@/app/completion-actions-context";
@@ -18,6 +18,10 @@ import {
   filterCompletionRecords,
   type CompletionActionFilter,
 } from "@/lib/completion-stats";
+import {
+  consumeInboxScrollRestore,
+  scrollToInboxEmail,
+} from "@/lib/inbox-return-context";
 
 const COPY = {
   en: {
@@ -63,6 +67,21 @@ export function CompletedView() {
     () => filterCompletionRecords(allRecords, filter, query),
     [allRecords, filter, query],
   );
+
+  useEffect(() => {
+    const restore = consumeInboxScrollRestore();
+    if (!restore || restore.view !== "completed") return;
+
+    if (restore.completedFilter) {
+      setFilter(restore.completedFilter as CompletionActionFilter);
+    }
+
+    const timer = window.setTimeout(() => {
+      scrollToInboxEmail(restore.anchorEmailId, restore.scrollY);
+    }, 150);
+
+    return () => window.clearTimeout(timer);
+  }, []);
 
   return (
     <main className="min-h-screen bg-white px-4 py-8 sm:px-6 sm:py-12">
@@ -126,6 +145,7 @@ export function CompletedView() {
                   record={record}
                   locale={locale}
                   catalog={inboxCatalog}
+                  completedFilter={filter}
                 />
               ))}
             </div>

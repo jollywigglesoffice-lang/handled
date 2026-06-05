@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { captureInboxReturnFromOpen } from "@/lib/inbox-return-context";
 import { EmailLifecycleIndicator } from "@/app/components/email-lifecycle-indicator";
 import { inboxCategoryTitle, type InboxCategoryCatalog } from "@/lib/inbox-category-catalog";
 import type { EmailCompletionRecord } from "@/lib/email-completions/types";
@@ -16,15 +17,27 @@ export function CompletedEmailRow({
   record,
   locale,
   catalog,
+  completedFilter,
 }: {
   record: EmailCompletionRecord;
   locale: "en" | "it";
   catalog: InboxCategoryCatalog;
+  completedFilter?: string;
 }) {
   return (
     <Link
       href={`/emails/${encodeURIComponent(record.emailId)}`}
       className="flex flex-col gap-1 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 shadow-sm transition hover:border-accent/30 hover:shadow-md"
+      onClick={() => {
+        captureInboxReturnFromOpen(
+          {
+            view: "completed",
+            categoryTab: "all",
+            completedFilter,
+          },
+          record.emailId,
+        );
+      }}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-[#0F172A]">{record.sender || "—"}</p>
