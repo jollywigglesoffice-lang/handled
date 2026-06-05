@@ -103,7 +103,7 @@ export function EmailCardActionRow({
             locale={locale}
             compact
             busy={busy}
-            onSelect={(id, label) => void handleComplete(id, label)}
+            onSelect={(id, label, extras) => void handleComplete(id, label, extras)}
           />
           <button
             type="button"

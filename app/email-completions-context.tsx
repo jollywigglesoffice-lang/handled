@@ -19,12 +19,14 @@ import {
   mergeCompletionsIntoMap,
   saveEmailCompletions,
 } from "@/lib/email-completions/client-storage";
+import { buildEmailCompletionRecord } from "@/lib/email-completions/build-record";
 import type {
   CompleteEmailInput,
   EmailCompletionMap,
   EmailCompletionRecord,
 } from "@/lib/email-completions/types";
-import { resolveSenderIdentity } from "@/lib/sender-identity";
+import { trackEvent } from "@/lib/analytics";
+import { activeWaitingRecords } from "@/lib/waiting-on/helpers";
 
 type EmailCompletionsContextValue = {
   completions: EmailCompletionMap;
@@ -32,8 +34,14 @@ type EmailCompletionsContextValue = {
   learning: CompletionLearningStats;
   isCompleted: (emailId: string) => boolean;
   getCompletion: (emailId: string) => EmailCompletionRecord | undefined;
-  completeEmails: (inputs: CompleteEmailInput[]) => Promise<void>;
+  completeEmails: (
+    inputs: CompleteEmailInput[],
+    options?: { locale?: "en" | "it" },
+  ) => Promise<void>;
   uncompleteEmails: (emailIds: string[]) => Promise<void>;
+  resolveWaiting: (emailId: string) => Promise<void>;
+  markStillWaiting: (emailId: string) => Promise<void>;
+  activeWaitingRecords: EmailCompletionRecord[];
   /** @deprecated Use completeEmails — kept for gradual migration */
   markEmailHandled: (emailId: string) => void;
 };
@@ -68,6 +76,11 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
 
   const completedEmailIds = useMemo(
     () => Object.keys(completions),
+    [completions],
+  );
+
+  const activeWaiting = useMemo(
+    () => activeWaitingRecords(completions),
     [completions],
   );
 
@@ -138,24 +151,30 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
   );
 
   const completeEmails = useCallback(
-    async (inputs: CompleteEmailInput[]) => {
+    async (inputs: CompleteEmailInput[], options?: { locale?: "en" | "it" }) => {
       if (!inputs.length) return;
 
+      const locale = options?.locale ?? "en";
       const now = Date.now();
-      const records: EmailCompletionRecord[] = inputs.map((input) => {
-        const domain = resolveSenderIdentity(input.sender).domain ?? undefined;
-        return {
-          emailId: input.emailId,
-          actionId: input.actionId,
-          actionLabel: input.actionLabel,
-          completedAt: now,
-          sender: input.sender,
-          subject: input.subject,
-          snippet: input.snippet,
-          category: input.category,
-          senderDomain: domain,
-        };
-      });
+      const records: EmailCompletionRecord[] = inputs.map((input) =>
+        buildEmailCompletionRecord(input, now, locale),
+      );
+
+      for (const record of records) {
+        if (record.actionId === "waiting_on_someone") {
+          trackEvent("waiting_created", {
+            email_id: record.emailId,
+            waiting_on: record.waitingOn ?? null,
+            has_follow_up: Boolean(record.followUpAfterDays),
+          });
+          if (record.followUpAfterDays) {
+            trackEvent("followup_reminder_created", {
+              email_id: record.emailId,
+              follow_up_days: record.followUpAfterDays,
+            });
+          }
+        }
+      }
 
       let nextLearning = learning;
       for (const record of records) {
@@ -184,6 +203,43 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
     [completions, learning, persistMap],
   );
 
+  const patchCompletion = useCallback(
+    async (emailId: string, patch: Partial<EmailCompletionRecord>) => {
+      const existing = completions[emailId];
+      if (!existing) return;
+      const updated = { ...existing, ...patch };
+      const nextMap = { ...completions, [emailId]: updated };
+      await persistMap(nextMap, learning, { records: [updated] });
+      window.dispatchEvent(new Event("handled-emails-changed"));
+    },
+    [completions, learning, persistMap],
+  );
+
+  const resolveWaiting = useCallback(
+    async (emailId: string) => {
+      const record = completions[emailId];
+      if (!record || record.actionId !== "waiting_on_someone") return;
+      await patchCompletion(emailId, { waitingResolvedAt: Date.now() });
+      trackEvent("waiting_resolved", {
+        email_id: emailId,
+        waiting_on: record.waitingOn ?? null,
+        days_waiting: Math.floor(
+          (Date.now() - (record.stillWaitingAt ?? record.completedAt)) / 86_400_000,
+        ),
+      });
+    },
+    [completions, patchCompletion],
+  );
+
+  const markStillWaiting = useCallback(
+    async (emailId: string) => {
+      const record = completions[emailId];
+      if (!record || record.actionId !== "waiting_on_someone") return;
+      await patchCompletion(emailId, { stillWaitingAt: Date.now() });
+    },
+    [completions, patchCompletion],
+  );
+
   const markEmailHandled = useCallback(
     (emailId: string) => {
       void completeEmails([
@@ -209,9 +265,22 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       getCompletion: (id: string) => completions[id],
       completeEmails,
       uncompleteEmails,
+      resolveWaiting,
+      markStillWaiting,
+      activeWaitingRecords: activeWaiting,
       markEmailHandled,
     }),
-    [completions, completedEmailIds, learning, completeEmails, uncompleteEmails, markEmailHandled],
+    [
+      completions,
+      completedEmailIds,
+      learning,
+      completeEmails,
+      uncompleteEmails,
+      resolveWaiting,
+      markStillWaiting,
+      activeWaiting,
+      markEmailHandled,
+    ],
   );
 
   return (
@@ -229,6 +298,9 @@ const EMPTY_COMPLETIONS_CTX: EmailCompletionsContextValue = {
   getCompletion: () => undefined,
   completeEmails: async () => {},
   uncompleteEmails: async () => {},
+  resolveWaiting: async () => {},
+  markStillWaiting: async () => {},
+  activeWaitingRecords: [],
   markEmailHandled: () => {},
 };
 

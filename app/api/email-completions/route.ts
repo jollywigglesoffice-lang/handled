@@ -9,8 +9,11 @@ import {
   saveEmailCompletionsForUser,
   SETUP_SQL,
 } from "@/lib/email-completions/store";
+import {
+  buildEmailCompletionRecord,
+  mergeWaitingFieldsFromRaw,
+} from "@/lib/email-completions/build-record";
 import type { EmailCompletionMap, EmailCompletionRecord } from "@/lib/email-completions/types";
-import { resolveSenderIdentity } from "@/lib/sender-identity";
 
 export async function GET(request: Request) {
   const auth = await requireRouteAuth(request);
@@ -44,18 +47,24 @@ export async function POST(request: Request) {
 
   for (const raw of incoming) {
     if (!raw?.emailId || !raw.actionId) continue;
-    const domain = raw.senderDomain ?? resolveSenderIdentity(raw.sender).domain ?? undefined;
-    const record: EmailCompletionRecord = {
-      emailId: raw.emailId,
-      actionId: raw.actionId,
-      actionLabel: raw.actionLabel ?? raw.actionId,
-      completedAt: raw.completedAt ?? Date.now(),
-      sender: raw.sender ?? "",
-      subject: raw.subject ?? "",
-      snippet: raw.snippet,
-      category: raw.category ?? "needs_attention",
-      senderDomain: domain,
-    };
+    const record = mergeWaitingFieldsFromRaw(
+      buildEmailCompletionRecord(
+        {
+          emailId: raw.emailId,
+          actionId: raw.actionId,
+          actionLabel: raw.actionLabel ?? raw.actionId,
+          sender: raw.sender ?? "",
+          subject: raw.subject ?? "",
+          snippet: raw.snippet,
+          category: raw.category ?? "needs_attention",
+          waitingOn: typeof raw.waitingOn === "string" ? raw.waitingOn : undefined,
+          followUpAfterDays:
+            typeof raw.followUpAfterDays === "number" ? raw.followUpAfterDays : undefined,
+        },
+        raw.completedAt ?? Date.now(),
+      ),
+      raw as Record<string, unknown>,
+    );
     completions[record.emailId] = record;
     learning = recordCompletionLearning(learning, record);
   }

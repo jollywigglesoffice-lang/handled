@@ -12,7 +12,8 @@ import {
   type ReadStateMap,
 } from "@/lib/read-state/client-storage";
 import { markEmailsRead, markEmailsUnread } from "@/lib/read-state/gmail-sync";
-import type { EmailCompletionRecord } from "@/lib/email-completions/types";
+import type { CompleteEmailExtras, EmailCompletionRecord } from "@/lib/email-completions/types";
+import { isActiveWaiting } from "@/lib/waiting-on/helpers";
 
 export const EMAIL_STATUS_COPY = {
   en: {
@@ -60,7 +61,7 @@ export function useEmailStatusActions({
 }: EmailStatusActionsInput) {
   const t = EMAIL_STATUS_COPY[locale];
   const { notifyCompleted } = useCompletionWorkflow();
-  const { isCompleted, getCompletion, completeEmails, uncompleteEmails } =
+  const { isCompleted, getCompletion, completeEmails, uncompleteEmails, resolveWaiting, markStillWaiting } =
     useEmailCompletions();
   const [readMap, setReadMap] = useState<ReadStateMap>(() =>
     readStateMapProp ?? (typeof window !== "undefined" ? loadReadStateMap() : {}),
@@ -100,20 +101,28 @@ export function useEmailStatusActions({
   }, [emailId]);
 
   const handleComplete = useCallback(
-    async (actionId: CompletionActionId, actionLabel: string) => {
+    async (
+      actionId: CompletionActionId,
+      actionLabel: string,
+      extras?: CompleteEmailExtras,
+    ) => {
       setBusy(true);
       try {
-        await completeEmails([
-          {
-            emailId,
-            actionId,
-            actionLabel,
-            sender,
-            subject,
-            snippet,
-            category,
-          },
-        ]);
+        await completeEmails(
+          [
+            {
+              emailId,
+              actionId,
+              actionLabel,
+              sender,
+              subject,
+              snippet,
+              category,
+              ...extras,
+            },
+          ],
+          { locale },
+        );
         setShowDonePicker(false);
         if (!onCompleted) {
           notifyCompleted({ emailIds: [emailId], actionId, actionLabel, locale });
@@ -136,11 +145,34 @@ export function useEmailStatusActions({
     }
   }, [emailId, uncompleteEmails, showFeedback, t]);
 
+  const isActiveWaitingItem = completion ? isActiveWaiting(completion) : false;
+
+  const handleResolveWaiting = useCallback(async () => {
+    setBusy(true);
+    try {
+      await resolveWaiting(emailId);
+      showFeedback(locale === "it" ? "Segnata come risolta" : "Marked resolved");
+    } finally {
+      setBusy(false);
+    }
+  }, [emailId, resolveWaiting, showFeedback, locale]);
+
+  const handleStillWaiting = useCallback(async () => {
+    setBusy(true);
+    try {
+      await markStillWaiting(emailId);
+      showFeedback(locale === "it" ? "Ancora in attesa" : "Still waiting");
+    } finally {
+      setBusy(false);
+    }
+  }, [emailId, markStillWaiting, showFeedback, locale]);
+
   return {
     t,
     lifecycle,
     completed,
     completion: completion as EmailCompletionRecord | undefined,
+    isActiveWaitingItem,
     showDonePicker,
     setShowDonePicker,
     busy,
@@ -149,5 +181,7 @@ export function useEmailStatusActions({
     handleMarkUnread,
     handleComplete,
     handleUndo,
+    handleResolveWaiting,
+    handleStillWaiting,
   };
 }

@@ -24,6 +24,13 @@ export function parseEmailCompletionsJson(raw: unknown): EmailCompletionMap {
       snippet: typeof row.snippet === "string" ? row.snippet : undefined,
       category: (typeof row.category === "string" ? row.category : "needs_attention") as EmailCompletionRecord["category"],
       senderDomain: typeof row.senderDomain === "string" ? row.senderDomain : undefined,
+      waitingOn: typeof row.waitingOn === "string" ? row.waitingOn : undefined,
+      followUpAfterDays:
+        typeof row.followUpAfterDays === "number" ? row.followUpAfterDays : undefined,
+      followUpAt: typeof row.followUpAt === "number" ? row.followUpAt : undefined,
+      waitingResolvedAt:
+        typeof row.waitingResolvedAt === "number" ? row.waitingResolvedAt : undefined,
+      stillWaitingAt: typeof row.stillWaitingAt === "number" ? row.stillWaitingAt : undefined,
     };
   }
   return out;

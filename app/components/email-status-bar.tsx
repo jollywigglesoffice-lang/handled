@@ -30,6 +30,9 @@ export function EmailStatusBar({
     handleMarkUnread,
     handleComplete,
     handleUndo,
+    isActiveWaitingItem,
+    handleResolveWaiting,
+    handleStillWaiting,
   } = useEmailStatusActions(props);
 
   return (
@@ -56,6 +59,20 @@ export function EmailStatusBar({
                 ✓ {t.doneWith}
               </DetailLink>
             </>
+          ) : isActiveWaitingItem ? (
+            <>
+              <span className="text-sm font-medium text-amber-800">
+                {completion?.actionLabel ?? t.doneWith}
+              </span>
+              <span className="text-gray-300">·</span>
+              <DetailLink emphasis onClick={() => void handleResolveWaiting()} disabled={busy}>
+                {props.locale === "it" ? "✓ Risolta" : "✓ Resolved"}
+              </DetailLink>
+              <span className="text-gray-300">·</span>
+              <DetailLink onClick={() => void handleStillWaiting()} disabled={busy}>
+                {props.locale === "it" ? "✓ Ancora in attesa" : "✓ Still waiting"}
+              </DetailLink>
+            </>
           ) : (
             <>
               <span className="text-sm font-medium text-emerald-800">
@@ -78,7 +95,7 @@ export function EmailStatusBar({
           category={props.category}
           locale={props.locale}
           busy={busy}
-          onSelect={(id, label) => void handleComplete(id, label)}
+          onSelect={(id, label, extras) => void handleComplete(id, label, extras)}
         />
       ) : null}
 
@@ -88,7 +105,7 @@ export function EmailStatusBar({
             locale={props.locale}
             compact
             busy={busy}
-            onSelect={(id, label) => void handleComplete(id, label)}
+            onSelect={(id, label, extras) => void handleComplete(id, label, extras)}
           />
           <button
             type="button"

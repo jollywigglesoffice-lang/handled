@@ -4,13 +4,19 @@ import { useState } from "react";
 import { useCompletionActions } from "@/app/completion-actions-context";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
 import { trackEvent } from "@/lib/analytics";
+import { WaitingOnDetailsPanel } from "@/app/emails/waiting-on-details-panel";
 import { createPersonalCompletionAction } from "@/lib/completion-actions/storage";
+import type { CompleteEmailExtras } from "@/lib/email-completions/types";
 
 type CompletionActionPickerProps = {
   locale: "en" | "it";
   compact?: boolean;
   busy?: boolean;
-  onSelect: (actionId: CompletionActionId, actionLabel: string) => void;
+  onSelect: (
+    actionId: CompletionActionId,
+    actionLabel: string,
+    extras?: CompleteEmailExtras,
+  ) => void;
   showCreate?: boolean;
 };
 
@@ -44,6 +50,7 @@ export function CompletionActionPicker({
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
+  const [showWaitingDetails, setShowWaitingDetails] = useState(false);
 
   async function handleCreate() {
     setCreateError(null);
@@ -64,6 +71,23 @@ export function CompletionActionPicker({
     } finally {
       setCreateBusy(false);
     }
+  }
+
+  if (showWaitingDetails) {
+    return (
+      <div className={compact ? "mt-3" : "mt-4"}>
+        <WaitingOnDetailsPanel
+          locale={locale}
+          busy={busy}
+          onBack={() => setShowWaitingDetails(false)}
+          onConfirm={(extras) => {
+            const label = catalog.labelFor("waiting_on_someone", locale);
+            onSelect("waiting_on_someone", label, extras);
+            setShowWaitingDetails(false);
+          }}
+        />
+      </div>
+    );
   }
 
   if (creating) {
@@ -124,7 +148,13 @@ export function CompletionActionPicker({
             key={actionId}
             type="button"
             disabled={busy}
-            onClick={() => onSelect(actionId, catalog.labelFor(actionId, locale))}
+            onClick={() => {
+              if (actionId === "waiting_on_someone") {
+                setShowWaitingDetails(true);
+                return;
+              }
+              onSelect(actionId, catalog.labelFor(actionId, locale));
+            }}
             className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-left text-sm text-[#0F172A] transition hover:border-accent/20 hover:bg-accent-muted/30 disabled:opacity-50"
           >
             <span className="text-accent" aria-hidden>

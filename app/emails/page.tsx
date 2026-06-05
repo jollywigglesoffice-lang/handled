@@ -1195,6 +1195,7 @@ export default function EmailsInboxPage() {
             category: m?.category ?? "needs_attention",
           };
         }),
+        { locale: inboxLocale },
       );
 
       notifyCompleted({
@@ -1352,17 +1353,20 @@ export default function EmailsInboxPage() {
     ) => {
       const id = _id;
       const m = gmailMessages.find((row) => row.id === id);
-      await completeEmails([
-        {
-          emailId: id,
-          actionId,
-          actionLabel,
-          sender: m?.sender ?? "",
-          subject: m?.subject ?? "",
-          snippet: m?.snippet,
-          category: m?.category ?? "needs_attention",
-        },
-      ]);
+      await completeEmails(
+        [
+          {
+            emailId: id,
+            actionId,
+            actionLabel,
+            sender: m?.sender ?? "",
+            subject: m?.subject ?? "",
+            snippet: m?.snippet,
+            category: m?.category ?? "needs_attention",
+          },
+        ],
+        { locale: inboxLocale },
+      );
       notifyCompleted({
         emailIds: [id],
         actionId,

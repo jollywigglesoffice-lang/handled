@@ -9,6 +9,7 @@ import {
   completionSuggestionExplanation,
   suggestCompletionAction,
 } from "@/lib/completion-learning/suggest";
+import type { CompleteEmailExtras } from "@/lib/email-completions/types";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 
 type CompletionSuggestionProps = {
@@ -18,7 +19,11 @@ type CompletionSuggestionProps = {
   category: InboxAiCategory;
   locale: "en" | "it";
   busy?: boolean;
-  onSelect: (actionId: CompletionActionId, actionLabel: string) => void;
+  onSelect: (
+    actionId: CompletionActionId,
+    actionLabel: string,
+    extras?: CompleteEmailExtras,
+  ) => void;
 };
 
 const DISMISS_PREFIX = "handled_suggest_dismiss_";

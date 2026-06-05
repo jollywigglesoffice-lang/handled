@@ -13,9 +13,22 @@ export type EmailCompletionRecord = {
   snippet?: string;
   category: InboxAiCategory;
   senderDomain?: string;
+  /** Who the user is waiting on (waiting_on_someone). */
+  waitingOn?: string;
+  followUpAfterDays?: number;
+  followUpAt?: number;
+  /** Set when the user marks a waiting item resolved. */
+  waitingResolvedAt?: number;
+  /** Updated when user taps "Still waiting". */
+  stillWaitingAt?: number;
 };
 
 export type EmailCompletionMap = Record<string, EmailCompletionRecord>;
+
+export type CompleteEmailExtras = {
+  waitingOn?: string;
+  followUpAfterDays?: number;
+};
 
 export type CompleteEmailInput = {
   emailId: string;
@@ -25,4 +38,4 @@ export type CompleteEmailInput = {
   subject: string;
   snippet?: string;
   category: InboxAiCategory;
-};
+} & CompleteEmailExtras;

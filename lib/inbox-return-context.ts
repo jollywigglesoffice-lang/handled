@@ -1,7 +1,7 @@
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategoryTitle, type InboxCategoryCatalog } from "@/lib/inbox-category-catalog";
 
-export type InboxReturnView = "inbox" | "completed";
+export type InboxReturnView = "inbox" | "completed" | "waiting";
 
 export type InboxReturnContext = {
   view: InboxReturnView;
@@ -81,6 +81,7 @@ export function consumeInboxScrollRestore(): InboxReturnContext | null {
 
 export function inboxReturnPath(ctx: InboxReturnContext | null): string {
   if (ctx?.view === "completed") return "/emails/completed";
+  if (ctx?.view === "waiting") return "/emails/waiting";
   return "/emails";
 }
 
@@ -92,6 +93,7 @@ export function inboxReturnDestinationLabel(
 ): string {
   if (!ctx) return locale === "it" ? "Inbox" : "Inbox";
   if (ctx.view === "completed") return locale === "it" ? "Completate" : "Completed";
+  if (ctx.view === "waiting") return locale === "it" ? "In attesa" : "Waiting On";
   if (ctx.categoryTab === "all") {
     return inboxCategoryTitle(emailCategory, locale, catalog);
   }
