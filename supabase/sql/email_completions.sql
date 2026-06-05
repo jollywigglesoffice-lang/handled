@@ -8,4 +8,4 @@ ALTER TABLE public.users
   ADD COLUMN IF NOT EXISTS email_completions_json jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 ALTER TABLE public.users
-  ADD COLUMN IF NOT EXISTS completion_learning_json jsonb NOT NULL DEFAULT '{"version":1,"patterns":[]}'::jsonb;
+  ADD COLUMN IF NOT EXISTS completion_learning_json jsonb NOT NULL DEFAULT '{"version":2,"patterns":[],"events":[]}'::jsonb;

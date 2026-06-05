@@ -9,9 +9,9 @@ import {
   useState,
 } from "react";
 import { protectedApiHeaders } from "@/lib/auth/protected-api-headers";
-import { recordCompletionLearning } from "@/lib/completion-learning/record";
-import { parseCompletionLearningJson } from "@/lib/completion-learning/record";
-import type { CompletionLearningStats } from "@/lib/completion-learning/types";
+import { parseCompletionLearningJson, recordCompletionLearningWithMeta } from "@/lib/completion-learning/record";
+import { trackCompletionLearningRecorded } from "@/lib/completion-learning/track";
+import { EMPTY_COMPLETION_LEARNING, type CompletionLearningStats } from "@/lib/completion-learning/types";
 import {
   COMPLETION_LEARNING_KEY,
   EMAIL_COMPLETIONS_EVENT,
@@ -41,13 +41,13 @@ type EmailCompletionsContextValue = {
 const EmailCompletionsContext = createContext<EmailCompletionsContextValue | null>(null);
 
 function loadLocalLearning(): CompletionLearningStats {
-  if (typeof window === "undefined") return { version: 1, patterns: [] };
+  if (typeof window === "undefined") return EMPTY_COMPLETION_LEARNING;
   try {
     const raw = localStorage.getItem(COMPLETION_LEARNING_KEY);
-    if (!raw) return { version: 1, patterns: [] };
+    if (!raw) return EMPTY_COMPLETION_LEARNING;
     return parseCompletionLearningJson(JSON.parse(raw));
   } catch {
-    return { version: 1, patterns: [] };
+    return EMPTY_COMPLETION_LEARNING;
   }
 }
 
@@ -159,7 +159,9 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
 
       let nextLearning = learning;
       for (const record of records) {
-        nextLearning = recordCompletionLearning(nextLearning, record);
+        const result = recordCompletionLearningWithMeta(nextLearning, record);
+        nextLearning = result.stats;
+        trackCompletionLearningRecorded(record, result.updatedPatterns);
       }
 
       const nextMap = mergeCompletionsIntoMap(completions, records);
@@ -222,7 +224,7 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
 const EMPTY_COMPLETIONS_CTX: EmailCompletionsContextValue = {
   completions: {},
   completedEmailIds: [],
-  learning: { version: 1, patterns: [] },
+  learning: EMPTY_COMPLETION_LEARNING,
   isCompleted: () => false,
   getCompletion: () => undefined,
   completeEmails: async () => {},

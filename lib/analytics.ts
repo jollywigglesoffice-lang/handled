@@ -19,7 +19,9 @@ export type AnalyticsEvent =
   | "completed_email"
   | "completion_action_selected"
   | "completion_action_custom_created"
-  | "completion_action_undo";
+  | "completion_action_undo"
+  | "completion_learning_recorded"
+  | "completion_pattern_updated";
 
 type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;
 

@@ -1,5 +1,5 @@
 import { parseCompletionLearningJson } from "@/lib/completion-learning/record";
-import type { CompletionLearningStats } from "@/lib/completion-learning/types";
+import { EMPTY_COMPLETION_LEARNING, type CompletionLearningStats } from "@/lib/completion-learning/types";
 import { parseEmailCompletionsJson } from "@/lib/email-completions/client-storage";
 import type { EmailCompletionMap } from "@/lib/email-completions/types";
 
@@ -23,7 +23,7 @@ export async function loadEmailCompletionsForUser(userId: string): Promise<{
 
   if (error) {
     console.warn("[email-completions] load failed:", error.message);
-    return { completions: {}, learning: { version: 1, patterns: [] } };
+    return { completions: {}, learning: EMPTY_COMPLETION_LEARNING };
   }
 
   return {
