@@ -1,6 +1,7 @@
 "use client";
 
 import { CompletionActionsProvider } from "./completion-actions-context";
+import { CompletionWorkflowProvider } from "./completion-workflow-context";
 import { InboxCategoriesProvider } from "./inbox-categories-context";
 import { EmailCompletionsProvider } from "./email-completions-context";
 import { ReplyUsageProvider } from "./reply-usage-context";
@@ -14,8 +15,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <CompletionActionsProvider>
           <ReplyUsageProvider>
             <EmailCompletionsProvider>
-              {children}
-              <SyncToast />
+              <CompletionWorkflowProvider>
+                {children}
+                <SyncToast />
+              </CompletionWorkflowProvider>
             </EmailCompletionsProvider>
           </ReplyUsageProvider>
         </CompletionActionsProvider>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useCompletionActions } from "@/app/completion-actions-context";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
+import { trackEvent } from "@/lib/analytics";
 import { createPersonalCompletionAction } from "@/lib/completion-actions/storage";
 
 type CompletionActionPickerProps = {
@@ -58,6 +59,7 @@ export function CompletionActionPicker({
         setCreateError(saved.error ?? "Could not save.");
         return;
       }
+      trackEvent("completion_action_custom_created", { action_id: created.action.id });
       onSelect(created.action.id, catalog.labelFor(created.action.id, locale));
     } finally {
       setCreateBusy(false);

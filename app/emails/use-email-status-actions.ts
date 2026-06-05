@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useCompletionWorkflow } from "@/app/completion-workflow-context";
 import { useEmailCompletions } from "@/app/email-completions-context";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
 import { resolveEmailLifecycle, type EmailLifecycleState } from "@/lib/email-lifecycle";
@@ -58,6 +59,7 @@ export function useEmailStatusActions({
   onCompleted,
 }: EmailStatusActionsInput) {
   const t = EMAIL_STATUS_COPY[locale];
+  const { notifyCompleted } = useCompletionWorkflow();
   const { isCompleted, getCompletion, completeEmails, uncompleteEmails } =
     useEmailCompletions();
   const [readMap, setReadMap] = useState<ReadStateMap>(() =>
@@ -113,13 +115,13 @@ export function useEmailStatusActions({
           },
         ]);
         setShowDonePicker(false);
-        showFeedback(t.completedAs(actionLabel));
+        notifyCompleted({ emailIds: [emailId], actionId, actionLabel, locale });
         onCompleted?.();
       } finally {
         setBusy(false);
       }
     },
-    [emailId, sender, subject, snippet, category, completeEmails, showFeedback, t, onCompleted],
+    [emailId, sender, subject, snippet, category, completeEmails, notifyCompleted, locale, onCompleted],
   );
 
   const handleUndo = useCallback(async () => {

@@ -3,13 +3,12 @@
 import { useInboxCategories } from "@/app/inbox-categories-context";
 import { inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
 
-export type CategoryTab = InboxAiCategory | "all" | "completed";
+export type CategoryTab = InboxAiCategory | "all";
 
 type CategoryTabsProps = {
   active: CategoryTab;
   counts: Record<string, number>;
   total: number;
-  completedCount?: number;
   locale: "en" | "it";
   onChange: (tab: CategoryTab) => void;
 };
@@ -18,13 +17,11 @@ export function CategoryTabs({
   active,
   counts,
   total,
-  completedCount = 0,
   locale,
   onChange,
 }: CategoryTabsProps) {
   const { catalog } = useInboxCategories();
   const allLabel = locale === "it" ? "Tutte" : "All";
-  const completedLabel = locale === "it" ? "Completate" : "Completed";
 
   return (
     <nav
@@ -46,14 +43,6 @@ export function CategoryTabs({
           onClick={() => onChange(category)}
         />
       ))}
-      {completedCount > 0 ? (
-        <TabPill
-          label={completedLabel}
-          count={completedCount}
-          active={active === "completed"}
-          onClick={() => onChange("completed")}
-        />
-      ) : null}
     </nav>
   );
 }

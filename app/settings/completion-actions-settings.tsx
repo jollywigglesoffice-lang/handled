@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useCompletionActions } from "@/app/completion-actions-context";
 import { SYSTEM_COMPLETION_ACTION_META, SYSTEM_COMPLETION_PICKER_ORDER } from "@/lib/completion-actions/builtin";
+import { trackEvent } from "@/lib/analytics";
 import {
   createPersonalCompletionAction,
   normalizePersonalCompletionActions,
@@ -38,6 +39,7 @@ export function CompletionActionsSettings() {
       return;
     }
     setNewName("");
+    trackEvent("completion_action_custom_created", { action_id: created.action.id });
     await persist([...personal, created.action]);
   }
 

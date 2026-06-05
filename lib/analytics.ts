@@ -15,7 +15,11 @@ export type AnalyticsEvent =
   | "email_marked_unread"
   | "gmail_sync_success"
   | "gmail_sync_failed"
-  | "inbox_load_more";
+  | "inbox_load_more"
+  | "completed_email"
+  | "completion_action_selected"
+  | "completion_action_custom_created"
+  | "completion_action_undo";
 
 type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;
 

@@ -11,11 +11,10 @@ import {
 import { ensureApiSessionCookies } from "@/lib/auth/ensure-api-session";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { saveGoogleProviderToken } from "@/lib/google-provider-token";
-import { EmailLifecycleIndicator } from "@/app/components/email-lifecycle-indicator";
+import { useCompletionWorkflow } from "@/app/completion-workflow-context";
 import { useEmailCompletions } from "@/app/email-completions-context";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
-import type { InboxCategoryCatalog } from "@/lib/inbox-category-catalog";
-import type { EmailCompletionRecord } from "@/lib/email-completions/types";
+import { InboxViewNav } from "@/app/emails/inbox-view-nav";
 import { AuthNav } from "@/app/components/auth-nav";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
@@ -421,75 +420,6 @@ function GmailCategorySection({
   );
 }
 
-function CompletedEmailRow({
-  record,
-  locale,
-  catalog,
-}: {
-  record: EmailCompletionRecord;
-  locale: "en" | "it";
-  catalog: InboxCategoryCatalog;
-}) {
-  return (
-    <Link
-      href={`/emails/${encodeURIComponent(record.emailId)}`}
-      className="flex flex-col gap-1 rounded-lg border border-emerald-100 bg-emerald-50/50 px-4 py-3 transition hover:bg-emerald-50"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium text-[#0F172A]">{record.sender || "—"}</p>
-        <EmailLifecycleIndicator state="completed" locale={locale} />
-      </div>
-      <p className="text-sm text-gray-700">{record.subject || "(no subject)"}</p>
-      <p className="text-xs text-gray-500">
-        <span className="font-medium text-emerald-800">✓ {record.actionLabel}</span>
-        {" · "}
-        {inboxCategoryTitle(record.category, locale, catalog)}
-        {" · "}
-        {formatInboxDate(new Date(record.completedAt).toISOString())}
-      </p>
-    </Link>
-  );
-}
-
-function CompletedEmailsSection({
-  records,
-  locale,
-  catalog,
-}: {
-  records: EmailCompletionRecord[];
-  locale: "en" | "it";
-  catalog: InboxCategoryCatalog;
-}) {
-  if (records.length === 0) {
-    return (
-      <InboxEmptyState
-        tone="calm"
-        title={locale === "it" ? "Nessuna email completata" : "No completed emails yet"}
-        subtitle={
-          locale === "it"
-            ? "Quando finisci con un’email, compare qui — ancora ricercabile."
-            : "When you’re done with an email, it appears here — still searchable."
-        }
-      />
-    );
-  }
-
-  return (
-    <section className="space-y-3">
-      <p className="text-xs text-gray-500">
-        {locale === "it"
-          ? "Fuori dalla inbox attiva. Non contano per Inbox Zero."
-          : "Off your active inbox. They don’t count toward Inbox Zero."}
-      </p>
-      <div className="space-y-2">
-        {records.map((record) => (
-          <CompletedEmailRow key={record.emailId} record={record} locale={locale} catalog={catalog} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function mockSectionToCategory(section: FakeEmail["section"]): InboxAiCategory {
   if (section === "Handled For You") return "handled";
   if (section === "Hidden Inbox") return "newsletter";
@@ -586,9 +516,10 @@ export default function EmailsInboxPage() {
   const ui = useUiCopy();
   const { catalog } = useInboxCategories();
   const validTabIds = useMemo(
-    () => new Set<string>(["all", "completed", ...catalog.allIds]),
+    () => new Set<string>(["all", ...catalog.allIds]),
     [catalog],
   );
+  const { notifyCompleted } = useCompletionWorkflow();
   const { uiLanguage, setUiLanguage } = useUserPreferences();
   const loadingMicroMessages = useMemo(
     () => loadingRhythmMessages(uiLanguage === "it" ? "it" : "en"),
@@ -604,12 +535,6 @@ export default function EmailsInboxPage() {
         ? section.emails.filter((email) => !isCompleted(email.id))
         : section.emails,
   }));
-  const completedTodayRecords = useMemo(
-    () =>
-      Object.values(completions).sort((a, b) => b.completedAt - a.completedAt),
-    [completions],
-  );
-
   const [inboxMode, setInboxMode] = useState<InboxMode>("loading");
   const [gmailMessages, setGmailMessages] = useState<GmailInboxMessage[]>([]);
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, InboxAiCategory>>(
@@ -1124,12 +1049,12 @@ export default function EmailsInboxPage() {
   );
 
   const handleBulkComplete = useCallback(
-    (actionId: CompletionActionId, actionLabel: string) => {
+    async (actionId: CompletionActionId, actionLabel: string) => {
       const ids = [...selection.selectedIds];
       if (ids.length === 0) return;
 
       const byId = new Map(gmailMessages.map((m) => [m.id, m]));
-      void completeEmails(
+      await completeEmails(
         ids.map((id) => {
           const m = byId.get(id);
           return {
@@ -1144,16 +1069,11 @@ export default function EmailsInboxPage() {
         }),
       );
 
-      const verb =
-        inboxLocale === "it"
-          ? `${ids.length} email completate`
-          : `${ids.length} email${ids.length === 1 ? "" : "s"} completed`;
-      offerActionUndo({
-        message: verb,
-        actionType: "archive",
-        onUndo: () => {
-          /* completion undo not yet supported */
-        },
+      notifyCompleted({
+        emailIds: ids,
+        actionId,
+        actionLabel,
+        locale: inboxLocale,
       });
       selection.clear();
       trackEvent("bulk_action_used", {
@@ -1162,7 +1082,7 @@ export default function EmailsInboxPage() {
         action_id: actionId,
       });
     },
-    [selection, gmailMessages, completeEmails, inboxLocale, offerActionUndo],
+    [selection, gmailMessages, completeEmails, inboxLocale, notifyCompleted],
   );
 
   // Archive / Delete: optimistic local dismissal, fully reversible via undo.
@@ -1296,10 +1216,15 @@ export default function EmailsInboxPage() {
 
   // Completing an email in a session clears it from the inbox (reversible via dismissed store).
   const completeEmailInZero = useCallback(
-    (_id: string, _category: InboxAiCategory, actionId: CompletionActionId, actionLabel: string) => {
+    async (
+      _id: string,
+      _category: InboxAiCategory,
+      actionId: CompletionActionId,
+      actionLabel: string,
+    ) => {
       const id = _id;
       const m = gmailMessages.find((row) => row.id === id);
-      void completeEmails([
+      await completeEmails([
         {
           emailId: id,
           actionId,
@@ -1310,6 +1235,12 @@ export default function EmailsInboxPage() {
           category: m?.category ?? "needs_attention",
         },
       ]);
+      notifyCompleted({
+        emailIds: [id],
+        actionId,
+        actionLabel,
+        locale: inboxLocale,
+      });
       addDismissedIds([id]);
       setDismissedIds((prev) => {
         const next = new Set(prev);
@@ -1318,7 +1249,7 @@ export default function EmailsInboxPage() {
       });
       markEmailsRead([id]);
     },
-    [gmailMessages, completeEmails],
+    [gmailMessages, completeEmails, notifyCompleted, inboxLocale],
   );
 
   const clearPromotionsInZero = useCallback(
@@ -1501,7 +1432,8 @@ export default function EmailsInboxPage() {
             showContent ? "opacity-100" : "opacity-0"
           }`}
         >
-          <div className="min-w-0 space-y-1">
+          <div className="min-w-0 space-y-3">
+            <InboxViewNav locale={inboxLocale} />
             <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
               {ui.home.todayTitle}
             </h1>
@@ -1637,17 +1569,10 @@ export default function EmailsInboxPage() {
                 active={activeCategoryTab}
                 counts={gmailBuckets.counts}
                 total={gmailBuckets.allVisible.length}
-                completedCount={completedTodayRecords.length}
                 locale={inboxLocale}
                 onChange={handleCategoryTabChange}
               />
-              {activeCategoryTab === "completed" ? (
-                <CompletedEmailsSection
-                  records={completedTodayRecords}
-                  locale={inboxLocale}
-                  catalog={catalog}
-                />
-              ) : activeCategoryTab === "all" ? (
+              {activeCategoryTab === "all" ? (
                 <>
                   {gmailBuckets.counts.needs_attention === 0 &&
                   gmailBuckets.allVisible.length > 0 ? (
@@ -1781,27 +1706,20 @@ export default function EmailsInboxPage() {
           )}
         </section>
 
-        {inboxMode === "mock" && completedTodayRecords.length > 0 ? (
+        {inboxMode === "mock" && completedEmailIds.length > 0 ? (
           <section
-            className={`space-y-3 rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-4 shadow-sm transition-opacity duration-500 sm:p-5 ${
+            className={`rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-4 shadow-sm transition-opacity duration-500 sm:p-5 ${
               showContent ? "opacity-100" : "opacity-0"
             }`}
           >
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="flex items-center gap-2 text-sm font-medium text-gray-500">
-                <SectionIcon title="Handled For You" />
-                {inboxLocale === "it" ? "Completate di recente" : "Recently completed"}
-              </h2>
-              <p className="text-xs text-gray-500">
-                {completedTodayRecords.length}{" "}
-                {inboxLocale === "it" ? "completate" : "completed"}
-              </p>
-            </div>
-            <div className="space-y-2">
-              {completedTodayRecords.slice(0, 3).map((record) => (
-                <CompletedEmailRow key={record.emailId} record={record} locale={inboxLocale} catalog={catalog} />
-              ))}
-            </div>
+            <Link
+              href="/emails/completed"
+              className="text-sm font-medium text-accent hover:underline"
+            >
+              {inboxLocale === "it"
+                ? `Vedi ${completedEmailIds.length} email completate →`
+                : `View ${completedEmailIds.length} completed email${completedEmailIds.length === 1 ? "" : "s"} →`}
+            </Link>
           </section>
         ) : null}
       </div>
