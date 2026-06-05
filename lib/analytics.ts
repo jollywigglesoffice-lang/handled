@@ -21,7 +21,10 @@ export type AnalyticsEvent =
   | "completion_action_custom_created"
   | "completion_action_undo"
   | "completion_learning_recorded"
-  | "completion_pattern_updated";
+  | "completion_pattern_updated"
+  | "completion_suggestion_shown"
+  | "completion_suggestion_used"
+  | "completion_suggestion_dismissed";
 
 type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;
 

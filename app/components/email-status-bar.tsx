@@ -1,6 +1,7 @@
 "use client";
 
 import { CompletionActionPicker } from "@/app/emails/completion-action-picker";
+import { CompletionSuggestion } from "@/app/emails/completion-suggestion";
 import { useEmailStatusActions, type EmailStatusActionsInput } from "@/app/emails/use-email-status-actions";
 import { EmailLifecycleIndicator } from "@/app/components/email-lifecycle-indicator";
 
@@ -68,6 +69,18 @@ export function EmailStatusBar({
           )}
         </div>
       </div>
+
+      {!completed ? (
+        <CompletionSuggestion
+          emailId={props.emailId}
+          sender={props.sender}
+          subject={props.subject}
+          category={props.category}
+          locale={props.locale}
+          busy={busy}
+          onSelect={(id, label) => void handleComplete(id, label)}
+        />
+      ) : null}
 
       {showDonePicker && !completed ? (
         <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-3">

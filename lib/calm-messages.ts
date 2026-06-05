@@ -1,3 +1,5 @@
+import { inboxLoadUserMessage } from "@/lib/inbox-load/user-messages";
+import type { InboxLoadFailureReason } from "@/lib/inbox-load/types";
 import type { UiLocale } from "@/lib/ui-copy";
 
 const ERROR_EN = {
@@ -62,5 +64,9 @@ export function calmErrorFromRaw(raw: string, locale: UiLocale = "en"): string {
 }
 
 export function calmInboxErrorFromRaw(raw: string, locale: UiLocale = "en"): string {
+  const reasonMatch = raw.match(/^reason:([a-z_]+)$/);
+  if (reasonMatch?.[1]) {
+    return inboxLoadUserMessage(reasonMatch[1] as InboxLoadFailureReason, locale);
+  }
   return calmErrorFromRaw(raw || "inbox", locale);
 }

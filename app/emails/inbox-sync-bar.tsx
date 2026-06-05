@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useUiCopy } from "@/app/use-ui-copy";
+import { inboxLoadUserMessage } from "@/lib/inbox-load/user-messages";
 
 function formatRelativeSync(iso: string | null): string {
   if (!iso) return "Not synced yet";
@@ -19,6 +20,7 @@ type InboxSyncBarProps = {
   lastSyncedAt: string | null;
   isRefreshing: boolean;
   autoRefreshEnabled?: boolean;
+  locale?: "en" | "it";
   onRefresh: () => void;
 };
 
@@ -26,6 +28,7 @@ export function InboxSyncBar({
   lastSyncedAt,
   isRefreshing,
   autoRefreshEnabled = true,
+  locale = "en",
   onRefresh,
 }: InboxSyncBarProps) {
   const ui = useUiCopy();
@@ -46,7 +49,7 @@ export function InboxSyncBar({
         )}
         <span>
           {isRefreshing
-            ? ui.calm.loading.checkingInbox
+            ? inboxLoadUserMessage("reconnecting", locale)
             : `Last synced ${formatRelativeSync(lastSyncedAt)}`}
         </span>
         {autoRefreshEnabled && !isRefreshing ? (

@@ -69,7 +69,22 @@ import {
   inboxCompletionCopy,
   rotatingCompletionSeed,
 } from "@/lib/empty-states";
-import { calmInboxErrorFromRaw } from "@/lib/calm-messages";
+import { classifyFetchError, classifyHttpStatus } from "@/lib/inbox-load/classify";
+import {
+  createInboxLoadId,
+  elapsedMs,
+  logInboxLoadComplete,
+  logInboxLoadFailed,
+  logInboxLoadStart,
+  mergeTimings,
+} from "@/lib/inbox-load/diagnostics";
+import { inboxLoadUserMessage } from "@/lib/inbox-load/user-messages";
+import type {
+  InboxLoadApiErrorBody,
+  InboxLoadStage,
+  InboxLoadTimings,
+} from "@/lib/inbox-load/types";
+import { INBOX_LOAD_CLIENT_TIMEOUT_MS } from "@/lib/inbox-load/types";
 import { uiLocaleFromLanguage } from "@/lib/ui-copy";
 import { useInboxCategories } from "@/app/inbox-categories-context";
 import {
@@ -565,6 +580,18 @@ export default function EmailsInboxPage() {
   const loadInbox = useCallback(
     async (options?: { silent?: boolean; pageToken?: string | null; append?: boolean }) => {
     const append = Boolean(options?.append);
+    const paginated = Boolean(options?.pageToken);
+    const locale = uiLanguage === "it" ? "it" : "en";
+    const loadId = createInboxLoadId();
+    const loadStarted = Date.now();
+
+    logInboxLoadStart({
+      loadId,
+      paginated,
+      pageToken: options?.pageToken ?? null,
+      append,
+    });
+
     if (!options?.silent && !append) {
       setInboxMode("loading");
     }
@@ -575,7 +602,9 @@ export default function EmailsInboxPage() {
     }
     setGmailError("");
 
+    const sessionStarted = Date.now();
     const hasSession = await ensureApiSessionCookies();
+    let clientTimings: InboxLoadTimings = { clientSessionMs: elapsedMs(sessionStarted) };
 
     try {
       if (!hasSession) {
@@ -586,32 +615,76 @@ export default function EmailsInboxPage() {
       const url = options?.pageToken
         ? `/api/gmail/messages?pageToken=${encodeURIComponent(options.pageToken)}`
         : "/api/gmail/messages";
+
+      const fetchStarted = Date.now();
       const res = await fetch(url, {
         credentials: "include",
         headers: await inboxFetchHeaders(),
+        signal: AbortSignal.timeout(INBOX_LOAD_CLIENT_TIMEOUT_MS),
       });
-      const body = (await res.json()) as {
+      clientTimings = mergeTimings(clientTimings, {
+        clientFetchMs: elapsedMs(fetchStarted),
+      });
+
+      const body = (await res.json()) as InboxLoadApiErrorBody & {
         messages?: GmailInboxMessage[];
         categoryOverrides?: Record<string, InboxAiCategory>;
         emailOverrideRecords?: EmailCategoryOverride[];
         personalCategories?: import("@/lib/personal-categories/types").PersonalInboxCategory[];
         nextPageToken?: string | null;
-        error?: string;
-        message?: string;
+        diagnostics?: InboxLoadApiErrorBody["diagnostics"];
       };
 
       if (res.status === 403 && body.error === "missing_google_token") {
+        logInboxLoadFailed({
+          loadId,
+          startedAt: loadStarted,
+          paginated,
+          pageToken: options?.pageToken ?? null,
+          append,
+          failureReason: "oauth_missing",
+          failureStage: "google_token",
+          timings: mergeTimings(clientTimings, body.diagnostics?.timings, {
+            totalMs: elapsedMs(loadStarted),
+          }),
+        });
         setInboxMode("no_google");
         return;
       }
 
       if (!res.ok) {
-        setGmailError(
+        const failureReason = classifyHttpStatus(res.status, body);
+        const failureStage = (body.failureStage ?? "client_fetch") as InboxLoadStage;
+        const userMessage =
           typeof body.message === "string"
             ? body.message
-            : body.error || "Could not load Gmail inbox.",
-        );
-        setInboxMode("gmail_error");
+            : inboxLoadUserMessage(failureReason, locale);
+
+        logInboxLoadFailed({
+          loadId,
+          startedAt: loadStarted,
+          paginated,
+          pageToken: options?.pageToken ?? null,
+          append,
+          failureReason,
+          failureStage,
+          gmailStatus: body.gmailStatus ?? res.status,
+          gmailReason: body.gmailReason ?? null,
+          timings: mergeTimings(clientTimings, body.diagnostics?.timings, {
+            totalMs: elapsedMs(loadStarted),
+          }),
+        });
+
+        if (!append) {
+          setGmailError(userMessage);
+          setInboxMode("gmail_error");
+        } else {
+          console.warn("[inbox-load] load-more failed", {
+            loadId,
+            failureReason,
+            failureStage,
+          });
+        }
         return;
       }
 
@@ -718,10 +791,38 @@ export default function EmailsInboxPage() {
         setInboxMode(msgs.length ? "gmail" : "gmail_empty");
       }
       setLastSyncedAt(new Date().toISOString());
+
+      const serverDiag = body.diagnostics;
+      const timings = mergeTimings(clientTimings, serverDiag?.timings, {
+        totalMs: elapsedMs(loadStarted),
+      });
+      logInboxLoadComplete({
+        loadId,
+        startedAt: loadStarted,
+        paginated,
+        pageToken: options?.pageToken ?? null,
+        append,
+        emailCount: msgs.length,
+        timings,
+        slow: (timings.totalMs ?? 0) >= 5000,
+      });
     } catch (e) {
-      console.error("[inbox] gmail load", e);
+      const failureReason = classifyFetchError(e);
+      const userMessage = inboxLoadUserMessage(failureReason, locale);
+
+      logInboxLoadFailed({
+        loadId,
+        startedAt: loadStarted,
+        paginated,
+        pageToken: options?.pageToken ?? null,
+        append,
+        failureReason,
+        failureStage: "client_fetch",
+        timings: mergeTimings(clientTimings, { totalMs: elapsedMs(loadStarted) }),
+      });
+
       if (!append) {
-        setGmailError("Network error while loading inbox.");
+        setGmailError(userMessage);
         setInboxMode("gmail_error");
       }
     } finally {
@@ -729,7 +830,7 @@ export default function EmailsInboxPage() {
       setIsLoadingMore(false);
     }
   },
-  [],
+  [uiLanguage],
 );
 
   const handleLoadMore = useCallback(() => {
@@ -1444,10 +1545,8 @@ export default function EmailsInboxPage() {
     () => (inboxLoading ? null : pickFocusReassurance(attentionSnapshot, inboxLocale)),
     [inboxLoading, attentionSnapshot, inboxLocale],
   );
-  const calmGmailError = calmInboxErrorFromRaw(
-    gmailError,
-    uiLocaleFromLanguage(uiLanguage),
-  );
+  const inboxErrorMessage =
+    gmailError || inboxLoadUserMessage("unknown", inboxLocale);
 
   const workflowProfile = getWorkflowModeProfile(workflowMode);
 
@@ -1558,7 +1657,7 @@ export default function EmailsInboxPage() {
           ) : inboxMode === "gmail_error" ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900">{ui.home.inboxErrorTitle}</h2>
-              <p className="mt-2 text-sm leading-relaxed text-gray-600">{calmGmailError}</p>
+              <p className="mt-2 text-sm leading-relaxed text-gray-600">{inboxErrorMessage}</p>
               <button
                 type="button"
                 onClick={() => void loadInbox()}
@@ -1578,6 +1677,7 @@ export default function EmailsInboxPage() {
               <InboxSyncBar
                 lastSyncedAt={lastSyncedAt}
                 isRefreshing={isRefreshing}
+                locale={inboxLocale}
                 onRefresh={() => void loadInbox({ silent: true })}
               />
               <p className="text-xs text-gray-400">
