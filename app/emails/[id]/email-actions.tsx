@@ -11,7 +11,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useHandledEmails } from "@/app/handled-emails-context";
+import { useEmailCompletions } from "@/app/email-completions-context";
 import { useReplyUsage } from "@/app/reply-usage-context";
 import {
   useUserPreferences,
@@ -425,14 +425,16 @@ export function EmailActions({
 }: EmailActionsProps) {
   const ui = useUiCopy();
   const router = useRouter();
-  const { markEmailHandled } = useHandledEmails();
+  const { completeEmails } = useEmailCompletions();
   const { generatedRepliesCount, incrementGeneratedRepliesCount } = useReplyUsage();
   const {
     userName,
     identity,
     tone: savedTone,
     replyLanguage: settingsReplyLanguage,
+    uiLanguage,
   } = useUserPreferences();
+  const inboxLocale = uiLanguage === "it" ? "it" : "en";
 
   const [authUser, setAuthUser] = useState<User | null>(null);
 
@@ -1383,8 +1385,6 @@ return () => clearTimeout(timeout);
       return;
     }
 
-    markEmailHandled(emailId);
-
     if (userId && originalAiReplyRef.current.trim()) {
       const store = loadClientDraftMemory(userId);
       const next = learnFromEdit(store, {
@@ -1569,9 +1569,17 @@ return () => clearTimeout(timeout);
       window.clearTimeout(routeBackTimerRef.current);
     }
 
-    window.setTimeout(() => {
-      markEmailHandled(emailId);
-    }, 0);
+    void completeEmails([
+      {
+        emailId,
+        actionId: "replied",
+        actionLabel: inboxLocale === "it" ? "Risposto" : "Replied",
+        sender: _senderName ?? "",
+        subject,
+        snippet,
+        category: inboxCategory,
+      },
+    ]);
 
     sendFeedbackFadeTimerRef.current = window.setTimeout(() => {
       setShowSendSuccess(false);
@@ -1913,11 +1921,6 @@ return () => clearTimeout(timeout);
           {suggestedTriageAction ? (
             <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
               {suggestedTriageAction}
-            </p>
-          ) : null}
-          {workflowBehavior.showArchiveHint ? (
-            <p className="mt-2 text-xs text-gray-500">
-              Tip: Mark as handled or archive in Gmail when you&apos;re done skimming.
             </p>
           ) : null}
         </div>

@@ -2,8 +2,15 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  EmailCardActionRow,
+  EmailReadStateDot,
+} from "@/app/components/email-card-integrated-controls";
 import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
+import { useEmailStatusActions } from "@/app/emails/use-email-status-actions";
 import { useInboxCategories } from "@/app/inbox-categories-context";
+import type { EmailLifecycleState } from "@/lib/email-lifecycle";
+import type { ReadStateMap } from "@/lib/read-state/client-storage";
 import { inboxCategoryAccent, inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
 import type { CategorySource } from "@/lib/inbox-ai-categories";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
@@ -75,7 +82,7 @@ type GmailInboxCardProps = {
   selected?: boolean;
   selectionMode?: boolean;
   onToggleSelect?: (id: string) => void;
-  isUnread?: boolean;
+  readStateMap?: ReadStateMap;
 };
 
 export function GmailInboxCard({
@@ -86,7 +93,7 @@ export function GmailInboxCard({
   selected = false,
   selectionMode = false,
   onToggleSelect,
-  isUnread = false,
+  readStateMap = {},
 }: GmailInboxCardProps) {
   const [feedback, setFeedback] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatusState>("idle");
@@ -99,6 +106,18 @@ export function GmailInboxCard({
   );
   const ui = useUiCopy();
   const { catalog } = useInboxCategories();
+
+  const emailStatus = useEmailStatusActions({
+    emailId: message.id,
+    sender: message.sender,
+    subject: message.subject,
+    snippet: message.snippet,
+    category: message.category,
+    locale,
+    readStateMap,
+  });
+
+  const isUnread = emailStatus.lifecycle === "unread";
   const guessedRef = useRef(message.category);
   const accent = inboxCategoryAccent(message.category, catalog);
   const catLabel = inboxCategoryTitle(message.category, locale, catalog);
@@ -228,6 +247,8 @@ export function GmailInboxCard({
       ? `Seleziona email da ${message.sender}`
       : `Select email from ${message.sender}`;
 
+  const panelsOpen = showCorrection || showRelationship || emailStatus.showDonePicker;
+
   return (
     <div className="group relative flex items-start gap-2">
       {onToggleSelect ? (
@@ -248,128 +269,126 @@ export function GmailInboxCard({
         </div>
       ) : null}
       <div
-        className={`flex-1 rounded-xl border p-4 shadow-sm transition-[border-color,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:p-5 hover:border-accent/40 hover:shadow-md ${accent} ${
+        className={`min-w-0 flex-1 rounded-xl border p-4 shadow-sm transition-[border-color,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:p-5 hover:border-accent/40 hover:shadow-md ${accent} ${
           selected
             ? "border-accent/60 ring-2 ring-[#9733ff]/30"
             : "border-[#E2E8F0]"
         }`}
       >
-      <article className="space-y-2">
-        <CardHeader
-          message={message}
-          catLabel={catLabel}
-          learnedApplied={learnedApplied}
-          manualOverride={manualOverride}
-          showNewsletterBadge={showNewsletterBadge}
-          badgeLabel={badgeLabel}
-          locale={locale}
-          isUnread={isUnread}
-          onOpenCorrection={() => setShowCorrection(true)}
-        />
-
-        {showRelationship ? (
-          <RelationshipAssignPanel
-            compact
-            sender={message.sender}
-            onDismiss={() => setShowRelationship(false)}
+        <article className="space-y-2">
+          <CardHeader
+            message={message}
+            catLabel={catLabel}
+            learnedApplied={learnedApplied}
+            manualOverride={manualOverride}
+            showNewsletterBadge={showNewsletterBadge}
+            badgeLabel={badgeLabel}
+            locale={locale}
+            isUnread={isUnread}
+            lifecycle={emailStatus.lifecycle}
           />
-        ) : null}
 
-        {activeLearningPrompt && !showCorrection && !showRelationship ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3">
-            <p className="text-xs leading-relaxed text-amber-950">{activeLearningPrompt}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void acceptLearningPrioritize()}
-                className="rounded-lg bg-amber-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-900"
-              >
-                {locale === "it" ? "Sì, prioritarizza" : "Yes, prioritize"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  clearSenderLearningSuggestion(message.sender);
-                  setLearningPrompt(null);
-                }}
-                className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
-              >
-                {locale === "it" ? "Non ora" : "Not now"}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {showCorrection ? (
-          <CategoryCorrectionPanel
-            compact
-            target={{
-              id: message.id,
-              sender: message.sender,
-              subject: message.subject,
-              snippet: message.snippet,
-              guessedCategory: message.category,
+          <Link
+            href={`/emails/${encodeURIComponent(message.id)}`}
+            className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            onClick={() => {
+              const preview = buildInboxMessagePreview(message, locale);
+              saveEmailPreview({
+                id: message.id,
+                sender: message.sender,
+                subject: message.subject,
+                snippet: message.snippet,
+                summary: preview.glanceLine,
+                chips: [],
+              });
             }}
-            onApply={handleApply}
-            onDismiss={() => setShowCorrection(false)}
+          >
+            <h3
+              className={`text-[15px] leading-snug transition-colors duration-200 ${
+                isUnread ? "font-semibold text-[#0F172A]" : "font-medium text-[#0F172A]"
+              }`}
+            >
+              {message.subject}
+            </h3>
+          </Link>
+
+          <InboxGlanceLine message={message} locale={locale} />
+
+          {showRelationship ? (
+            <RelationshipAssignPanel
+              compact
+              sender={message.sender}
+              onDismiss={() => setShowRelationship(false)}
+            />
+          ) : null}
+
+          {activeLearningPrompt && !panelsOpen ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3">
+              <p className="text-xs leading-relaxed text-amber-950">{activeLearningPrompt}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void acceptLearningPrioritize()}
+                  className="rounded-lg bg-amber-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-900"
+                >
+                  {locale === "it" ? "Sì, prioritarizza" : "Yes, prioritize"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearSenderLearningSuggestion(message.sender);
+                    setLearningPrompt(null);
+                  }}
+                  className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                >
+                  {locale === "it" ? "Non ora" : "Not now"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {showCorrection ? (
+            <CategoryCorrectionPanel
+              compact
+              target={{
+                id: message.id,
+                sender: message.sender,
+                subject: message.subject,
+                snippet: message.snippet,
+                guessedCategory: message.category,
+              }}
+              onApply={handleApply}
+              onDismiss={() => setShowCorrection(false)}
+            />
+          ) : null}
+
+          <EmailCardActionRow
+            status={emailStatus}
+            locale={locale}
+            hideActions={showCorrection || showRelationship}
+            onChangeCategory={() => setShowCorrection(true)}
+            onSetRelationship={() => setShowRelationship(true)}
+            changeCategoryLabel={
+              locale === "it" ? "Cambia categoria" : "Change category"
+            }
+            setRelationshipLabel={ui.relationship.assignLink}
           />
-        ) : null}
 
-        <Link
-          href={`/emails/${encodeURIComponent(message.id)}`}
-          className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          onClick={() => {
-            const preview = buildInboxMessagePreview(message, locale);
-            saveEmailPreview({
-              id: message.id,
-              sender: message.sender,
-              subject: message.subject,
-              snippet: message.snippet,
-              summary: preview.glanceLine,
-              chips: [],
-            });
-          }}
-        >
-          <h3 className="text-[15px] font-medium leading-snug text-[#0F172A] transition-colors duration-200">
-            {message.subject}
-          </h3>
-        </Link>
-
-        <InboxGlanceLine message={message} locale={locale} />
-
-        {!showCorrection && !showRelationship ? (
-          <div className="flex flex-wrap items-center gap-3">
+          {manualOverride && onResetOverride && !panelsOpen ? (
             <button
               type="button"
-              onClick={() => setShowCorrection(true)}
-              className="text-xs font-medium text-accent hover:underline"
+              onClick={() => void handleReset()}
+              className="text-xs font-medium text-gray-500 hover:text-gray-800 hover:underline"
             >
-              Change category or teach Handled…
+              Reset to AI categorization
             </button>
-            <button
-              type="button"
-              onClick={() => setShowRelationship(true)}
-              className="text-xs font-medium text-teal-700 hover:underline"
-            >
-              {ui.relationship.assignLink}
-            </button>
-            {manualOverride && onResetOverride ? (
-              <button
-                type="button"
-                onClick={() => void handleReset()}
-                className="text-xs font-medium text-gray-500 hover:text-gray-800 hover:underline"
-              >
-                Reset to AI categorization
-              </button>
-            ) : null}
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <SaveStatus status={saveStatus} />
+            {feedback ? <p className="text-xs text-emerald-700">{feedback}</p> : null}
           </div>
-        ) : null}
-
-        <div className="flex flex-wrap items-center gap-2">
-          <SaveStatus status={saveStatus} />
-          {feedback ? <p className="text-xs text-emerald-700">{feedback}</p> : null}
-        </div>
-      </article>
+        </article>
       </div>
     </div>
   );
@@ -434,7 +453,7 @@ function CardHeader({
   badgeLabel,
   locale,
   isUnread = false,
-  onOpenCorrection,
+  lifecycle,
 }: {
   message: GmailCardMessage;
   catLabel: string;
@@ -444,22 +463,15 @@ function CardHeader({
   badgeLabel: string;
   locale: "en" | "it";
   isUnread?: boolean;
-  onOpenCorrection: () => void;
+  lifecycle: EmailLifecycleState;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p
-        className={`flex items-center gap-1.5 text-sm ${
+        className={`text-sm ${
           isUnread ? "font-semibold text-[#0F172A]" : "font-medium text-gray-500"
         }`}
       >
-        {isUnread ? (
-          <span
-            aria-hidden
-            className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#9733ff]"
-            title={locale === "it" ? "Da leggere" : "Unread"}
-          />
-        ) : null}
         {message.sender}
       </p>
       <div className="flex flex-wrap items-center gap-2">
@@ -502,17 +514,16 @@ function CardHeader({
             Rule applied
           </span>
         ) : null}
-        <button
-          type="button"
-          onClick={onOpenCorrection}
-          className="max-w-[11rem] rounded-full border border-[#E2E8F0] bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent transition-colors duration-300 hover:bg-accent-muted"
-          aria-label={`Category: ${catLabel}. Click to change.`}
+        <span
+          className="rounded-full border border-[#E2E8F0] bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent"
+          aria-label={`Category: ${catLabel}`}
         >
-          {catLabel} ▼
-        </button>
+          {catLabel}
+        </span>
         <time className="text-xs text-gray-400" dateTime={message.date}>
           {formatInboxDate(message.date)}
         </time>
+        <EmailReadStateDot lifecycle={lifecycle} locale={locale} />
       </div>
     </div>
   );

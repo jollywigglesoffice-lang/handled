@@ -4,6 +4,7 @@ import { senderRelationshipsHeaders } from "@/lib/relationship-intelligence/clie
 import { handledBrainHeaders } from "@/lib/handled-brain/client-storage";
 import { inboxRulesHeaders } from "@/lib/inbox-rules-client-storage";
 import { senderPreferencesHeaders } from "@/lib/inbox-sender-preferences";
+import { completionActionsHeaders } from "@/lib/completion-actions/client-storage";
 import { personalCategoriesHeaders } from "@/lib/personal-categories/client-storage";
 import { workflowModeHeaders } from "@/lib/workflow-mode";
 
@@ -17,6 +18,7 @@ export function inboxPreferenceHeaders(): HeadersInit {
     ...senderPreferencesHeaders(),
     ...handledBrainHeaders(),
     ...personalCategoriesHeaders(),
+    ...completionActionsHeaders(),
   };
 }
 

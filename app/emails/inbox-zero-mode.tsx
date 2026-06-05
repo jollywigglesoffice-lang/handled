@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { CompletionActionPicker } from "@/app/emails/completion-action-picker";
 import type { GmailCardMessage } from "@/app/emails/gmail-inbox-card";
+import type { CompletionActionId } from "@/lib/completion-actions/types";
 import {
   inboxCategorySectionTitle,
   type InboxAiCategory,
@@ -20,7 +22,12 @@ type InboxZeroModeProps = {
   steps: InboxZeroStep[];
   mode: "quick_replies" | "inbox_zero";
   locale: "en" | "it";
-  onCompleteEmail: (id: string, category: InboxAiCategory) => void;
+  onCompleteEmail: (
+    id: string,
+    category: InboxAiCategory,
+    actionId: CompletionActionId,
+    actionLabel: string,
+  ) => void;
   onClearPromotions: (ids: string[]) => void;
   onFinished: (stats: { processed: number; timeSavedSeconds: number }) => void;
   onClose: () => void;
@@ -113,13 +120,16 @@ export function InboxZeroMode({
 
   const current = steps[index];
 
-  const completeEmail = useCallback(() => {
-    if (!current || current.kind !== "email") return;
-    onCompleteEmail(current.message.id, current.category);
-    setProcessed((n) => n + 1);
-    setTimeSaved((s) => s + secondsForCategory(current.category));
-    advance();
-  }, [current, onCompleteEmail, advance]);
+  const completeEmail = useCallback(
+    (actionId: CompletionActionId, actionLabel: string) => {
+      if (!current || current.kind !== "email") return;
+      onCompleteEmail(current.message.id, current.category, actionId, actionLabel);
+      setProcessed((n) => n + 1);
+      setTimeSaved((s) => s + secondsForCategory(current.category));
+      advance();
+    },
+    [current, onCompleteEmail, advance],
+  );
 
   const doCleanup = useCallback(() => {
     if (!current || current.kind !== "cleanup") return;
@@ -212,9 +222,11 @@ function EmailStep({
   category: InboxAiCategory;
   locale: "en" | "it";
   t: Copy;
-  onComplete: () => void;
+  onComplete: (actionId: CompletionActionId, actionLabel: string) => void;
   onSkip: () => void;
 }) {
+  const [showDone, setShowDone] = useState(false);
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -232,31 +244,42 @@ function EmailStep({
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 pt-1">
-        <button
-          type="button"
-          onClick={onComplete}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#9733ff] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-[#9733ff] focus-visible:ring-offset-2"
-        >
-          <CheckGlyph />
-          {t.complete}
-        </button>
-        <Link
-          href={`/emails/${encodeURIComponent(message.id)}`}
-          target="_blank"
-          className="rounded-xl px-4 py-2.5 text-sm font-medium text-accent transition hover:bg-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-        >
-          {t.open}
-        </Link>
-        <button
-          type="button"
-          onClick={onSkip}
-          className="ml-auto rounded-xl px-4 py-2.5 text-sm font-medium text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
-        >
-          {t.skip}
-          <span aria-hidden className="ml-1">→</span>
-        </button>
-      </div>
+      {showDone ? (
+        <CompletionActionPicker
+          locale={locale}
+          onSelect={(id, label) => {
+            onComplete(id, label);
+            setShowDone(false);
+          }}
+          showCreate={false}
+        />
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => setShowDone(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+          >
+            <CheckGlyph />
+            {locale === "it" ? "✓ Fatto con questa" : "✓ Done with this"}
+          </button>
+          <Link
+            href={`/emails/${encodeURIComponent(message.id)}`}
+            target="_blank"
+            className="rounded-xl px-4 py-2.5 text-sm font-medium text-accent transition hover:bg-accent-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          >
+            {t.open}
+          </Link>
+          <button
+            type="button"
+            onClick={onSkip}
+            className="ml-auto rounded-xl px-4 py-2.5 text-sm font-medium text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
+          >
+            {t.skip}
+            <span aria-hidden className="ml-1">→</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

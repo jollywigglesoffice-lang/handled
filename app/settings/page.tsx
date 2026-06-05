@@ -16,6 +16,7 @@ import { InboxPrioritySettings } from "./inbox-priority-settings";
 import { SenderRelationshipsSettings } from "./sender-relationships-settings";
 import { SenderRulesSettings } from "./sender-rules-settings";
 import { IdentitySettings } from "./identity-settings";
+import { CompletionActionsSettings } from "./completion-actions-settings";
 import { PersonalCategoriesSettings } from "./personal-categories-settings";
 import { PersonalizationSettings } from "./personalization-settings";
 import { ReplyToneSettings } from "./reply-tone-settings";
@@ -629,6 +630,7 @@ export default function SettingsPage() {
           >
             <div className="mt-4 space-y-8">
               <PersonalCategoriesSettings />
+              <CompletionActionsSettings />
               <PersonalizationSettings />
               <HandledBrainSettings />
               <SenderRulesSettings />

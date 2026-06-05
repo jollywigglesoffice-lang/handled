@@ -6,6 +6,7 @@ import { notUrgentSectionReassurance } from "@/lib/attention-calm";
 import { buildClutterBatches, type ClutterBatch } from "@/lib/inbox-clutter-batch";
 import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import type { ReadStateMap } from "@/lib/read-state/client-storage";
 
 type InboxClutterSectionProps = {
   messages: GmailCardMessage[];
@@ -15,6 +16,7 @@ type InboxClutterSectionProps = {
     category: InboxAiCategory,
     options?: InboxCategoryChangeOptions,
   ) => void;
+  readStateMap?: ReadStateMap;
   defaultCollapsed?: boolean;
 };
 
@@ -22,10 +24,12 @@ function ClutterBatchGroup({
   batch,
   locale,
   onCategoryChange,
+  readStateMap,
 }: {
   batch: ClutterBatch;
   locale: "en" | "it";
   onCategoryChange: InboxClutterSectionProps["onCategoryChange"];
+  readStateMap?: ReadStateMap;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -51,6 +55,7 @@ function ClutterBatchGroup({
               message={message as GmailCardMessage}
               locale={locale}
               onCategoryChange={onCategoryChange}
+              readStateMap={readStateMap}
             />
           ))}
         </div>
@@ -63,6 +68,7 @@ export function InboxClutterSection({
   messages,
   locale,
   onCategoryChange,
+  readStateMap,
   defaultCollapsed = true,
 }: InboxClutterSectionProps) {
   const [sectionOpen, setSectionOpen] = useState(!defaultCollapsed);
@@ -117,6 +123,7 @@ export function InboxClutterSection({
               batch={batch}
               locale={locale}
               onCategoryChange={onCategoryChange}
+              readStateMap={readStateMap}
             />
           ))}
         </div>

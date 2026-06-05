@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useCompletionActions } from "@/app/completion-actions-context";
 import { useInboxCategories } from "@/app/inbox-categories-context";
+import type { CompletionActionId } from "@/lib/completion-actions/types";
 import { inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
 
 type BulkActionBarProps = {
@@ -9,7 +11,7 @@ type BulkActionBarProps = {
   totalVisible: number;
   locale: "en" | "it";
   onMoveTo: (category: InboxAiCategory) => void;
-  onMarkHandled: () => void;
+  onCompleteWith: (actionId: CompletionActionId, actionLabel: string) => void;
   onArchive: () => void;
   onDelete: () => void;
   onMarkRead: () => void;
@@ -22,7 +24,7 @@ const COPY = {
   en: {
     selected: (n: number) => `${n} selected`,
     moveTo: "Move to",
-    handled: "Handled",
+    doneWith: "Done with this",
     archive: "Archive",
     del: "Delete",
     markRead: "Read",
@@ -33,7 +35,7 @@ const COPY = {
   it: {
     selected: (n: number) => `${n} selezionate`,
     moveTo: "Sposta in",
-    handled: "Fatto",
+    doneWith: "Fatto con queste",
     archive: "Archivia",
     del: "Elimina",
     markRead: "Letta",
@@ -48,7 +50,7 @@ export function BulkActionBar({
   totalVisible,
   locale,
   onMoveTo,
-  onMarkHandled,
+  onCompleteWith,
   onArchive,
   onDelete,
   onMarkRead,
@@ -57,23 +59,26 @@ export function BulkActionBar({
   onClear,
 }: BulkActionBarProps) {
   const { catalog } = useInboxCategories();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { catalog: actionCatalog } = useCompletionActions();
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [doneOpen, setDoneOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const moveRef = useRef<HTMLDivElement | null>(null);
+  const doneRef = useRef<HTMLDivElement | null>(null);
   const t = COPY[locale];
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!moveOpen && !doneOpen) return;
     const onDocClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
+      const target = e.target as Node;
+      if (moveRef.current?.contains(target) || doneRef.current?.contains(target)) return;
+      setMoveOpen(false);
+      setDoneOpen(false);
     };
     window.addEventListener("mousedown", onDocClick);
     return () => window.removeEventListener("mousedown", onDocClick);
-  }, [menuOpen]);
+  }, [moveOpen, doneOpen]);
 
-  // Soft entrance once the bar appears.
   useEffect(() => {
     if (count > 0) {
       const id = requestAnimationFrame(() => setMounted(true));
@@ -96,46 +101,71 @@ export function BulkActionBar({
           {t.selected(count)}
         </span>
 
-        <div ref={menuRef} className="relative">
+        <div ref={moveRef} className="relative">
           <button
             type="button"
-            onClick={() => setMenuOpen((v) => !v)}
+            onClick={() => {
+              setDoneOpen(false);
+              setMoveOpen((v) => !v);
+            }}
             aria-haspopup="menu"
-            aria-expanded={menuOpen}
+            aria-expanded={moveOpen}
             className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium text-[#0F172A] transition hover:bg-accent-muted hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
           >
             {t.moveTo}
-            <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 opacity-60" fill="currentColor" aria-hidden>
-              <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" />
-            </svg>
+            <Chevron />
           </button>
-
-          {menuOpen ? (
-            <div
-              role="menu"
-              className="absolute bottom-full left-0 mb-2 w-56 overflow-hidden rounded-2xl border border-gray-100 bg-white p-1 shadow-[0_16px_48px_-16px_rgba(15,23,42,0.3)]"
-            >
+          {moveOpen ? (
+            <ActionMenu>
               {catalog.selectorOrder.map((category: InboxAiCategory) => (
-                <button
+                <MenuItem
                   key={category}
-                  type="button"
-                  role="menuitem"
                   onClick={() => {
-                    setMenuOpen(false);
+                    setMoveOpen(false);
                     onMoveTo(category);
                   }}
-                  className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm text-[#0F172A] transition hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
                 >
                   {inboxCategoryTitle(category, locale, catalog)}
-                </button>
+                </MenuItem>
               ))}
-            </div>
+            </ActionMenu>
           ) : null}
         </div>
 
-        <BarButton onClick={onMarkHandled} primary>
-          {t.handled}
-        </BarButton>
+        <div ref={doneRef} className="relative">
+          <button
+            type="button"
+            onClick={() => {
+              setMoveOpen(false);
+              setDoneOpen((v) => !v);
+            }}
+            aria-haspopup="menu"
+            aria-expanded={doneOpen}
+            className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+          >
+            {t.doneWith}
+            <Chevron light />
+          </button>
+          {doneOpen ? (
+            <ActionMenu align="center">
+              {actionCatalog.pickerOrder.map((actionId) => (
+                <MenuItem
+                  key={actionId}
+                  onClick={() => {
+                    setDoneOpen(false);
+                    onCompleteWith(actionId, actionCatalog.labelFor(actionId, locale));
+                  }}
+                >
+                  <span className="text-emerald-600" aria-hidden>
+                    ✓{" "}
+                  </span>
+                  {actionCatalog.labelFor(actionId, locale)}
+                </MenuItem>
+              ))}
+            </ActionMenu>
+          ) : null}
+        </div>
+
         <BarButton onClick={onArchive}>{t.archive}</BarButton>
         <BarButton onClick={onDelete}>{t.del}</BarButton>
 
@@ -159,6 +189,51 @@ export function BulkActionBar({
   );
 }
 
+function ActionMenu({
+  children,
+  align = "left",
+}: {
+  children: React.ReactNode;
+  align?: "left" | "center";
+}) {
+  return (
+    <div
+      role="menu"
+      className={`absolute bottom-full mb-2 max-h-64 w-56 overflow-y-auto rounded-2xl border border-gray-100 bg-white p-1 shadow-[0_16px_48px_-16px_rgba(15,23,42,0.3)] ${
+        align === "center" ? "left-1/2 -translate-x-1/2" : "left-0"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MenuItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm text-[#0F172A] transition hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:outline-none"
+    >
+      {children}
+    </button>
+  );
+}
+
+function Chevron({ light }: { light?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className={`h-3.5 w-3.5 ${light ? "opacity-90" : "opacity-60"}`}
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" />
+    </svg>
+  );
+}
+
 function CheckGlyph() {
   return (
     <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden>
@@ -176,23 +251,10 @@ function CheckGlyph() {
 function BarButton({
   onClick,
   children,
-  primary = false,
 }: {
   onClick: () => void;
   children: React.ReactNode;
-  primary?: boolean;
 }) {
-  if (primary) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="rounded-xl bg-[#9733ff] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-[#9733ff] focus-visible:ring-offset-2"
-      >
-        {children}
-      </button>
-    );
-  }
   return (
     <button
       type="button"

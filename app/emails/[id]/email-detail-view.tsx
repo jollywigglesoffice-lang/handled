@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { EmailStatusBar } from "@/app/components/email-status-bar";
 import { IntentChips } from "@/app/components/intent-chips";
 import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
@@ -216,7 +217,17 @@ export function EmailDetailView({
           {ui.common.backToInbox}
         </Link>
 
-        <header className="mt-5 space-y-2">
+        <header className="mt-5 space-y-3">
+          <EmailStatusBar
+            emailId={email.id}
+            sender={email.sender}
+            subject={email.subject}
+            snippet={email.summary}
+            category={category}
+            locale={locale}
+            variant="detail"
+          />
+
           <p className="text-sm text-gray-500">{email.sender}</p>
 
           <h1 className="text-2xl font-semibold leading-snug tracking-tight text-gray-900 sm:text-[1.65rem]">
