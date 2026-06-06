@@ -11,8 +11,6 @@ import {
   formatRelativeReceived,
   hasWaitingResponse,
   isActiveWaiting,
-  waitingOnLabel,
-  waitingStartAt,
 } from "@/lib/waiting-on/helpers";
 
 function formatRelativePast(ms: number, locale: "en" | "it", now = Date.now()): string {
@@ -61,6 +59,50 @@ function lastInteractionMs(
   return max;
 }
 
+function waitingOnSummary(
+  activeWaiting: EmailCompletionRecord[],
+  locale: "en" | "it",
+): string | null {
+  if (!activeWaiting.length) return null;
+
+  const withResponse = activeWaiting.filter(hasWaitingResponse);
+  const open = activeWaiting.length - withResponse.length;
+
+  if (withResponse.length > 0 && open === 0) {
+    return locale === "it"
+      ? withResponse.length === 1
+        ? "1 risposta"
+        : `${withResponse.length} risposte`
+      : withResponse.length === 1
+        ? "1 response"
+        : `${withResponse.length} responses`;
+  }
+
+  if (open > 0) {
+    const n = open + withResponse.length;
+    return locale === "it"
+      ? n === 1
+        ? "1 voce in attesa"
+        : `${n} voci in attesa`
+      : n === 1
+        ? "1 open item"
+        : `${n} open items`;
+  }
+
+  return null;
+}
+
+/** At least two memory signals before surfacing in the UI. */
+export function hasEnoughRelationshipMemory(memory: SenderRelationshipMemory): boolean {
+  const signals = [
+    memory.typicalCategory,
+    memory.typicalCompletion,
+    memory.lastInteraction,
+    memory.waitingOnSummary,
+  ].filter(Boolean).length;
+  return signals >= 2;
+}
+
 export function buildSenderRelationshipMemory(input: {
   senderLine: string;
   completions: EmailCompletionMap;
@@ -81,19 +123,18 @@ export function buildSenderRelationshipMemory(input: {
   } = input;
 
   const senderRecords = recordsForSender(completions, senderLine);
+  if (senderRecords.length === 0) return null;
+
   const activeWaiting = senderRecords.filter(isActiveWaiting);
   const historyRecords = senderRecords.filter((r) => !isActiveWaiting(r));
 
-  const hasManualRelationship = relationship?.source === "manual";
-  if (senderRecords.length === 0 && !hasManualRelationship) {
-    return null;
-  }
+  const minPatternSamples = senderRecords.length >= 2 ? 2 : 1;
 
   const categoryCounts: Record<string, number> = {};
   for (const r of senderRecords) {
     categoryCounts[r.category] = (categoryCounts[r.category] ?? 0) + 1;
   }
-  const topCategoryId = dominantKey<InboxAiCategory>(categoryCounts);
+  const topCategoryId = dominantKey<InboxAiCategory>(categoryCounts, minPatternSamples);
   const typicalCategory = topCategoryId
     ? inboxCategoryTitle(topCategoryId, locale, catalog)
     : null;
@@ -103,67 +144,23 @@ export function buildSenderRelationshipMemory(input: {
     if (r.actionId === "waiting_on_someone") continue;
     actionCounts[r.actionId] = (actionCounts[r.actionId] ?? 0) + 1;
   }
-  const topActionId = dominantKey<CompletionActionId>(actionCounts);
+  const topActionId = dominantKey<CompletionActionId>(actionCounts, minPatternSamples);
   const typicalCompletion = topActionId
     ? historyRecords.find((r) => r.actionId === topActionId)?.actionLabel ?? null
     : null;
 
   const lastMs = lastInteractionMs(senderRecords, currentEmailMs);
-  const lastInteractionLabel =
-    lastMs != null
-      ? locale === "it"
-        ? `Ultima email: ${formatRelativePast(lastMs, locale, now)}`
-        : `Last email: ${formatRelativePast(lastMs, locale, now)}`
-      : null;
+  const lastInteraction = lastMs != null ? formatRelativePast(lastMs, locale, now) : null;
 
-  const waitingItems = activeWaiting.map((r) => {
-    const who = waitingOnLabel(r, locale);
-    const started = waitingStartAt(r);
-    const relative = formatRelativePast(started, locale, now);
-    const status = hasWaitingResponse(r) ? "response_received" as const : "waiting" as const;
-    const label =
-      status === "response_received"
-        ? locale === "it"
-          ? `In attesa di risposta da ${who}`
-          : `Waiting on response from ${who}`
-        : locale === "it"
-          ? `In attesa di ${who}`
-          : `Waiting on ${who}`;
-    return {
-      emailId: r.emailId,
-      label,
-      status,
-      relative:
-        locale === "it" ? `Inviata: ${relative}` : `Sent: ${relative}`,
-    };
-  });
-
-  const recentActivity = [...senderRecords]
-    .sort(
-      (a, b) =>
-        (b.waitingResponseAt ?? b.waitingResolvedAt ?? b.completedAt) -
-        (a.waitingResponseAt ?? a.waitingResolvedAt ?? a.completedAt),
-    )
-    .slice(0, 3)
-    .map((r) => ({
-      emailId: r.emailId,
-      subject: r.subject || (locale === "it" ? "(senza oggetto)" : "(no subject)"),
-      actionLabel: r.actionLabel,
-      relative: formatRelativePast(
-        r.waitingResponseAt ?? r.waitingResolvedAt ?? r.completedAt,
-        locale,
-        now,
-      ),
-    }));
-
-  return {
+  const memory: SenderRelationshipMemory = {
     profileName: profileDisplayName(senderLine, relationship),
     typicalCategory,
     typicalCategoryId: topCategoryId,
     typicalCompletion,
-    lastInteractionLabel,
-    waitingItems,
-    recentActivity,
+    lastInteraction,
+    waitingOnSummary: waitingOnSummary(activeWaiting, locale),
     interactionCount: senderRecords.length,
   };
+
+  return hasEnoughRelationshipMemory(memory) ? memory : null;
 }
