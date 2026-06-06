@@ -11,6 +11,7 @@ import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
 import { EmailDetailInsights } from "./email-detail-insights";
 import { RelationshipBadge } from "@/app/emails/relationship-badge";
+import { SenderRelationshipMemoryCard } from "@/app/emails/sender-relationship-memory";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import type { FakeEmail } from "@/lib/fake-emails";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
@@ -63,6 +64,7 @@ export type EmailDetailPayload = FakeEmail & {
   unsubscribeReplyDraft?: string;
   followUpAnalysis?: FollowUpAnalysis;
   relationship?: SenderRelationshipProfile;
+  internalDateMs?: number;
   needsCalendarContext?: boolean;
   schedulingIntentDetected?: boolean;
   actionIntelligence?: ActionIntelligenceResult;
@@ -287,6 +289,13 @@ export function EmailDetailView({
           {email.relationship ? (
             <RelationshipBadge relationship={email.relationship} />
           ) : null}
+
+          <SenderRelationshipMemoryCard
+            sender={email.sender}
+            relationship={email.relationship}
+            locale={locale}
+            currentEmailMs={email.internalDateMs}
+          />
 
           <p className="text-[15px] leading-snug text-gray-800">{glance.primary}</p>
 

@@ -79,6 +79,7 @@ export async function buildEmailDetailFromGmailMessage(
     aiSummary: intel.aiSummary,
     followUpAnalysis: intel.followUpAnalysis,
     relationship: intel.relationship,
+    internalDateMs: msg.internalDateMs,
     needsCalendarContext: intel.calendarAwareness?.needsCalendarContext ?? false,
     schedulingIntentDetected:
       intel.calendarAwareness?.schedulingIntent?.detected ?? false,
@@ -139,6 +140,7 @@ export async function buildEmailDetailFromGmailMetadata(
     inboxCategory: category,
     aiSummary,
     relationship: intel.relationship,
+    internalDateMs: meta.internalDateMs,
     actionIntelligence: intel.actionIntelligence,
     timelineIntelligence: intel.timelineIntelligence,
     proactiveAssistant: intel.proactiveAssistant,

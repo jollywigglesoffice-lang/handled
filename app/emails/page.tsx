@@ -136,7 +136,13 @@ import {
 import { trackEvent } from "@/lib/analytics";
 import { DailyBriefingCard } from "@/app/emails/daily-briefing-card";
 import type { DailyBriefingMessage } from "@/lib/daily-briefing/types";
-import { InboxZeroMode, type InboxZeroStep } from "@/app/emails/inbox-zero-mode";
+import {
+  InboxZeroMode,
+  type InboxZeroRecategorizeMeta,
+  type InboxZeroStep,
+} from "@/app/emails/inbox-zero-mode";
+import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
+import type { CategoryApplyScope } from "@/lib/category-correction";
 import { CategoryTabs, type CategoryTab } from "@/app/emails/category-tabs";
 import {
   consumeInboxScrollRestore,
@@ -1215,6 +1221,17 @@ export default function EmailsInboxPage() {
     catalog,
   });
 
+  const briefingCounts = useMemo(() => {
+    const responseInInbox = messagesForDisplay.filter((m) => m.waitingResponseUpdate).length;
+    return {
+      ...gmailBuckets.counts,
+      needs_attention: Math.max(
+        0,
+        (gmailBuckets.counts.needs_attention ?? 0) - responseInInbox,
+      ),
+    };
+  }, [gmailBuckets.counts, messagesForDisplay]);
+
   const briefingMessages = useMemo((): DailyBriefingMessage[] => {
     return messagesWithOverrides.map((m) => ({
       id: m.id,
@@ -1550,7 +1567,13 @@ export default function EmailsInboxPage() {
 
   const handleStartInboxZero = useCallback(() => {
     const quickReplies = gmailBuckets.byCategory.quick_reply ?? [];
-    const needsAttention = gmailBuckets.byCategory.needs_attention ?? [];
+    const needsAttentionAll = gmailBuckets.byCategory.needs_attention ?? [];
+    const needsAttention = needsAttentionAll.filter(
+      (m) => !(m as GmailInboxMessage).waitingResponseUpdate,
+    );
+    const responseReceived = needsAttentionAll.filter(
+      (m) => (m as GmailInboxMessage).waitingResponseUpdate,
+    );
     const promotions = gmailBuckets.byCategory.promotion ?? [];
 
     const steps: InboxZeroStep[] = [
@@ -1560,6 +1583,11 @@ export default function EmailsInboxPage() {
         message: message as GmailCardMessage,
       })),
       ...needsAttention.map((message) => ({
+        kind: "email" as const,
+        category: "needs_attention" as const,
+        message: message as GmailCardMessage,
+      })),
+      ...responseReceived.map((message) => ({
         kind: "email" as const,
         category: "needs_attention" as const,
         message: message as GmailCardMessage,
@@ -1753,6 +1781,45 @@ export default function EmailsInboxPage() {
     [gmailMessages, categoryOverrides, offerCategoryUndo],
   );
 
+  const handleRecategorizeInZero = useCallback(
+    async (
+      id: string,
+      chosen: InboxAiCategory,
+      scope: CategoryApplyScope,
+      meta: InboxZeroRecategorizeMeta,
+    ) => {
+      handleCategoryChange(id, chosen, {
+        scope,
+        sender: meta.sender,
+        guessedCategory: meta.guessedCategory,
+      });
+
+      try {
+        const result = await submitCategoryFeedback({
+          emailId: id,
+          sender: meta.sender,
+          subject: meta.subject,
+          snippet: meta.snippet,
+          guessedCategory: meta.guessedCategory,
+          chosenCategory: chosen,
+          scope,
+        });
+        if (scope === "this_email") {
+          window.dispatchEvent(new Event("handled-email-overrides-changed"));
+        } else {
+          window.dispatchEvent(new Event("handled-inbox-rules-changed"));
+          window.dispatchEvent(new Event("handled-sender-preferences-changed"));
+          if (result.affectedCount && result.affectedCount > 0) {
+            window.dispatchEvent(new Event("handled-inbox-refresh-requested"));
+          }
+        }
+      } catch {
+        /* local override already applied */
+      }
+    },
+    [handleCategoryChange],
+  );
+
   const handleResetCategoryOverride = useCallback(
     async (id: string) => {
       dismissUndoToast();
@@ -1928,7 +1995,7 @@ export default function EmailsInboxPage() {
                   : `Showing newest ${gmailMessages.length} inbox emails`}
               </p>
               <DailyBriefingCard
-                counts={gmailBuckets.counts}
+                counts={briefingCounts}
                 messages={briefingMessages}
                 locale={inboxLocale}
                 onClearPromotions={handleClearPromotions}
@@ -2128,6 +2195,7 @@ export default function EmailsInboxPage() {
           mode={zeroSession.mode}
           locale={inboxLocale}
           onCompleteEmail={completeEmailInZero}
+          onRecategorizeEmail={handleRecategorizeInZero}
           onClearPromotions={clearPromotionsInZero}
           onFinished={handleZeroFinished}
           onClose={() => setZeroSession(null)}

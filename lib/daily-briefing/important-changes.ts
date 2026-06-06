@@ -46,7 +46,8 @@ export function detectImportantChanges(
       out.push({
         id: `tax-${m.id}`,
         emailId: m.id,
-        label: locale === "it" ? "Nuova email fiscale" : "New tax email",
+        label:
+          locale === "it" ? "✓ Nuova email fiscale" : "✓ New tax-related email",
       });
     }
 
@@ -55,7 +56,7 @@ export function detectImportantChanges(
       out.push({
         id: `school-${m.id}`,
         emailId: m.id,
-        label: locale === "it" ? "Nuova email scuola" : "New school email",
+        label: locale === "it" ? "✓ Nuova email scuola" : "✓ New school email",
       });
     }
 
@@ -66,8 +67,8 @@ export function detectImportantChanges(
         emailId: m.id,
         label:
           locale === "it"
-            ? "Nuova conferma di viaggio"
-            : "New travel confirmation",
+            ? "✓ Nuova conferma di viaggio"
+            : "✓ New travel confirmation",
       });
     }
   }
@@ -83,10 +84,7 @@ export function detectImportantChanges(
       out.push({
         id: `waiting-response-${response.id}`,
         emailId: response.id,
-        label:
-          locale === "it"
-            ? `Nuova risposta da ${who}`
-            : `New response from ${who}`,
+        label: locale === "it" ? `✓ ${who} ha risposto` : `✓ ${who} replied`,
       });
     }
   }

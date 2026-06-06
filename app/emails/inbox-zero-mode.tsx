@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
 import { CompletionActionPicker } from "@/app/emails/completion-action-picker";
 import type { GmailCardMessage } from "@/app/emails/gmail-inbox-card";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
+import type { CategoryApplyScope } from "@/lib/category-correction";
 import {
   inboxCategorySectionTitle,
   type InboxAiCategory,
@@ -18,6 +20,13 @@ export type InboxZeroStep =
   | { kind: "email"; category: InboxAiCategory; message: GmailCardMessage }
   | { kind: "cleanup"; emails: GmailCardMessage[] };
 
+export type InboxZeroRecategorizeMeta = {
+  sender: string;
+  subject: string;
+  snippet?: string;
+  guessedCategory: InboxAiCategory;
+};
+
 type InboxZeroModeProps = {
   steps: InboxZeroStep[];
   mode: "quick_replies" | "inbox_zero";
@@ -28,6 +37,12 @@ type InboxZeroModeProps = {
     actionId: CompletionActionId,
     actionLabel: string,
   ) => void;
+  onRecategorizeEmail: (
+    id: string,
+    category: InboxAiCategory,
+    scope: CategoryApplyScope,
+    meta: InboxZeroRecategorizeMeta,
+  ) => void | Promise<void>;
   onClearPromotions: (ids: string[]) => void;
   onFinished: (stats: { processed: number; timeSavedSeconds: number }) => void;
   onClose: () => void;
@@ -39,6 +54,8 @@ type Copy = {
   stepOf: (a: number, b: number) => string;
   open: string;
   skip: string;
+  doneWith: string;
+  changeCategory: string;
   complete: string;
   next: string;
   clear: (n: number) => string;
@@ -58,7 +75,9 @@ const COPY: Record<"en" | "it", Copy> = {
     inboxZeroTitle: "Inbox Zero",
     stepOf: (a: number, b: number) => `${a} of ${b}`,
     open: "Open",
-    skip: "Skip",
+    skip: "Skip for now",
+    doneWith: "Done with this",
+    changeCategory: "Change category",
     complete: "Complete",
     next: "Next",
     clear: (n: number) => `Clear ${n} promotion${n === 1 ? "" : "s"}`,
@@ -76,7 +95,9 @@ const COPY: Record<"en" | "it", Copy> = {
     inboxZeroTitle: "Inbox Zero",
     stepOf: (a: number, b: number) => `${a} di ${b}`,
     open: "Apri",
-    skip: "Salta",
+    skip: "Salta per ora",
+    doneWith: "Fatto con questa",
+    changeCategory: "Cambia categoria",
     complete: "Fatto",
     next: "Avanti",
     clear: (n: number) => `Svuota ${n} promozion${n === 1 ? "e" : "i"}`,
@@ -96,6 +117,7 @@ export function InboxZeroMode({
   mode,
   locale,
   onCompleteEmail,
+  onRecategorizeEmail,
   onClearPromotions,
   onFinished,
   onClose,
@@ -131,6 +153,22 @@ export function InboxZeroMode({
     [current, onCompleteEmail, advance],
   );
 
+  const recategorizeEmail = useCallback(
+    async (
+      id: string,
+      category: InboxAiCategory,
+      scope: CategoryApplyScope,
+      meta: InboxZeroRecategorizeMeta,
+      stepCategory: InboxAiCategory,
+    ) => {
+      await onRecategorizeEmail(id, category, scope, meta);
+      setProcessed((n) => n + 1);
+      setTimeSaved((s) => s + secondsForCategory(stepCategory));
+      advance();
+    },
+    [onRecategorizeEmail, advance],
+  );
+
   const doCleanup = useCallback(() => {
     if (!current || current.kind !== "cleanup") return;
     const ids = current.emails.map((m) => m.id);
@@ -163,7 +201,7 @@ export function InboxZeroMode({
         className="absolute inset-0 bg-[#0F172A]/30 backdrop-blur-sm"
       />
 
-      <div className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-white p-7 shadow-[0_30px_80px_-30px_rgba(15,23,42,0.5)] sm:p-9">
+      <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-7 shadow-[0_30px_80px_-30px_rgba(15,23,42,0.5)] sm:p-9">
         {!isComplete ? (
           <>
             <div className="mb-6 flex items-center justify-between">
@@ -182,11 +220,15 @@ export function InboxZeroMode({
 
             {current?.kind === "email" ? (
               <EmailStep
+                key={current.message.id}
                 message={current.message}
                 category={current.category}
                 locale={locale}
                 t={t}
                 onComplete={completeEmail}
+                onRecategorize={(id, cat, scope, meta) =>
+                  void recategorizeEmail(id, cat, scope, meta, current.category)
+                }
                 onSkip={advance}
               />
             ) : current?.kind === "cleanup" ? (
@@ -210,12 +252,15 @@ export function InboxZeroMode({
   );
 }
 
+type EmailStepView = "actions" | "done_picker" | "category";
+
 function EmailStep({
   message,
   category,
   locale,
   t,
   onComplete,
+  onRecategorize,
   onSkip,
 }: {
   message: GmailCardMessage;
@@ -223,9 +268,16 @@ function EmailStep({
   locale: "en" | "it";
   t: Copy;
   onComplete: (actionId: CompletionActionId, actionLabel: string) => void;
+  onRecategorize: (
+    id: string,
+    chosen: InboxAiCategory,
+    scope: CategoryApplyScope,
+    meta: InboxZeroRecategorizeMeta,
+  ) => void;
   onSkip: () => void;
 }) {
-  const [showDone, setShowDone] = useState(false);
+  const [view, setView] = useState<EmailStepView>("actions");
+  const guessedCategory = message.category ?? category;
 
   return (
     <div className="flex flex-col gap-5">
@@ -244,24 +296,57 @@ function EmailStep({
         ) : null}
       </div>
 
-      {showDone ? (
+      {view === "done_picker" ? (
         <CompletionActionPicker
           locale={locale}
           onSelect={(id, label) => {
             onComplete(id, label);
-            setShowDone(false);
+            setView("actions");
           }}
           showCreate={false}
         />
-      ) : (
+      ) : null}
+
+      {view === "category" ? (
+        <CategoryCorrectionPanel
+          compact
+          scopeMode="this_or_sender"
+          target={{
+            id: message.id,
+            sender: message.sender,
+            subject: message.subject,
+            snippet: message.snippet,
+            guessedCategory,
+          }}
+          onApply={async (chosen, scope) => {
+            await onRecategorize(message.id, chosen, scope, {
+              sender: message.sender,
+              subject: message.subject,
+              snippet: message.snippet,
+              guessedCategory,
+            });
+          }}
+          onDismiss={() => setView("actions")}
+        />
+      ) : null}
+
+      {view === "actions" ? (
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <button
             type="button"
-            onClick={() => setShowDone(true)}
+            onClick={() => setView("done_picker")}
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
           >
             <CheckGlyph />
-            {locale === "it" ? "✓ Fatto con questa" : "✓ Done with this"}
+            {locale === "it" ? `✓ ${t.doneWith}` : `✓ ${t.doneWith}`}
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("category")}
+            className="inline-flex items-center gap-2 rounded-xl border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:border-accent/30 hover:bg-accent-muted/40 hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          >
+            <span aria-hidden>🏷</span>
+            {t.changeCategory}
           </button>
           <Link
             href={`/emails/${encodeURIComponent(message.id)}`}
@@ -273,13 +358,13 @@ function EmailStep({
           <button
             type="button"
             onClick={onSkip}
-            className="ml-auto rounded-xl px-4 py-2.5 text-sm font-medium text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
+            className="ml-auto inline-flex items-center gap-1 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
           >
+            <span aria-hidden>⏭</span>
             {t.skip}
-            <span aria-hidden className="ml-1">→</span>
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

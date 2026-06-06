@@ -2,7 +2,6 @@ import { detectImportantChanges, type ImportantChange } from "@/lib/daily-briefi
 import type { DailyBriefingMessage } from "@/lib/daily-briefing/types";
 import {
   buildVisitSnapshot,
-  isEmailNewSinceVisit,
   type InboxVisitSnapshot,
 } from "@/lib/daily-briefing/visit-snapshot";
 import type { EmailCompletionRecord } from "@/lib/email-completions/types";
@@ -22,8 +21,7 @@ export type InboxBriefingLine = {
 export type InboxBriefingCardModel = {
   schedule: { kind: InboxBriefingScheduleKind };
   greeting: string;
-  hasPreviousVisit: boolean;
-  sinceVisitLabel: string;
+  todayLabel: string;
   lines: InboxBriefingLine[];
   importantChanges: ImportantChange[];
   effortSeconds: number;
@@ -34,34 +32,14 @@ const BRIEFING_CATEGORIES: Array<{
   id: string;
   category?: InboxAiCategory;
   waitingOn?: boolean;
+  responseReceived?: boolean;
 }> = [
   { id: "needs_attention", category: "needs_attention" },
   { id: "quick_reply", category: "quick_reply" },
+  { id: "response_received", responseReceived: true },
   { id: "waiting_on", waitingOn: true },
-  { id: "fyi", category: "fyi" },
   { id: "promotion", category: "promotion" },
 ];
-
-function messageMs(m: DailyBriefingMessage): number {
-  if (typeof m.internalDateMs === "number" && m.internalDateMs > 0) return m.internalDateMs;
-  if (m.date) {
-    const t = new Date(m.date).getTime();
-    if (!Number.isNaN(t)) return t;
-  }
-  return 0;
-}
-
-function countNewInCategory(
-  messages: DailyBriefingMessage[],
-  category: InboxAiCategory,
-  snapshot: InboxVisitSnapshot | null,
-): number {
-  return messages.filter(
-    (m) =>
-      m.category === category &&
-      isEmailNewSinceVisit(m.id, messageMs(m), snapshot),
-  ).length;
-}
 
 function buildGreeting(
   phase: DayPhase,
@@ -79,37 +57,22 @@ function buildGreeting(
   return name ? `Good evening, ${name}.` : "Good evening.";
 }
 
-function lineLabel(
-  id: string,
-  count: number,
-  locale: "en" | "it",
-  sinceVisit: boolean,
-): string {
+function lineLabel(id: string, count: number, locale: "en" | "it"): string {
   const n = count;
   if (locale === "it") {
     switch (id) {
       case "needs_attention":
-        return sinceVisit
-          ? n === 1
-            ? "1 email richiede attenzione"
-            : `${n} email richiedono attenzione`
-          : n === 1
-            ? "1 email da vedere"
-            : `${n} email da vedere`;
+        return n === 1
+          ? "1 email richiede attenzione"
+          : `${n} email richiedono attenzione`;
       case "quick_reply":
-        return n === 1 ? "1 risposta veloce in attesa" : `${n} risposte veloci in attesa`;
+        return n === 1 ? "1 risposta veloce" : `${n} risposte veloci`;
+      case "response_received":
+        return n === 1 ? "1 risposta ricevuta" : `${n} risposte ricevute`;
       case "waiting_on":
-        return n === 1 ? "1 voce In attesa" : `${n} voci In attesa`;
-      case "fyi":
-        return n === 1 ? "1 email da sapere" : `${n} email da sapere`;
+        return n === 1 ? "1 voce in attesa" : `${n} voci in attesa`;
       case "promotion":
-        return sinceVisit
-          ? n === 1
-            ? "1 email promozionale ricevuta"
-            : `${n} email promozionali ricevute`
-          : n === 1
-            ? "1 promozione"
-            : `${n} promozioni`;
+        return n === 1 ? "1 promozione" : `${n} promozioni`;
       default:
         return `${n}`;
     }
@@ -117,27 +80,15 @@ function lineLabel(
 
   switch (id) {
     case "needs_attention":
-      return sinceVisit
-        ? n === 1
-          ? "1 email needs attention"
-          : `${n} emails need attention`
-        : n === 1
-          ? "1 email needs attention"
-          : `${n} emails need attention`;
+      return n === 1 ? "1 email needs attention" : `${n} emails need attention`;
     case "quick_reply":
-      return n === 1 ? "1 quick reply waiting" : `${n} quick replies waiting`;
+      return n === 1 ? "1 quick reply" : `${n} quick replies`;
+    case "response_received":
+      return n === 1 ? "1 response received" : `${n} responses received`;
     case "waiting_on":
-      return n === 1 ? "1 Waiting On item" : `${n} Waiting On items`;
-    case "fyi":
-      return n === 1 ? "1 good to know email" : `${n} good to know emails`;
+      return n === 1 ? "1 waiting-on item" : `${n} waiting-on items`;
     case "promotion":
-      return sinceVisit
-        ? n === 1
-          ? "1 promotional email received"
-          : `${n} promotional emails received`
-        : n === 1
-          ? "1 promotional email"
-          : `${n} promotional emails`;
+      return n === 1 ? "1 promotion" : `${n} promotions`;
     default:
       return `${n}`;
   }
@@ -149,6 +100,7 @@ export function buildInboxBriefingCard(input: {
   counts: Record<InboxAiCategory, number>;
   messages: DailyBriefingMessage[];
   waitingOnCount: number;
+  responseReceivedCount: number;
   previousSnapshot: InboxVisitSnapshot | null;
   waitingRecords: EmailCompletionRecord[];
   now?: Date;
@@ -159,47 +111,30 @@ export function buildInboxBriefingCard(input: {
     counts,
     messages,
     waitingOnCount,
+    responseReceivedCount,
     previousSnapshot,
     waitingRecords,
     now = new Date(),
   } = input;
 
-  const hasPreviousVisit = previousSnapshot != null;
-  const sinceVisit = hasPreviousVisit;
-
   const lines: InboxBriefingLine[] = [];
-  let framingSinceVisit = sinceVisit;
 
-  function pushLines(useSinceVisit: boolean) {
-    for (const row of BRIEFING_CATEGORIES) {
-      let count = 0;
-      if (row.waitingOn) {
-        count = waitingOnCount;
-      } else if (row.category) {
-        count = useSinceVisit
-          ? countNewInCategory(messages, row.category, previousSnapshot)
-          : counts[row.category] ?? 0;
-      }
-      if (count <= 0) continue;
-
-      lines.push({
-        id: row.id,
-        count,
-        label: lineLabel(row.id, count, locale, useSinceVisit),
-      });
+  for (const row of BRIEFING_CATEGORIES) {
+    let count = 0;
+    if (row.waitingOn) {
+      count = waitingOnCount;
+    } else if (row.responseReceived) {
+      count = responseReceivedCount;
+    } else if (row.category) {
+      count = counts[row.category] ?? 0;
     }
-  }
+    if (count <= 0) continue;
 
-  if (sinceVisit) {
-    pushLines(true);
-    const hasNewInboxMail = lines.some((l) => l.id !== "waiting_on");
-    if (!hasNewInboxMail) {
-      lines.length = 0;
-      pushLines(false);
-      framingSinceVisit = false;
-    }
-  } else {
-    pushLines(false);
+    lines.push({
+      id: row.id,
+      count,
+      label: lineLabel(row.id, count, locale),
+    });
   }
 
   const effortCounts: Record<InboxAiCategory, number> = {
@@ -215,11 +150,7 @@ export function buildInboxBriefingCard(input: {
   return {
     schedule: { kind: "on_open" },
     greeting: buildGreeting(getDayPhase(now), displayName, locale),
-    hasPreviousVisit: framingSinceVisit,
-    sinceVisitLabel:
-      locale === "it"
-        ? "Dalla tua ultima visita"
-        : "Since your last visit",
+    todayLabel: locale === "it" ? "Oggi:" : "Today:",
     lines,
     importantChanges: detectImportantChanges(messages, previousSnapshot, waitingRecords, locale),
     effortSeconds,

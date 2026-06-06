@@ -28,19 +28,17 @@ type DailyBriefingCardProps = {
 
 const COPY = {
   en: {
-    rightNow: "Right now",
     whatChanged: "What changed",
     effort: "Estimated inbox effort",
-    inboxZero: "Inbox Zero",
+    startInboxZero: "Start Inbox Zero",
     quickReplies: "Quick replies",
     clearPromotions: "Clear promotions",
     allClear: "You're all caught up.",
   },
   it: {
-    rightNow: "Adesso",
     whatChanged: "Cosa è cambiato",
     effort: "Sforzo stimato per la inbox",
-    inboxZero: "Inbox Zero",
+    startInboxZero: "Avvia Inbox Zero",
     quickReplies: "Risposte veloci",
     clearPromotions: "Svuota promozioni",
     allClear: "Sei in pari.",
@@ -55,9 +53,8 @@ export function DailyBriefingCard({
   onHandleQuickReplies,
   onInboxZero,
 }: DailyBriefingCardProps) {
-  const { activeWaitingRecords } = useEmailCompletions();
+  const { waitingOpenRecords, waitingResponseRecords } = useEmailCompletions();
   const { userName } = useUserPreferences();
-  const displayName = userName;
   const t = COPY[locale];
 
   const [previousSnapshot] = useState(() => loadVisitSnapshot());
@@ -66,19 +63,21 @@ export function DailyBriefingCard({
     () =>
       buildInboxBriefingCard({
         locale,
-        displayName,
+        displayName: userName,
         counts,
         messages,
-        waitingOnCount: activeWaitingRecords.length,
+        waitingOnCount: waitingOpenRecords.length,
+        responseReceivedCount: waitingResponseRecords.length,
         previousSnapshot,
-        waitingRecords: activeWaitingRecords,
+        waitingRecords: waitingResponseRecords,
       }),
     [
       locale,
-      displayName,
+      userName,
       counts,
       messages,
-      activeWaitingRecords,
+      waitingOpenRecords.length,
+      waitingResponseRecords,
       previousSnapshot,
     ],
   );
@@ -87,7 +86,11 @@ export function DailyBriefingCard({
     function persistSnapshot() {
       if (messages.length === 0) return;
       saveVisitSnapshot(
-        buildVisitSnapshot(messages, counts, activeWaitingRecords.length),
+        buildVisitSnapshot(
+          messages,
+          counts,
+          waitingOpenRecords.length + waitingResponseRecords.length,
+        ),
       );
     }
 
@@ -103,7 +106,18 @@ export function DailyBriefingCard({
       window.removeEventListener("beforeunload", persistSnapshot);
       document.removeEventListener("visibilitychange", onHide);
     };
-  }, [messages, counts, activeWaitingRecords.length]);
+  }, [
+    messages,
+    counts,
+    waitingOpenRecords.length,
+    waitingResponseRecords.length,
+  ]);
+
+  const hasWork =
+    counts.needs_attention > 0 ||
+    counts.quick_reply > 0 ||
+    waitingResponseRecords.length > 0 ||
+    waitingOpenRecords.length > 0;
 
   const hasContent =
     briefing.lines.length > 0 ||
@@ -119,9 +133,7 @@ export function DailyBriefingCard({
     );
   }
 
-  const contextLabel = briefing.hasPreviousVisit ? briefing.sinceVisitLabel : t.rightNow;
-  const showActions =
-    counts.needs_attention > 0 || counts.quick_reply > 0 || counts.promotion > 0;
+  const showActions = hasWork || counts.promotion > 0;
 
   return (
     <section className="rounded-2xl border border-[#E2E8F0] bg-[#FAFBFC] px-5 py-5 sm:px-6">
@@ -130,9 +142,9 @@ export function DailyBriefingCard({
       {briefing.lines.length > 0 ? (
         <div className="mt-4">
           <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-            {contextLabel}
+            {briefing.todayLabel}
           </p>
-          <ul className="mt-2 space-y-1.5">
+          <ul className="mt-2 space-y-1">
             {briefing.lines.map((line) => (
               <li key={line.id} className="text-sm text-gray-700">
                 {line.label}
@@ -147,7 +159,7 @@ export function DailyBriefingCard({
           <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
             {t.whatChanged}
           </p>
-          <ul className="mt-2 space-y-1.5">
+          <ul className="mt-2 space-y-1">
             {briefing.importantChanges.map((change) => (
               <li key={change.id}>
                 <Link
@@ -184,7 +196,7 @@ export function DailyBriefingCard({
             onClick={onInboxZero}
             className="rounded-lg bg-[#9733ff] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-hover"
           >
-            {t.inboxZero}
+            {t.startInboxZero}
           </button>
           {counts.quick_reply > 0 ? (
             <BriefingAction onClick={onHandleQuickReplies}>{t.quickReplies}</BriefingAction>

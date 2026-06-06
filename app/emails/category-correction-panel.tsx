@@ -21,6 +21,8 @@ export type CategoryCorrectionTarget = {
 type CategoryCorrectionPanelProps = {
   target: CategoryCorrectionTarget;
   compact?: boolean;
+  /** Inbox Zero: only this email vs sender — hides similar-subject scope. */
+  scopeMode?: "full" | "this_or_sender";
   onApply: (
     chosenCategory: InboxAiCategory,
     scope: CategoryApplyScope,
@@ -31,6 +33,7 @@ type CategoryCorrectionPanelProps = {
 export function CategoryCorrectionPanel({
   target,
   compact,
+  scopeMode = "full",
   onApply,
   onDismiss,
 }: CategoryCorrectionPanelProps) {
@@ -186,7 +189,7 @@ export function CategoryCorrectionPanel({
               }
               primary
             />
-            {!justCreatedCategory ? (
+            {scopeMode === "full" && !justCreatedCategory ? (
               <ScopeButton
                 disabled={busy}
                 onClick={() => void confirm("similar")}
