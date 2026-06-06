@@ -56,5 +56,10 @@ export function mergeWaitingFieldsFromRaw(
         : record.waitingResolvedAt,
     stillWaitingAt:
       typeof raw.stillWaitingAt === "number" ? raw.stillWaitingAt : record.stillWaitingAt,
+    waitingResolutionReason:
+      raw.waitingResolutionReason === "received_response" ||
+      raw.waitingResolutionReason === "no_longer_waiting"
+        ? raw.waitingResolutionReason
+        : record.waitingResolutionReason,
   };
 }

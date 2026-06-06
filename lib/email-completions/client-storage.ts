@@ -30,6 +30,11 @@ export function parseEmailCompletionsJson(raw: unknown): EmailCompletionMap {
       followUpAt: typeof row.followUpAt === "number" ? row.followUpAt : undefined,
       waitingResolvedAt:
         typeof row.waitingResolvedAt === "number" ? row.waitingResolvedAt : undefined,
+      waitingResolutionReason:
+        row.waitingResolutionReason === "received_response" ||
+        row.waitingResolutionReason === "no_longer_waiting"
+          ? row.waitingResolutionReason
+          : undefined,
       stillWaitingAt: typeof row.stillWaitingAt === "number" ? row.stillWaitingAt : undefined,
     };
   }

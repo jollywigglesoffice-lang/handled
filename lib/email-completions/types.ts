@@ -19,6 +19,8 @@ export type EmailCompletionRecord = {
   followUpAt?: number;
   /** Set when the user marks a waiting item resolved. */
   waitingResolvedAt?: number;
+  /** Why the waiting item was closed. */
+  waitingResolutionReason?: "received_response" | "no_longer_waiting";
   /** Updated when user taps "Still waiting". */
   stillWaitingAt?: number;
 };

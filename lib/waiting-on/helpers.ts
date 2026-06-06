@@ -1,4 +1,5 @@
 import type { EmailCompletionMap, EmailCompletionRecord } from "@/lib/email-completions/types";
+import type { WaitingResolutionReason } from "@/lib/waiting-on/types";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -13,12 +14,15 @@ export function isActiveWaiting(record: EmailCompletionRecord): boolean {
 export function activeWaitingRecords(completions: EmailCompletionMap): EmailCompletionRecord[] {
   return Object.values(completions)
     .filter(isActiveWaiting)
-    .sort((a, b) => b.completedAt - a.completedAt);
+    .sort((a, b) => daysWaiting(b) - daysWaiting(a));
+}
+
+export function waitingStartAt(record: EmailCompletionRecord): number {
+  return record.stillWaitingAt ?? record.completedAt;
 }
 
 export function daysWaiting(record: EmailCompletionRecord, now = Date.now()): number {
-  const anchor = record.stillWaitingAt ?? record.completedAt;
-  return Math.max(0, Math.floor((now - anchor) / MS_PER_DAY));
+  return Math.max(0, Math.floor((now - waitingStartAt(record)) / MS_PER_DAY));
 }
 
 export function waitingOnLabel(record: EmailCompletionRecord, locale: "en" | "it"): string {
@@ -28,11 +32,31 @@ export function waitingOnLabel(record: EmailCompletionRecord, locale: "en" | "it
 
 export function daysWaitingLabel(days: number, locale: "en" | "it"): string {
   if (locale === "it") {
-    return days === 1 ? "1 giorno in attesa" : `${days} giorni in attesa`;
+    return days === 1 ? "In attesa da 1 giorno" : `In attesa da ${days} giorni`;
   }
-  return days === 1 ? "1 day waiting" : `${days} days waiting`;
+  return days === 1 ? "Waiting 1 day" : `Waiting ${days} days`;
 }
 
+export function formatWaitingStartedDate(
+  record: EmailCompletionRecord,
+  locale: "en" | "it",
+): string {
+  const d = new Date(waitingStartAt(record));
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(locale === "it" ? "it-IT" : "en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function startedOnLabel(record: EmailCompletionRecord, locale: "en" | "it"): string {
+  const date = formatWaitingStartedDate(record, locale);
+  if (!date) return "";
+  return locale === "it" ? `Iniziato il ${date}` : `Started ${date}`;
+}
+
+/** @deprecated Reminders UI not shipped — kept for stored followUpAt data. */
 export function followUpLabel(record: EmailCompletionRecord, locale: "en" | "it", now = Date.now()): string | null {
   if (!record.followUpAt) return null;
   const daysUntil = Math.ceil((record.followUpAt - now) / MS_PER_DAY);
@@ -55,6 +79,24 @@ export function buildWaitingActionLabel(waitingOn: string | undefined, locale: "
   const who = waitingOn?.trim();
   if (!who) return locale === "it" ? "In attesa" : "Waiting on someone";
   return locale === "it" ? `In attesa di ${who}` : `Waiting on ${who}`;
+}
+
+export function buildResolvedWaitingLabel(
+  record: EmailCompletionRecord,
+  reason: WaitingResolutionReason,
+  locale: "en" | "it",
+): string {
+  const who = record.waitingOn?.trim();
+  if (reason === "received_response") {
+    if (who) {
+      return locale === "it" ? `Risposta da ${who}` : `Received response from ${who}`;
+    }
+    return locale === "it" ? "Risposta ricevuta" : "Received response";
+  }
+  if (who) {
+    return locale === "it" ? `Non più in attesa di ${who}` : `No longer waiting on ${who}`;
+  }
+  return locale === "it" ? "Non più in attesa" : "No longer waiting";
 }
 
 export function computeFollowUpAt(completedAt: number, followUpAfterDays?: number): number | undefined {

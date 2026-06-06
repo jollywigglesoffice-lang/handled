@@ -26,7 +26,8 @@ import type {
   EmailCompletionRecord,
 } from "@/lib/email-completions/types";
 import { trackEvent } from "@/lib/analytics";
-import { activeWaitingRecords } from "@/lib/waiting-on/helpers";
+import { activeWaitingRecords, buildResolvedWaitingLabel } from "@/lib/waiting-on/helpers";
+import type { WaitingResolutionReason } from "@/lib/waiting-on/types";
 
 type EmailCompletionsContextValue = {
   completions: EmailCompletionMap;
@@ -39,7 +40,11 @@ type EmailCompletionsContextValue = {
     options?: { locale?: "en" | "it" },
   ) => Promise<void>;
   uncompleteEmails: (emailIds: string[]) => Promise<void>;
-  resolveWaiting: (emailId: string) => Promise<void>;
+  resolveWaiting: (
+    emailId: string,
+    reason: WaitingResolutionReason,
+    locale?: "en" | "it",
+  ) => Promise<void>;
   markStillWaiting: (emailId: string) => Promise<void>;
   activeWaitingRecords: EmailCompletionRecord[];
   /** @deprecated Use completeEmails — kept for gradual migration */
@@ -216,15 +221,25 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
   );
 
   const resolveWaiting = useCallback(
-    async (emailId: string) => {
+    async (
+      emailId: string,
+      reason: WaitingResolutionReason,
+      locale: "en" | "it" = "en",
+    ) => {
       const record = completions[emailId];
       if (!record || record.actionId !== "waiting_on_someone") return;
-      await patchCompletion(emailId, { waitingResolvedAt: Date.now() });
+      const now = Date.now();
+      await patchCompletion(emailId, {
+        waitingResolvedAt: now,
+        waitingResolutionReason: reason,
+        actionLabel: buildResolvedWaitingLabel(record, reason, locale),
+      });
       trackEvent("waiting_resolved", {
         email_id: emailId,
         waiting_on: record.waitingOn ?? null,
+        resolution_reason: reason,
         days_waiting: Math.floor(
-          (Date.now() - (record.stillWaitingAt ?? record.completedAt)) / 86_400_000,
+          (now - (record.stillWaitingAt ?? record.completedAt)) / 86_400_000,
         ),
       });
     },

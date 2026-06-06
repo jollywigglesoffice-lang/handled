@@ -61,7 +61,7 @@ export function useEmailStatusActions({
 }: EmailStatusActionsInput) {
   const t = EMAIL_STATUS_COPY[locale];
   const { notifyCompleted } = useCompletionWorkflow();
-  const { isCompleted, getCompletion, completeEmails, uncompleteEmails, resolveWaiting, markStillWaiting } =
+  const { isCompleted, getCompletion, completeEmails, uncompleteEmails, resolveWaiting } =
     useEmailCompletions();
   const [readMap, setReadMap] = useState<ReadStateMap>(() =>
     readStateMapProp ?? (typeof window !== "undefined" ? loadReadStateMap() : {}),
@@ -147,25 +147,30 @@ export function useEmailStatusActions({
 
   const isActiveWaitingItem = completion ? isActiveWaiting(completion) : false;
 
-  const handleResolveWaiting = useCallback(async () => {
-    setBusy(true);
-    try {
-      await resolveWaiting(emailId);
-      showFeedback(locale === "it" ? "Segnata come risolta" : "Marked resolved");
-    } finally {
-      setBusy(false);
-    }
-  }, [emailId, resolveWaiting, showFeedback, locale]);
-
-  const handleStillWaiting = useCallback(async () => {
-    setBusy(true);
-    try {
-      await markStillWaiting(emailId);
-      showFeedback(locale === "it" ? "Ancora in attesa" : "Still waiting");
-    } finally {
-      setBusy(false);
-    }
-  }, [emailId, markStillWaiting, showFeedback, locale]);
+  const handleResolveWaiting = useCallback(
+    async (reason: "received_response" | "no_longer_waiting") => {
+      setBusy(true);
+      try {
+        await resolveWaiting(emailId, reason, locale);
+        const msg =
+          reason === "received_response"
+            ? locale === "it"
+              ? "Risposta ricevuta — spostata in Completate"
+              : "Received response — moved to Completed"
+            : locale === "it"
+              ? "Non più in attesa — spostata in Completate"
+              : "No longer waiting — moved to Completed";
+        showFeedback(msg);
+        onCompleted?.({
+          actionId: "waiting_on_someone",
+          actionLabel: completion?.actionLabel ?? "",
+        });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [emailId, resolveWaiting, showFeedback, locale, onCompleted, completion?.actionLabel],
+  );
 
   return {
     t,
@@ -182,6 +187,5 @@ export function useEmailStatusActions({
     handleComplete,
     handleUndo,
     handleResolveWaiting,
-    handleStillWaiting,
   };
 }

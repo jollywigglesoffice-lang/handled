@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEmailCompletions } from "@/app/email-completions-context";
+import { isActiveWaiting } from "@/lib/waiting-on/helpers";
 
 type InboxViewNavProps = {
   locale: "en" | "it";
@@ -10,11 +11,11 @@ type InboxViewNavProps = {
 
 export function InboxViewNav({ locale }: InboxViewNavProps) {
   const pathname = usePathname();
-  const { completedEmailIds, activeWaitingRecords } = useEmailCompletions();
+  const { completions, activeWaitingRecords } = useEmailCompletions();
   const isCompleted = pathname === "/emails/completed";
   const isWaiting = pathname === "/emails/waiting";
   const isInbox = !isCompleted && !isWaiting;
-  const completedCount = completedEmailIds.length;
+  const completedCount = Object.values(completions).filter((r) => !isActiveWaiting(r)).length;
   const waitingCount = activeWaitingRecords.length;
 
   const inboxLabel = locale === "it" ? "Inbox" : "Inbox";

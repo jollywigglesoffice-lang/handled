@@ -13,7 +13,7 @@ import { useUserPreferences } from "@/app/user-preferences-context";
 import { useInboxCategories } from "@/app/inbox-categories-context";
 import {
   completionFiltersForView,
-  completionRecordsSorted,
+  completedHistoryRecords,
   countCompletionsByAction,
   filterCompletionRecords,
   type CompletionActionFilter,
@@ -56,8 +56,11 @@ export function CompletedView() {
   const [filter, setFilter] = useState<CompletionActionFilter>("all");
   const [query, setQuery] = useState("");
 
-  const allRecords = useMemo(() => completionRecordsSorted(completions), [completions]);
-  const actionCounts = useMemo(() => countCompletionsByAction(completions), [completions]);
+  const allRecords = useMemo(() => completedHistoryRecords(completions), [completions]);
+  const actionCounts = useMemo(
+    () => countCompletionsByAction(completions, { excludeActiveWaiting: true }),
+    [completions],
+  );
   const filterOptions = useMemo(
     () => completionFiltersForView(completions, actionCatalog),
     [completions, actionCatalog],

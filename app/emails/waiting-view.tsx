@@ -13,14 +13,14 @@ import { useUserPreferences } from "@/app/user-preferences-context";
 const COPY = {
   en: {
     title: "Waiting On",
-    subtitle: "Requests you’re waiting on — so nothing slips away.",
+    subtitle: "A simple list of who still owes you a reply.",
     search: "Search waiting…",
     empty: "Nothing waiting on",
     emptyHint: "When you’re waiting on someone, mark an email ✓ Waiting on someone.",
   },
   it: {
     title: "In attesa",
-    subtitle: "Richieste in sospeso — così non si perdono.",
+    subtitle: "Un elenco semplice di chi deve ancora risponderti.",
     search: "Cerca in attesa…",
     empty: "Niente in attesa",
     emptyHint: "Quando aspetti qualcuno, segna l’email come ✓ In attesa.",

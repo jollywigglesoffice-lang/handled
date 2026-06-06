@@ -32,7 +32,6 @@ export function EmailStatusBar({
     handleUndo,
     isActiveWaitingItem,
     handleResolveWaiting,
-    handleStillWaiting,
   } = useEmailStatusActions(props);
 
   return (
@@ -65,12 +64,19 @@ export function EmailStatusBar({
                 {completion?.actionLabel ?? t.doneWith}
               </span>
               <span className="text-gray-300">·</span>
-              <DetailLink emphasis onClick={() => void handleResolveWaiting()} disabled={busy}>
-                {props.locale === "it" ? "✓ Risolta" : "✓ Resolved"}
+              <DetailLink
+                emphasis
+                onClick={() => void handleResolveWaiting("received_response")}
+                disabled={busy}
+              >
+                {props.locale === "it" ? "✓ Risposta ricevuta" : "✓ Received response"}
               </DetailLink>
               <span className="text-gray-300">·</span>
-              <DetailLink onClick={() => void handleStillWaiting()} disabled={busy}>
-                {props.locale === "it" ? "✓ Ancora in attesa" : "✓ Still waiting"}
+              <DetailLink
+                onClick={() => void handleResolveWaiting("no_longer_waiting")}
+                disabled={busy}
+              >
+                {props.locale === "it" ? "✓ Non più in attesa" : "✓ No longer waiting"}
               </DetailLink>
             </>
           ) : (
