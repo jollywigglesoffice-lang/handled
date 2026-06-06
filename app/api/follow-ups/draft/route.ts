@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { generateFollowUpDraft } from "@/lib/follow-up/draft";
 import { parseConversationState } from "@/lib/follow-up-reminders/storage";
 import type { ConversationState } from "@/lib/follow-up/types";
+import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import { requireApiAuth } from "@/lib/auth/require-api-auth";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 
@@ -18,6 +19,13 @@ export async function POST(request: Request) {
     snippet?: string;
     state?: string;
     userName?: string;
+    relationship?: {
+      kind?: string;
+      label?: string;
+      importance?: string;
+      source?: string;
+      confidence?: number;
+    };
   };
   try {
     body = (await request.json()) as typeof body;
@@ -29,6 +37,8 @@ export async function POST(request: Request) {
     ? parseConversationState(body.state)
     : "follow_up_recommended";
 
+  const relationship = parseRelationshipBody(body.relationship);
+
   const draft = await generateFollowUpDraft({
     row: {
       sender: body.sender ?? "",
@@ -37,7 +47,50 @@ export async function POST(request: Request) {
     },
     state,
     userName: body.userName,
+    relationship,
   });
 
   return applyAuthCookies(NextResponse.json({ draft }));
+}
+
+function parseRelationshipBody(
+  raw: {
+    kind?: string;
+    label?: string;
+    importance?: string;
+    source?: string;
+    confidence?: number;
+  } | undefined,
+): SenderRelationshipProfile | null {
+  if (!raw?.kind) return null;
+  const kinds = new Set([
+    "family",
+    "friends",
+    "school",
+    "healthcare",
+    "vip_client",
+    "client",
+    "team",
+    "billing",
+    "newsletter",
+    "promotion",
+    "marketing",
+    "unknown",
+  ]);
+  if (!kinds.has(raw.kind)) return null;
+  return {
+    kind: raw.kind as SenderRelationshipProfile["kind"],
+    label: (raw.label as SenderRelationshipProfile["label"]) ?? "Client",
+    importance:
+      raw.importance === "vip" ||
+      raw.importance === "important" ||
+      raw.importance === "ignore"
+        ? raw.importance
+        : "normal",
+    source:
+      raw.source === "manual" || raw.source === "detected" || raw.source === "domain"
+        ? raw.source
+        : "detected",
+    confidence: typeof raw.confidence === "number" ? raw.confidence : 0.5,
+  };
 }

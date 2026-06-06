@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useEmailCompletions } from "@/app/email-completions-context";
 import {
+  WaitingFollowUpBadge,
+  WaitingFollowUpPanel,
+} from "@/app/emails/waiting-follow-up-panel";
+import { detectWaitingFollowUp } from "@/lib/waiting-on/follow-up-detect";
+import {
   daysWaiting,
   daysWaitingLabel,
   startedOnLabel,
@@ -14,11 +19,13 @@ import { captureInboxReturnFromOpen } from "@/lib/inbox-return-context";
 
 const COPY = {
   en: {
+    waitingOn: "Waiting on",
     receivedResponse: "✓ Received response",
     noLongerWaiting: "✓ No longer waiting",
     openEmail: "Open email",
   },
   it: {
+    waitingOn: "In attesa di",
     receivedResponse: "✓ Risposta ricevuta",
     noLongerWaiting: "✓ Non più in attesa",
     openEmail: "Apri email",
@@ -37,6 +44,7 @@ export function WaitingOnCard({
   const days = daysWaiting(record);
   const who = waitingOnLabel(record, locale);
   const started = startedOnLabel(record, locale);
+  const followUp = detectWaitingFollowUp(record);
 
   function handleResolve(reason: WaitingResolutionReason) {
     void resolveWaiting(record.emailId, reason, locale);
@@ -46,7 +54,12 @@ export function WaitingOnCard({
     <article className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-0.5">
-          <p className="text-lg font-semibold text-[#0F172A]">{who}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-lg font-semibold text-[#0F172A]">
+              {locale === "it" ? `${t.waitingOn} ${who}` : `${t.waitingOn} ${who}`}
+            </p>
+            {followUp.mayNeedFollowUp ? <WaitingFollowUpBadge locale={locale} /> : null}
+          </div>
           <p className="text-sm font-medium text-gray-700">{daysWaitingLabel(days, locale)}</p>
           {started ? <p className="text-xs text-gray-400">{started}</p> : null}
         </div>
@@ -68,6 +81,15 @@ export function WaitingOnCard({
         {record.subject || "(no subject)"}
         {record.sender ? ` · ${record.sender}` : ""}
       </p>
+
+      {followUp.mayNeedFollowUp ? (
+        <WaitingFollowUpPanel
+          record={record}
+          locale={locale}
+          showSuggestion
+          compact
+        />
+      ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2 border-t border-[#F1F5F9] pt-3">
         <button
