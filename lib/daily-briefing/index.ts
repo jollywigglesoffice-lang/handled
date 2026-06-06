@@ -1,5 +1,7 @@
 export type {
   AnalyzeDailyBriefingInput,
+  BriefingScheduleDescriptor,
+  BriefingScheduleKind,
   DailyBriefingGroup,
   DailyBriefingGroupId,
   DailyBriefingHighlight,
@@ -21,4 +23,17 @@ export { buildBriefingGroups, assignPrimaryBriefingGroup } from "@/lib/daily-bri
 export { buildBriefingHighlights } from "@/lib/daily-briefing/highlights";
 export { buildBriefingInsights } from "@/lib/daily-briefing/insights";
 export { detectMessageBriefingSignals } from "@/lib/daily-briefing/detect-signals";
-export { listDailyBriefingIntegrations } from "@/lib/daily-briefing/integrations";
+export { listDailyBriefingIntegrations, listBriefingSchedules } from "@/lib/daily-briefing/integrations";
+export {
+  buildInboxBriefingCard,
+  type InboxBriefingCardModel,
+  type InboxBriefingLine,
+} from "@/lib/daily-briefing/inbox-briefing";
+export { detectImportantChanges, type ImportantChange } from "@/lib/daily-briefing/important-changes";
+export {
+  buildVisitSnapshot,
+  isEmailNewSinceVisit,
+  loadVisitSnapshot,
+  saveVisitSnapshot,
+  type InboxVisitSnapshot,
+} from "@/lib/daily-briefing/visit-snapshot";

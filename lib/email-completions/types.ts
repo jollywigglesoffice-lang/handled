@@ -13,8 +13,16 @@ export type EmailCompletionRecord = {
   snippet?: string;
   category: InboxAiCategory;
   senderDomain?: string;
+  threadId?: string;
   /** Who the user is waiting on (waiting_on_someone). */
   waitingOn?: string;
+  /** Detected reply in the same thread. */
+  waitingResponseEmailId?: string;
+  waitingResponseDetectedAt?: number;
+  waitingResponseSender?: string;
+  waitingResponseSubject?: string;
+  waitingResponseSnippet?: string;
+  waitingResponseAt?: number;
   followUpAfterDays?: number;
   followUpAt?: number;
   /** Set when the user marks a waiting item resolved. */
@@ -39,5 +47,6 @@ export type CompleteEmailInput = {
   sender: string;
   subject: string;
   snippet?: string;
+  threadId?: string;
   category: InboxAiCategory;
 } & CompleteEmailExtras;

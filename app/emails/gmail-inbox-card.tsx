@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   EmailCardActionRow,
   EmailReadStateDot,
@@ -42,9 +42,11 @@ import { buildContinuityContext } from "@/lib/continuity-context";
 import { buildInboxGlanceLine } from "@/lib/glance-clarity";
 import { buildSituationSummary } from "@/lib/situational-understanding";
 import { CompletionLikelyBadge } from "@/app/emails/completion-likely-badge";
+import { WaitingResponseBadge } from "@/app/emails/waiting-response-badge";
 
 export type GmailCardMessage = {
   id: string;
+  threadId?: string;
   sender: string;
   subject: string;
   snippet: string;
@@ -66,6 +68,7 @@ export type GmailCardMessage = {
     escalationScore: number;
   };
   relationship?: SenderRelationshipProfile;
+  waitingResponseUpdate?: boolean;
 };
 
 function formatInboxDate(iso: string): string {
@@ -116,6 +119,7 @@ export function GmailInboxCard({
 
   const emailStatus = useEmailStatusActions({
     emailId: message.id,
+    threadId: message.threadId,
     sender: message.sender,
     subject: message.subject,
     snippet: message.snippet,
@@ -126,6 +130,9 @@ export function GmailInboxCard({
 
   const isUnread = emailStatus.lifecycle === "unread";
   const guessedRef = useRef(message.category);
+  useEffect(() => {
+    guessedRef.current = message.category;
+  }, [message.id, message.category]);
   const accent = inboxCategoryAccent(message.category, catalog);
   const catLabel = inboxCategoryTitle(message.category, locale, catalog);
   const learnedApplied = message.categorySource === "sender_rule";
@@ -543,6 +550,7 @@ function CardHeader({
             locale={locale}
           />
         ) : null}
+        {message.waitingResponseUpdate ? <WaitingResponseBadge locale={locale} /> : null}
         <span
           className="rounded-full border border-[#E2E8F0] bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent"
           aria-label={`Category: ${catLabel}`}

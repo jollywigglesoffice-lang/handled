@@ -40,6 +40,7 @@ export const EMAIL_STATUS_COPY = {
 
 export type EmailStatusActionsInput = {
   emailId: string;
+  threadId?: string;
   sender: string;
   subject: string;
   snippet?: string;
@@ -51,6 +52,7 @@ export type EmailStatusActionsInput = {
 
 export function useEmailStatusActions({
   emailId,
+  threadId,
   sender,
   subject,
   snippet,
@@ -132,7 +134,7 @@ export function useEmailStatusActions({
         setBusy(false);
       }
     },
-    [emailId, sender, subject, snippet, category, completeEmails, notifyCompleted, locale, onCompleted],
+    [emailId, threadId, sender, subject, snippet, category, completeEmails, notifyCompleted, locale, onCompleted],
   );
 
   const handleUndo = useCallback(async () => {

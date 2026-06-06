@@ -19,9 +19,15 @@ export type StableInboxBucketsResult<T extends InboxBucketMessage> = {
   isCountsPending: boolean;
 };
 
+type FrozenCounts = Pick<
+  InboxBuckets<InboxBucketMessage>,
+  "counts" | "todayAttentionCount" | "priorityCount"
+>;
+
 /**
- * Recomputes buckets from messages; freezes displayed buckets during network refresh
- * so Today / section counts do not flicker out of sync.
+ * Recomputes buckets from messages on every local change (including manual
+ * category moves). During network refresh, only aggregate counts are held
+ * steady so section lists still update immediately.
  */
 export function useStableInboxBuckets<T extends InboxBucketMessage>({
   messages,
@@ -34,19 +40,34 @@ export function useStableInboxBuckets<T extends InboxBucketMessage>({
     () => buildInboxBuckets(messages, workflowMode, catalog),
     [messages, workflowMode, catalog],
   );
-  const frozenRef = useRef<InboxBuckets<T>>(live);
+
+  const frozenCountsRef = useRef<FrozenCounts>({
+    counts: live.counts,
+    todayAttentionCount: live.todayAttentionCount,
+    priorityCount: live.priorityCount,
+  });
 
   useEffect(() => {
     if (!isRefreshing && !isInitialLoading) {
-      frozenRef.current = live;
+      frozenCountsRef.current = {
+        counts: live.counts,
+        todayAttentionCount: live.todayAttentionCount,
+        priorityCount: live.priorityCount,
+      };
     }
   }, [live, isRefreshing, isInitialLoading]);
 
   const isCountsPending = isRefreshing && !isInitialLoading;
-  const buckets =
-    isCountsPending && frozenRef.current.totalVisible >= 0
-      ? frozenRef.current
-      : live;
+
+  const buckets = useMemo((): InboxBuckets<T> => {
+    if (!isCountsPending) return live;
+    return {
+      ...live,
+      counts: frozenCountsRef.current.counts as InboxBuckets<T>["counts"],
+      todayAttentionCount: frozenCountsRef.current.todayAttentionCount,
+      priorityCount: frozenCountsRef.current.priorityCount,
+    };
+  }, [live, isCountsPending]);
 
   return { buckets, isCountsPending };
 }

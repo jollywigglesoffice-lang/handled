@@ -32,6 +32,7 @@ export function buildEmailCompletionRecord(
     snippet: input.snippet,
     category: input.category,
     senderDomain: domain,
+    threadId: input.threadId,
     waitingOn,
     followUpAfterDays,
     followUpAt: computeFollowUpAt(completedAt, followUpAfterDays),
@@ -61,5 +62,28 @@ export function mergeWaitingFieldsFromRaw(
       raw.waitingResolutionReason === "no_longer_waiting"
         ? raw.waitingResolutionReason
         : record.waitingResolutionReason,
+    threadId: typeof raw.threadId === "string" ? raw.threadId : record.threadId,
+    waitingResponseEmailId:
+      typeof raw.waitingResponseEmailId === "string"
+        ? raw.waitingResponseEmailId
+        : record.waitingResponseEmailId,
+    waitingResponseDetectedAt:
+      typeof raw.waitingResponseDetectedAt === "number"
+        ? raw.waitingResponseDetectedAt
+        : record.waitingResponseDetectedAt,
+    waitingResponseSender:
+      typeof raw.waitingResponseSender === "string"
+        ? raw.waitingResponseSender
+        : record.waitingResponseSender,
+    waitingResponseSubject:
+      typeof raw.waitingResponseSubject === "string"
+        ? raw.waitingResponseSubject
+        : record.waitingResponseSubject,
+    waitingResponseSnippet:
+      typeof raw.waitingResponseSnippet === "string"
+        ? raw.waitingResponseSnippet
+        : record.waitingResponseSnippet,
+    waitingResponseAt:
+      typeof raw.waitingResponseAt === "number" ? raw.waitingResponseAt : record.waitingResponseAt,
   };
 }

@@ -11,10 +11,77 @@ export function isActiveWaiting(record: EmailCompletionRecord): boolean {
   return isWaitingCompletion(record) && record.waitingResolvedAt == null;
 }
 
+export function hasWaitingResponse(record: EmailCompletionRecord): boolean {
+  return isActiveWaiting(record) && Boolean(record.waitingResponseDetectedAt);
+}
+
 export function activeWaitingRecords(completions: EmailCompletionMap): EmailCompletionRecord[] {
   return Object.values(completions)
     .filter(isActiveWaiting)
     .sort((a, b) => daysWaiting(b) - daysWaiting(a));
+}
+
+export function waitingOpenRecords(completions: EmailCompletionMap): EmailCompletionRecord[] {
+  return Object.values(completions)
+    .filter((r) => isActiveWaiting(r) && !hasWaitingResponse(r))
+    .sort((a, b) => daysWaiting(b) - daysWaiting(a));
+}
+
+export function waitingResponseReceivedRecords(
+  completions: EmailCompletionMap,
+): EmailCompletionRecord[] {
+  return Object.values(completions)
+    .filter(hasWaitingResponse)
+    .sort(
+      (a, b) =>
+        (b.waitingResponseAt ?? b.waitingResponseDetectedAt ?? 0) -
+        (a.waitingResponseAt ?? a.waitingResponseDetectedAt ?? 0),
+    );
+}
+
+export function formatRelativeReceived(ms: number, locale: "en" | "it", now = Date.now()): string {
+  const sec = Math.max(0, Math.floor((now - ms) / 1000));
+  if (sec < 60) return locale === "it" ? "Proprio ora" : "Just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) {
+    return locale === "it"
+      ? min === 1
+        ? "1 minuto fa"
+        : `${min} minuti fa`
+      : min === 1
+        ? "1 minute ago"
+        : `${min} minutes ago`;
+  }
+  const hr = Math.floor(min / 60);
+  if (hr < 24) {
+    return locale === "it"
+      ? hr === 1
+        ? "1 ora fa"
+        : `${hr} ore fa`
+      : hr === 1
+        ? "1 hour ago"
+        : `${hr} hours ago`;
+  }
+  const days = Math.floor(hr / 24);
+  return locale === "it"
+    ? days === 1
+      ? "1 giorno fa"
+      : `${days} giorni fa`
+    : days === 1
+      ? "1 day ago"
+      : `${days} days ago`;
+}
+
+export function receivedLabel(record: EmailCompletionRecord, locale: "en" | "it"): string {
+  const ms = record.waitingResponseAt ?? record.waitingResponseDetectedAt;
+  if (!ms) return "";
+  const rel = formatRelativeReceived(ms, locale);
+  return locale === "it" ? `Ricevuta: ${rel}` : `Received: ${rel}`;
+}
+
+export function repliedLabel(record: EmailCompletionRecord, locale: "en" | "it"): string {
+  const who = waitingOnLabel(record, locale);
+  return locale === "it" ? `✓ ${who} ha risposto` : `✓ ${who} replied`;
 }
 
 export function waitingStartAt(record: EmailCompletionRecord): number {

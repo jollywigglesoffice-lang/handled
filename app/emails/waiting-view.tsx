@@ -7,6 +7,7 @@ import { useEmailCompletions } from "@/app/email-completions-context";
 import { InboxViewNav } from "@/app/emails/inbox-view-nav";
 import { InboxEmptyState } from "@/app/emails/inbox-empty-state";
 import { WaitingOnCard } from "@/app/emails/waiting-on-card";
+import { WaitingResponseCard } from "@/app/emails/waiting-response-card";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
 
@@ -17,6 +18,8 @@ const COPY = {
     search: "Search waiting…",
     empty: "Nothing waiting on",
     emptyHint: "When you’re waiting on someone, mark an email ✓ Waiting on someone.",
+    responseSection: "Response received",
+    waitingSection: "Still waiting",
   },
   it: {
     title: "In attesa",
@@ -24,25 +27,40 @@ const COPY = {
     search: "Cerca in attesa…",
     empty: "Niente in attesa",
     emptyHint: "Quando aspetti qualcuno, segna l’email come ✓ In attesa.",
+    responseSection: "Risposta ricevuta",
+    waitingSection: "Ancora in attesa",
   },
 } as const;
 
 export function WaitingView() {
-  const { activeWaitingRecords } = useEmailCompletions();
+  const { activeWaitingRecords, waitingOpenRecords, waitingResponseRecords } =
+    useEmailCompletions();
   const { uiLanguage } = useUserPreferences();
   const ui = useUiCopy();
   const locale = uiLanguage === "it" ? "it" : "en";
   const t = COPY[locale];
   const [query, setQuery] = useState("");
 
-  const visible = useMemo(() => {
+  const filterRecords = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return activeWaitingRecords;
-    return activeWaitingRecords.filter((record) => {
-      const hay = `${record.waitingOn ?? ""} ${record.sender} ${record.subject} ${record.snippet ?? ""}`.toLowerCase();
+    if (!q) return null;
+    return (record: (typeof activeWaitingRecords)[number]) => {
+      const hay = `${record.waitingOn ?? ""} ${record.sender} ${record.subject} ${record.snippet ?? ""} ${record.waitingResponseSubject ?? ""}`.toLowerCase();
       return hay.includes(q);
-    });
-  }, [activeWaitingRecords, query]);
+    };
+  }, [query]);
+
+  const visibleResponses = useMemo(() => {
+    if (!filterRecords) return waitingResponseRecords;
+    return waitingResponseRecords.filter(filterRecords);
+  }, [waitingResponseRecords, filterRecords]);
+
+  const visibleOpen = useMemo(() => {
+    if (!filterRecords) return waitingOpenRecords;
+    return waitingOpenRecords.filter(filterRecords);
+  }, [waitingOpenRecords, filterRecords]);
+
+  const hasAny = activeWaitingRecords.length > 0;
 
   return (
     <main className="min-h-screen bg-white px-4 py-8 sm:px-6 sm:py-12">
@@ -63,8 +81,8 @@ export function WaitingView() {
           </div>
         </header>
 
-        <section className="mt-8 space-y-4">
-          {activeWaitingRecords.length > 0 ? (
+        <section className="mt-8 space-y-6">
+          {hasAny ? (
             <input
               type="search"
               value={query}
@@ -74,24 +92,46 @@ export function WaitingView() {
             />
           ) : null}
 
-          {visible.length > 0 ? (
-            <div className="space-y-3">
-              {visible.map((record) => (
-                <WaitingOnCard key={record.emailId} record={record} locale={locale} />
-              ))}
-            </div>
-          ) : activeWaitingRecords.length === 0 ? (
+          {!hasAny ? (
             <InboxEmptyState tone="calm" title={t.empty} subtitle={t.emptyHint} />
           ) : (
-            <InboxEmptyState
-              tone="calm"
-              title={locale === "it" ? "Nessun risultato" : "No matches"}
-              subtitle={
-                locale === "it"
-                  ? "Prova un altro termine di ricerca."
-                  : "Try a different search term."
-              }
-            />
+            <>
+              {visibleResponses.length > 0 ? (
+                <div className="space-y-3">
+                  <h2 className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                    {t.responseSection}
+                  </h2>
+                  {visibleResponses.map((record) => (
+                    <WaitingResponseCard key={record.emailId} record={record} locale={locale} />
+                  ))}
+                </div>
+              ) : null}
+
+              {visibleOpen.length > 0 ? (
+                <div className="space-y-3">
+                  {visibleResponses.length > 0 ? (
+                    <h2 className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                      {t.waitingSection}
+                    </h2>
+                  ) : null}
+                  {visibleOpen.map((record) => (
+                    <WaitingOnCard key={record.emailId} record={record} locale={locale} />
+                  ))}
+                </div>
+              ) : null}
+
+              {visibleResponses.length === 0 && visibleOpen.length === 0 ? (
+                <InboxEmptyState
+                  tone="calm"
+                  title={locale === "it" ? "Nessun risultato" : "No matches"}
+                  subtitle={
+                    locale === "it"
+                      ? "Prova un altro termine di ricerca."
+                      : "Try a different search term."
+                  }
+                />
+              ) : null}
+            </>
           )}
         </section>
       </div>

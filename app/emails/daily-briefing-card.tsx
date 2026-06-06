@@ -1,0 +1,217 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useEmailCompletions } from "@/app/email-completions-context";
+import { useUserPreferences } from "@/app/user-preferences-context";
+import {
+  buildInboxBriefingCard,
+  buildVisitSnapshot,
+} from "@/lib/daily-briefing/inbox-briefing";
+import type { DailyBriefingMessage } from "@/lib/daily-briefing/types";
+import {
+  loadVisitSnapshot,
+  saveVisitSnapshot,
+} from "@/lib/daily-briefing/visit-snapshot";
+import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { formatDuration } from "@/lib/inbox-zero/estimate";
+import { captureInboxReturnFromOpen } from "@/lib/inbox-return-context";
+
+type DailyBriefingCardProps = {
+  counts: Record<InboxAiCategory, number>;
+  messages: DailyBriefingMessage[];
+  locale: "en" | "it";
+  onClearPromotions: () => void;
+  onHandleQuickReplies: () => void;
+  onInboxZero: () => void;
+};
+
+const COPY = {
+  en: {
+    rightNow: "Right now",
+    whatChanged: "What changed",
+    effort: "Estimated inbox effort",
+    inboxZero: "Inbox Zero",
+    quickReplies: "Quick replies",
+    clearPromotions: "Clear promotions",
+    allClear: "You're all caught up.",
+  },
+  it: {
+    rightNow: "Adesso",
+    whatChanged: "Cosa è cambiato",
+    effort: "Sforzo stimato per la inbox",
+    inboxZero: "Inbox Zero",
+    quickReplies: "Risposte veloci",
+    clearPromotions: "Svuota promozioni",
+    allClear: "Sei in pari.",
+  },
+} as const;
+
+export function DailyBriefingCard({
+  counts,
+  messages,
+  locale,
+  onClearPromotions,
+  onHandleQuickReplies,
+  onInboxZero,
+}: DailyBriefingCardProps) {
+  const { activeWaitingRecords } = useEmailCompletions();
+  const { userName } = useUserPreferences();
+  const displayName = userName;
+  const t = COPY[locale];
+
+  const [previousSnapshot] = useState(() => loadVisitSnapshot());
+
+  const briefing = useMemo(
+    () =>
+      buildInboxBriefingCard({
+        locale,
+        displayName,
+        counts,
+        messages,
+        waitingOnCount: activeWaitingRecords.length,
+        previousSnapshot,
+        waitingRecords: activeWaitingRecords,
+      }),
+    [
+      locale,
+      displayName,
+      counts,
+      messages,
+      activeWaitingRecords,
+      previousSnapshot,
+    ],
+  );
+
+  useEffect(() => {
+    function persistSnapshot() {
+      if (messages.length === 0) return;
+      saveVisitSnapshot(
+        buildVisitSnapshot(messages, counts, activeWaitingRecords.length),
+      );
+    }
+
+    const onHide = () => {
+      if (document.visibilityState === "hidden") persistSnapshot();
+    };
+
+    window.addEventListener("beforeunload", persistSnapshot);
+    document.addEventListener("visibilitychange", onHide);
+
+    return () => {
+      persistSnapshot();
+      window.removeEventListener("beforeunload", persistSnapshot);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [messages, counts, activeWaitingRecords.length]);
+
+  const hasContent =
+    briefing.lines.length > 0 ||
+    briefing.importantChanges.length > 0 ||
+    briefing.showEffort;
+
+  if (!hasContent) {
+    return (
+      <section className="rounded-2xl border border-[#E2E8F0] bg-[#FAFBFC] px-5 py-5 sm:px-6">
+        <p className="text-base font-medium text-[#0F172A]">{briefing.greeting}</p>
+        <p className="mt-2 text-sm text-gray-500">{t.allClear}</p>
+      </section>
+    );
+  }
+
+  const contextLabel = briefing.hasPreviousVisit ? briefing.sinceVisitLabel : t.rightNow;
+  const showActions =
+    counts.needs_attention > 0 || counts.quick_reply > 0 || counts.promotion > 0;
+
+  return (
+    <section className="rounded-2xl border border-[#E2E8F0] bg-[#FAFBFC] px-5 py-5 sm:px-6">
+      <p className="text-base font-medium text-[#0F172A]">{briefing.greeting}</p>
+
+      {briefing.lines.length > 0 ? (
+        <div className="mt-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+            {contextLabel}
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {briefing.lines.map((line) => (
+              <li key={line.id} className="text-sm text-gray-700">
+                {line.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {briefing.importantChanges.length > 0 ? (
+        <div className="mt-4 border-t border-[#EEF2F6] pt-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+            {t.whatChanged}
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {briefing.importantChanges.map((change) => (
+              <li key={change.id}>
+                <Link
+                  href={`/emails/${encodeURIComponent(change.emailId)}`}
+                  onClick={() =>
+                    captureInboxReturnFromOpen(
+                      { view: "inbox", categoryTab: "all" },
+                      change.emailId,
+                    )
+                  }
+                  className="text-sm text-gray-700 transition hover:text-accent"
+                >
+                  {change.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {briefing.showEffort ? (
+        <p className="mt-4 text-sm text-gray-600">
+          <span className="text-gray-500">{t.effort}:</span>{" "}
+          <span className="font-medium text-[#0F172A]">
+            {formatDuration(briefing.effortSeconds, locale)}
+          </span>
+        </p>
+      ) : null}
+
+      {showActions ? (
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-[#EEF2F6] pt-4">
+          <button
+            type="button"
+            onClick={onInboxZero}
+            className="rounded-lg bg-[#9733ff] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-hover"
+          >
+            {t.inboxZero}
+          </button>
+          {counts.quick_reply > 0 ? (
+            <BriefingAction onClick={onHandleQuickReplies}>{t.quickReplies}</BriefingAction>
+          ) : null}
+          {counts.promotion > 0 ? (
+            <BriefingAction onClick={onClearPromotions}>{t.clearPromotions}</BriefingAction>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function BriefingAction({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-lg border border-[#E2E8F0] bg-white px-3.5 py-1.5 text-xs font-medium text-gray-700 transition hover:border-accent/30 hover:text-accent"
+    >
+      {children}
+    </button>
+  );
+}

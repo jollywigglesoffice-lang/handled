@@ -91,3 +91,12 @@ export type DailyBriefingIntegrationDescriptor = {
   status: "available" | "planned" | "connected";
   description: string;
 };
+
+/** Delivery channel — only `on_open` is implemented today. */
+export type BriefingScheduleKind = "on_open" | "morning" | "weekly" | "digest_email";
+
+export type BriefingScheduleDescriptor = {
+  kind: BriefingScheduleKind;
+  status: "active" | "planned";
+  description: string;
+};

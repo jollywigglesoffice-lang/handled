@@ -134,7 +134,8 @@ import {
   DISMISSED_EVENT,
 } from "@/lib/dismissed/client-storage";
 import { trackEvent } from "@/lib/analytics";
-import { InboxSummaryCard } from "@/app/emails/inbox-summary-card";
+import { DailyBriefingCard } from "@/app/emails/daily-briefing-card";
+import type { DailyBriefingMessage } from "@/lib/daily-briefing/types";
 import { InboxZeroMode, type InboxZeroStep } from "@/app/emails/inbox-zero-mode";
 import { CategoryTabs, type CategoryTab } from "@/app/emails/category-tabs";
 import {
@@ -151,6 +152,7 @@ type GmailInboxMessage = {
   snippet: string;
   date: string;
   internalDateMs?: number;
+  waitingResponseUpdate?: boolean;
   category: InboxAiCategory;
   categoryConfidence?: number;
   categorySource?: CategorySource;
@@ -563,8 +565,14 @@ export default function EmailsInboxPage() {
     () => loadingRhythmMessages(uiLanguage === "it" ? "it" : "en"),
     [uiLanguage],
   );
-  const { completedEmailIds, completions, isCompleted, completeEmails } =
-    useEmailCompletions();
+  const {
+    completedEmailIds,
+    completions,
+    isCompleted,
+    completeEmails,
+    scanWaitingResponses,
+    waitingResponseRecords,
+  } = useEmailCompletions();
 
   const inboxSections = getInboxSections().map((section) => ({
     ...section,
@@ -1050,7 +1058,7 @@ export default function EmailsInboxPage() {
     };
     const onOverridesChange = async () => {
       const overrides = await syncEmailOverridesFromAccount();
-      setCategoryOverrides(overrides);
+      setCategoryOverrides((prev) => ({ ...prev, ...overrides }));
     };
     const onSenderPrefsChange = async () => {
       await syncSenderPreferencesFromAccount();
@@ -1161,13 +1169,64 @@ export default function EmailsInboxPage() {
     return resolved.filter((m) => !completedSet.has(m.id));
   }, [gmailMessages, categoryResolutionContext, dismissedIds, completions]);
 
+  useEffect(() => {
+    if (inboxMode !== "gmail" || gmailMessages.length === 0) return;
+    const visible =
+      dismissedIds.size === 0
+        ? gmailMessages
+        : gmailMessages.filter((m) => !dismissedIds.has(m.id));
+    void scanWaitingResponses(
+      visible.map((m) => ({
+        id: m.id,
+        threadId: m.threadId,
+        sender: m.sender,
+        subject: m.subject,
+        snippet: m.snippet,
+        internalDateMs: m.internalDateMs,
+        date: m.date,
+      })),
+    );
+  }, [inboxMode, gmailMessages, dismissedIds, scanWaitingResponses]);
+
+  const messagesForDisplay = useMemo(() => {
+    const responseEmailIds = new Set(
+      waitingResponseRecords
+        .map((r) => r.waitingResponseEmailId)
+        .filter((id): id is string => Boolean(id)),
+    );
+    return messagesWithOverrides.map((m) => {
+      if (!responseEmailIds.has(m.id)) return m;
+      return {
+        ...m,
+        category: "needs_attention" as InboxAiCategory,
+        waitingResponseUpdate: true,
+      };
+    });
+  }, [messagesWithOverrides, waitingResponseRecords]);
+
   const { buckets: gmailBuckets, isCountsPending } = useStableInboxBuckets({
-    messages: messagesWithOverrides,
+    messages: messagesForDisplay,
     workflowMode,
     isRefreshing,
     isInitialLoading: inboxMode === "loading",
     catalog,
   });
+
+  const briefingMessages = useMemo((): DailyBriefingMessage[] => {
+    return messagesWithOverrides.map((m) => ({
+      id: m.id,
+      threadId: m.threadId,
+      sender: m.sender,
+      subject: m.subject,
+      snippet: m.snippet,
+      category: m.category,
+      internalDateMs: m.internalDateMs,
+      date: m.date,
+      relationship: m.relationship,
+      hasUnsubscribeSignal: m.hasUnsubscribeSignal,
+      needsCalendarContext: m.needsCalendarContext,
+    }));
+  }, [messagesWithOverrides]);
 
   const mockInboxMessages = useMemo(
     () => fakeEmailsToInboxMessages(fakeEmails, completedEmailIds),
@@ -1273,7 +1332,12 @@ export default function EmailsInboxPage() {
       setGmailMessages((prev) =>
         prev.map((m) =>
           idSet.has(m.id)
-            ? { ...m, category, categorySource: "manual_override" as const }
+            ? {
+                ...m,
+                category,
+                categorySource: "manual_override" as const,
+                categoryConfidence: 1,
+              }
             : m,
         ),
       );
@@ -1355,6 +1419,7 @@ export default function EmailsInboxPage() {
             sender: m?.sender ?? "",
             subject: m?.subject ?? "",
             snippet: m?.snippet,
+            threadId: m?.threadId,
             category: m?.category ?? "needs_attention",
           };
         }),
@@ -1525,6 +1590,7 @@ export default function EmailsInboxPage() {
             sender: m?.sender ?? "",
             subject: m?.subject ?? "",
             snippet: m?.snippet,
+            threadId: m?.threadId,
             category: m?.category ?? "needs_attention",
           },
         ],
@@ -1663,7 +1729,12 @@ export default function EmailsInboxPage() {
         setGmailMessages((prev) =>
           prev.map((m) =>
             m.id === id
-              ? { ...m, category, categorySource: "manual_override" as const }
+              ? {
+                  ...m,
+                  category,
+                  categorySource: "manual_override" as const,
+                  categoryConfidence: 1,
+                }
               : m,
           ),
         );
@@ -1853,8 +1924,9 @@ export default function EmailsInboxPage() {
                   ? `Mostrando le ${gmailMessages.length} email più recenti`
                   : `Showing newest ${gmailMessages.length} inbox emails`}
               </p>
-              <InboxSummaryCard
+              <DailyBriefingCard
                 counts={gmailBuckets.counts}
+                messages={briefingMessages}
                 locale={inboxLocale}
                 onClearPromotions={handleClearPromotions}
                 onHandleQuickReplies={handleStartQuickReplies}
@@ -1937,7 +2009,7 @@ export default function EmailsInboxPage() {
                 />
               )}
               <InboxSecondaryTools
-                messages={messagesWithOverrides as GmailCardMessage[]}
+                messages={messagesForDisplay as GmailCardMessage[]}
                 gmailMessages={gmailMessages as GmailCardMessage[]}
                 allVisible={gmailBuckets.allVisible as GmailCardMessage[]}
                 locale={uiLanguage === "it" ? "it" : "en"}

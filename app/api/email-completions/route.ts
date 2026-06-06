@@ -56,6 +56,7 @@ export async function POST(request: Request) {
           sender: raw.sender ?? "",
           subject: raw.subject ?? "",
           snippet: raw.snippet,
+          threadId: typeof raw.threadId === "string" ? raw.threadId : undefined,
           category: raw.category ?? "needs_attention",
           waitingOn: typeof raw.waitingOn === "string" ? raw.waitingOn : undefined,
           followUpAfterDays:

@@ -24,7 +24,22 @@ export function parseEmailCompletionsJson(raw: unknown): EmailCompletionMap {
       snippet: typeof row.snippet === "string" ? row.snippet : undefined,
       category: (typeof row.category === "string" ? row.category : "needs_attention") as EmailCompletionRecord["category"],
       senderDomain: typeof row.senderDomain === "string" ? row.senderDomain : undefined,
+      threadId: typeof row.threadId === "string" ? row.threadId : undefined,
       waitingOn: typeof row.waitingOn === "string" ? row.waitingOn : undefined,
+      waitingResponseEmailId:
+        typeof row.waitingResponseEmailId === "string" ? row.waitingResponseEmailId : undefined,
+      waitingResponseDetectedAt:
+        typeof row.waitingResponseDetectedAt === "number"
+          ? row.waitingResponseDetectedAt
+          : undefined,
+      waitingResponseSender:
+        typeof row.waitingResponseSender === "string" ? row.waitingResponseSender : undefined,
+      waitingResponseSubject:
+        typeof row.waitingResponseSubject === "string" ? row.waitingResponseSubject : undefined,
+      waitingResponseSnippet:
+        typeof row.waitingResponseSnippet === "string" ? row.waitingResponseSnippet : undefined,
+      waitingResponseAt:
+        typeof row.waitingResponseAt === "number" ? row.waitingResponseAt : undefined,
       followUpAfterDays:
         typeof row.followUpAfterDays === "number" ? row.followUpAfterDays : undefined,
       followUpAt: typeof row.followUpAt === "number" ? row.followUpAt : undefined,

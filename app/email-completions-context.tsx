@@ -26,7 +26,16 @@ import type {
   EmailCompletionRecord,
 } from "@/lib/email-completions/types";
 import { trackEvent } from "@/lib/analytics";
-import { activeWaitingRecords, buildResolvedWaitingLabel } from "@/lib/waiting-on/helpers";
+import {
+  activeWaitingRecords,
+  buildResolvedWaitingLabel,
+  waitingOpenRecords,
+  waitingResponseReceivedRecords,
+} from "@/lib/waiting-on/helpers";
+import {
+  scanWaitingResponseDetections,
+  type InboxMessageForWaitingDetect,
+} from "@/lib/waiting-on/detect-response";
 import type { WaitingResolutionReason } from "@/lib/waiting-on/types";
 
 type EmailCompletionsContextValue = {
@@ -46,7 +55,11 @@ type EmailCompletionsContextValue = {
     locale?: "en" | "it",
   ) => Promise<void>;
   markStillWaiting: (emailId: string) => Promise<void>;
+  dismissWaitingResponse: (emailId: string) => Promise<void>;
+  scanWaitingResponses: (messages: InboxMessageForWaitingDetect[]) => Promise<void>;
   activeWaitingRecords: EmailCompletionRecord[];
+  waitingOpenRecords: EmailCompletionRecord[];
+  waitingResponseRecords: EmailCompletionRecord[];
   /** @deprecated Use completeEmails — kept for gradual migration */
   markEmailHandled: (emailId: string) => void;
 };
@@ -86,6 +99,16 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
 
   const activeWaiting = useMemo(
     () => activeWaitingRecords(completions),
+    [completions],
+  );
+
+  const waitingOpen = useMemo(
+    () => waitingOpenRecords(completions),
+    [completions],
+  );
+
+  const waitingResponses = useMemo(
+    () => waitingResponseReceivedRecords(completions),
     [completions],
   );
 
@@ -167,11 +190,14 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
 
       for (const record of records) {
         if (record.actionId === "waiting_on_someone") {
-          trackEvent("waiting_created", {
+          const props = {
             email_id: record.emailId,
             waiting_on: record.waitingOn ?? null,
             has_follow_up: Boolean(record.followUpAfterDays),
-          });
+            thread_id: record.threadId ?? null,
+          };
+          trackEvent("waiting_created", props);
+          trackEvent("waiting_on_created", props);
           if (record.followUpAfterDays) {
             trackEvent("followup_reminder_created", {
               email_id: record.emailId,
@@ -234,16 +260,84 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
         waitingResolutionReason: reason,
         actionLabel: buildResolvedWaitingLabel(record, reason, locale),
       });
-      trackEvent("waiting_resolved", {
+      const resolveProps = {
         email_id: emailId,
         waiting_on: record.waitingOn ?? null,
         resolution_reason: reason,
         days_waiting: Math.floor(
           (now - (record.stillWaitingAt ?? record.completedAt)) / 86_400_000,
         ),
-      });
+        had_detected_response: Boolean(record.waitingResponseDetectedAt),
+      };
+      trackEvent("waiting_resolved", resolveProps);
+      trackEvent("waiting_item_resolved", resolveProps);
     },
     [completions, patchCompletion],
+  );
+
+  const dismissWaitingResponse = useCallback(
+    async (emailId: string) => {
+      const record = completions[emailId];
+      if (!record || !record.waitingResponseDetectedAt) return;
+      const {
+        waitingResponseEmailId: _a,
+        waitingResponseDetectedAt: _b,
+        waitingResponseSender: _c,
+        waitingResponseSubject: _d,
+        waitingResponseSnippet: _e,
+        waitingResponseAt: _f,
+        ...cleared
+      } = record;
+      const nextMap = { ...completions, [emailId]: cleared };
+      await persistMap(nextMap, learning, { records: [cleared] });
+      window.dispatchEvent(new Event("handled-emails-changed"));
+    },
+    [completions, learning, persistMap],
+  );
+
+  const scanWaitingResponses = useCallback(
+    async (messages: InboxMessageForWaitingDetect[]) => {
+      const pending = waitingOpenRecords(completions);
+      if (!pending.length || !messages.length) return;
+
+      const detections = scanWaitingResponseDetections(pending, messages);
+      if (!detections.length) return;
+
+      const now = Date.now();
+      let nextMap = { ...completions };
+      const patched: EmailCompletionRecord[] = [];
+
+      for (const { waitingEmailId, detection } of detections) {
+        const existing = nextMap[waitingEmailId];
+        if (!existing || existing.waitingResponseDetectedAt) continue;
+
+        const updated: EmailCompletionRecord = {
+          ...existing,
+          waitingResponseEmailId: detection.responseEmailId,
+          waitingResponseDetectedAt: now,
+          waitingResponseSender: detection.responseSender,
+          waitingResponseSubject: detection.responseSubject,
+          waitingResponseSnippet: detection.responseSnippet,
+          waitingResponseAt: detection.responseAt,
+          threadId: existing.threadId ?? detection.threadId,
+        };
+        nextMap[waitingEmailId] = updated;
+        patched.push(updated);
+
+        trackEvent("response_detected", {
+          waiting_email_id: waitingEmailId,
+          response_email_id: detection.responseEmailId,
+          waiting_on: existing.waitingOn ?? null,
+          thread_id: detection.threadId,
+        });
+      }
+
+      if (patched.length) {
+        await persistMap(nextMap, learning, { records: patched });
+        window.dispatchEvent(new Event("handled-emails-changed"));
+      }
+    },
+    [completions, learning, persistMap],
   );
 
   const markStillWaiting = useCallback(
@@ -282,7 +376,11 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       uncompleteEmails,
       resolveWaiting,
       markStillWaiting,
+      dismissWaitingResponse,
+      scanWaitingResponses,
       activeWaitingRecords: activeWaiting,
+      waitingOpenRecords: waitingOpen,
+      waitingResponseRecords: waitingResponses,
       markEmailHandled,
     }),
     [
@@ -293,7 +391,11 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       uncompleteEmails,
       resolveWaiting,
       markStillWaiting,
+      dismissWaitingResponse,
+      scanWaitingResponses,
       activeWaiting,
+      waitingOpen,
+      waitingResponses,
       markEmailHandled,
     ],
   );
@@ -315,7 +417,11 @@ const EMPTY_COMPLETIONS_CTX: EmailCompletionsContextValue = {
   uncompleteEmails: async () => {},
   resolveWaiting: async () => {},
   markStillWaiting: async () => {},
+  dismissWaitingResponse: async () => {},
+  scanWaitingResponses: async () => {},
   activeWaitingRecords: [],
+  waitingOpenRecords: [],
+  waitingResponseRecords: [],
   markEmailHandled: () => {},
 };
 

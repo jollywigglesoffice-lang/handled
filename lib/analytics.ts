@@ -27,7 +27,10 @@ export type AnalyticsEvent =
   | "completion_suggestion_used"
   | "completion_suggestion_dismissed"
   | "waiting_created"
+  | "waiting_on_created"
   | "waiting_resolved"
+  | "waiting_item_resolved"
+  | "response_detected"
   | "followup_reminder_created";
 
 type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;
