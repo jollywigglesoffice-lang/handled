@@ -13,12 +13,15 @@ export function createInboxLoadId(): string {
   return `load-${Date.now().toString(36)}`;
 }
 
-export function logInboxLoadStart(diag: Pick<InboxLoadDiagnostics, "loadId" | "paginated" | "pageToken" | "append">): void {
+export function logInboxLoadStart(
+  diag: Pick<InboxLoadDiagnostics, "loadId" | "paginated" | "pageToken" | "append" | "refresh">,
+): void {
   console.info("[inbox-load] start", {
     loadId: diag.loadId,
     paginated: diag.paginated,
     pageToken: diag.pageToken ?? null,
     append: diag.append ?? false,
+    refresh: diag.refresh ?? false,
   });
 }
 
@@ -57,8 +60,12 @@ export function logInboxLoadFailed(
     durationMs: diag.timings.totalMs,
     gmailStatus: diag.gmailStatus ?? null,
     gmailReason: diag.gmailReason ?? null,
+    retryAfterMs: diag.retryAfterMs ?? null,
+    backoffDelayMs: diag.backoffDelayMs ?? null,
+    consecutive429Count: diag.consecutive429Count ?? null,
     paginated: diag.paginated,
     append: diag.append ?? false,
+    refresh: diag.refresh ?? false,
     timings: diag.timings,
   });
 }

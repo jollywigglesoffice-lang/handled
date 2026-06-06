@@ -1,3 +1,4 @@
+import { GmailApiError } from "@/lib/gmail-api-error";
 import type { InboxLoadApiErrorBody, InboxLoadFailureReason } from "@/lib/inbox-load/types";
 
 type GmailErrorParse = {
@@ -47,6 +48,9 @@ export function classifyGmailHttpError(status: number, body: string): GmailError
 
 /** Classify an Error thrown by gmail-api helpers (`Gmail list failed: 429 {...}`). */
 export function classifyGmailThrownError(error: unknown): GmailErrorParse {
+  if (error instanceof GmailApiError) {
+    return classifyGmailHttpError(error.status, error.body);
+  }
   const message = error instanceof Error ? error.message : String(error);
   const statusMatch = message.match(/failed:\s*(\d{3})\b/i);
   const status = statusMatch ? Number(statusMatch[1]) : undefined;

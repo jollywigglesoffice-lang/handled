@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   fakeEmails,
@@ -84,6 +84,20 @@ import type {
   InboxLoadStage,
   InboxLoadTimings,
 } from "@/lib/inbox-load/types";
+import { INBOX_AUTO_REFRESH_MS } from "@/lib/inbox-load/constants";
+import {
+  hasValidInboxCache,
+  loadInboxCache,
+  saveInboxCache,
+  type InboxCacheSnapshot,
+} from "@/lib/inbox-load/inbox-cache";
+import { mergeInboxRefreshMessages } from "@/lib/inbox-load/merge-messages";
+import {
+  isInboxLoadBackoffActive,
+  parseRetryAfterMs,
+  recordInboxRateLimit,
+  resetInboxRateLimitBackoff,
+} from "@/lib/inbox-load/rate-limit-backoff";
 import { INBOX_LOAD_CLIENT_TIMEOUT_MS } from "@/lib/inbox-load/types";
 import { uiLocaleFromLanguage } from "@/lib/ui-copy";
 import { useInboxCategories } from "@/app/inbox-categories-context";
@@ -572,93 +586,378 @@ export default function EmailsInboxPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Pagination plumbing (Gmail nextPageToken). UI only exposes a manual
   // "load more" for now — no infinite scroll yet.
+  const nextPageTokenRef = useRef<string | null>(null);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  nextPageTokenRef.current = nextPageToken;
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [messageIndex, setMessageIndex] = useState(0);
   const [showMicroMessage, setShowMicroMessage] = useState(true);
+  const [rateLimitNotice, setRateLimitNotice] = useState("");
+  const loadInFlightRef = useRef(false);
+  const pendingSilentRefreshRef = useRef(false);
+  const hasLoadedInboxRef = useRef(false);
+
+  const applyInboxCacheSnapshot = useCallback((cache: InboxCacheSnapshot): boolean => {
+    if (!cache.gmailMessages.length) return false;
+    setGmailMessages(cache.gmailMessages as GmailInboxMessage[]);
+    setCategoryOverrides(cache.categoryOverrides as Record<string, InboxAiCategory>);
+    setNextPageToken(cache.nextPageToken);
+    if (cache.lastSyncedAt) setLastSyncedAt(cache.lastSyncedAt);
+    setGmailError("");
+    setInboxMode("gmail");
+    return true;
+  }, []);
+
+  const showCachedInboxOnRateLimit = useCallback(
+    (locale: "en" | "it"): boolean => {
+      const cache = loadInboxCache();
+      if (!cache?.gmailMessages.length) return false;
+      applyInboxCacheSnapshot(cache);
+      setRateLimitNotice(inboxLoadUserMessage("rate_limit_soft", locale));
+      return true;
+    },
+    [applyInboxCacheSnapshot],
+  );
 
   const loadInbox = useCallback(
-    async (options?: { silent?: boolean; pageToken?: string | null; append?: boolean }) => {
-    const append = Boolean(options?.append);
-    const paginated = Boolean(options?.pageToken);
-    const locale = uiLanguage === "it" ? "it" : "en";
-    const loadId = createInboxLoadId();
-    const loadStarted = Date.now();
+    async (options?: {
+      silent?: boolean;
+      pageToken?: string | null;
+      append?: boolean;
+      refresh?: boolean;
+      force?: boolean;
+    }) => {
+      const append = Boolean(options?.append);
+      const paginated = Boolean(options?.pageToken);
+      const refresh =
+        Boolean(options?.refresh) ||
+        (Boolean(options?.silent) && hasLoadedInboxRef.current && !paginated && !append);
+      const locale = uiLanguage === "it" ? "it" : "en";
+      const loadId = createInboxLoadId();
+      const loadStarted = Date.now();
 
-    logInboxLoadStart({
-      loadId,
-      paginated,
-      pageToken: options?.pageToken ?? null,
-      append,
-    });
-
-    if (!options?.silent && !append) {
-      setInboxMode("loading");
-    }
-    if (append) {
-      setIsLoadingMore(true);
-    } else {
-      setIsRefreshing(true);
-    }
-    setGmailError("");
-
-    const sessionStarted = Date.now();
-    const hasSession = await ensureApiSessionCookies();
-    let clientTimings: InboxLoadTimings = { clientSessionMs: elapsedMs(sessionStarted) };
-
-    try {
-      if (!hasSession) {
-        setInboxMode("mock");
+      if (loadInFlightRef.current) {
+        if (options?.silent) pendingSilentRefreshRef.current = true;
         return;
       }
 
-      const url = options?.pageToken
-        ? `/api/gmail/messages?pageToken=${encodeURIComponent(options.pageToken)}`
-        : "/api/gmail/messages";
+      if (
+        !options?.force &&
+        !paginated &&
+        isInboxLoadBackoffActive() &&
+        (options?.silent || refresh)
+      ) {
+        return;
+      }
 
-      const fetchStarted = Date.now();
-      const res = await fetch(url, {
-        credentials: "include",
-        headers: await inboxFetchHeaders(),
-        signal: AbortSignal.timeout(INBOX_LOAD_CLIENT_TIMEOUT_MS),
+      loadInFlightRef.current = true;
+
+      logInboxLoadStart({
+        loadId,
+        paginated,
+        pageToken: options?.pageToken ?? null,
+        append,
+        refresh,
       });
-      clientTimings = mergeTimings(clientTimings, {
-        clientFetchMs: elapsedMs(fetchStarted),
-      });
 
-      const body = (await res.json()) as InboxLoadApiErrorBody & {
-        messages?: GmailInboxMessage[];
-        categoryOverrides?: Record<string, InboxAiCategory>;
-        emailOverrideRecords?: EmailCategoryOverride[];
-        personalCategories?: import("@/lib/personal-categories/types").PersonalInboxCategory[];
-        nextPageToken?: string | null;
-        diagnostics?: InboxLoadApiErrorBody["diagnostics"];
-      };
+      if (!options?.silent && !append && !hasValidInboxCache()) {
+        setInboxMode("loading");
+      }
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setIsRefreshing(true);
+      }
+      setGmailError("");
 
-      if (res.status === 403 && body.error === "missing_google_token") {
-        logInboxLoadFailed({
-          loadId,
-          startedAt: loadStarted,
-          paginated,
-          pageToken: options?.pageToken ?? null,
-          append,
-          failureReason: "oauth_missing",
-          failureStage: "google_token",
-          timings: mergeTimings(clientTimings, body.diagnostics?.timings, {
-            totalMs: elapsedMs(loadStarted),
-          }),
+      const sessionStarted = Date.now();
+      const hasSession = await ensureApiSessionCookies();
+      let clientTimings: InboxLoadTimings = { clientSessionMs: elapsedMs(sessionStarted) };
+
+      try {
+        if (!hasSession) {
+          setInboxMode("mock");
+          return;
+        }
+
+        const params = new URLSearchParams();
+        if (options?.pageToken) {
+          params.set("pageToken", options.pageToken);
+        } else if (refresh) {
+          params.set("refresh", "1");
+        }
+        const url = params.toString()
+          ? `/api/gmail/messages?${params.toString()}`
+          : "/api/gmail/messages";
+
+        const fetchStarted = Date.now();
+        const res = await fetch(url, {
+          credentials: "include",
+          headers: await inboxFetchHeaders(),
+          signal: AbortSignal.timeout(INBOX_LOAD_CLIENT_TIMEOUT_MS),
         });
-        setInboxMode("no_google");
-        return;
-      }
+        clientTimings = mergeTimings(clientTimings, {
+          clientFetchMs: elapsedMs(fetchStarted),
+        });
 
-      if (!res.ok) {
-        const failureReason = classifyHttpStatus(res.status, body);
-        const failureStage = (body.failureStage ?? "client_fetch") as InboxLoadStage;
-        const userMessage =
-          typeof body.message === "string"
-            ? body.message
-            : inboxLoadUserMessage(failureReason, locale);
+        const body = (await res.json()) as InboxLoadApiErrorBody & {
+          messages?: GmailInboxMessage[];
+          categoryOverrides?: Record<string, InboxAiCategory>;
+          emailOverrideRecords?: EmailCategoryOverride[];
+          personalCategories?: import("@/lib/personal-categories/types").PersonalInboxCategory[];
+          nextPageToken?: string | null;
+          refresh?: boolean;
+          diagnostics?: InboxLoadApiErrorBody["diagnostics"];
+        };
+
+        if (res.status === 403 && body.error === "missing_google_token") {
+          logInboxLoadFailed({
+            loadId,
+            startedAt: loadStarted,
+            paginated,
+            pageToken: options?.pageToken ?? null,
+            append,
+            refresh,
+            failureReason: "oauth_missing",
+            failureStage: "google_token",
+            timings: mergeTimings(clientTimings, body.diagnostics?.timings, {
+              totalMs: elapsedMs(loadStarted),
+            }),
+          });
+          setInboxMode("no_google");
+          return;
+        }
+
+        if (!res.ok) {
+          const failureReason = classifyHttpStatus(res.status, body);
+          const failureStage = (body.failureStage ?? "client_fetch") as InboxLoadStage;
+          const userMessage =
+            typeof body.message === "string"
+              ? body.message
+              : inboxLoadUserMessage(failureReason, locale);
+
+          const isRateLimit =
+            failureReason === "gmail_rate_limit" || res.status === 429;
+
+          if (isRateLimit) {
+            const retryAfterMs =
+              body.retryAfterMs ??
+              body.diagnostics?.retryAfterMs ??
+              parseRetryAfterMs(res.status, body.message ?? "");
+            const backoff = recordInboxRateLimit({
+              retryAfterMs,
+              source: "client_fetch",
+            });
+
+            logInboxLoadFailed({
+              loadId,
+              startedAt: loadStarted,
+              paginated,
+              pageToken: options?.pageToken ?? null,
+              append,
+              refresh,
+              failureReason: "gmail_rate_limit",
+              failureStage,
+              gmailStatus: body.gmailStatus ?? res.status,
+              gmailReason: body.gmailReason ?? null,
+              retryAfterMs: backoff.lastRetryAfterMs,
+              backoffDelayMs: backoff.lastBackoffDelayMs,
+              consecutive429Count: backoff.consecutive429Count,
+              timings: mergeTimings(clientTimings, body.diagnostics?.timings, {
+                totalMs: elapsedMs(loadStarted),
+              }),
+            });
+
+            if (!append && showCachedInboxOnRateLimit(locale)) {
+              return;
+            }
+          } else {
+            logInboxLoadFailed({
+              loadId,
+              startedAt: loadStarted,
+              paginated,
+              pageToken: options?.pageToken ?? null,
+              append,
+              refresh,
+              failureReason,
+              failureStage,
+              gmailStatus: body.gmailStatus ?? res.status,
+              gmailReason: body.gmailReason ?? null,
+              timings: mergeTimings(clientTimings, body.diagnostics?.timings, {
+                totalMs: elapsedMs(loadStarted),
+              }),
+            });
+          }
+
+          if (!append) {
+            setGmailError(userMessage);
+            setInboxMode("gmail_error");
+          } else {
+            console.warn("[inbox-load] load-more failed", {
+              loadId,
+              failureReason,
+              failureStage,
+            });
+          }
+          return;
+        }
+
+        resetInboxRateLimitBackoff();
+        setRateLimitNotice("");
+
+        if (body.personalCategories?.length) {
+          saveClientPersonalCategories(
+            normalizePersonalCategoriesList(body.personalCategories),
+          );
+          window.dispatchEvent(new Event("handled-personal-categories-changed"));
+        }
+
+        const msgsRaw = body.messages ?? [];
+        const msgs: GmailInboxMessage[] = msgsRaw.map((row) => {
+          const r = row as GmailInboxMessage & {
+            category?: string;
+            categoryConfidence?: number;
+            categorySource?: CategorySource;
+            hasUnsubscribeSignal?: boolean;
+            needsCalendarContext?: boolean;
+            actionIntelligence?: GmailCardMessage["actionIntelligence"];
+          };
+          return {
+            id: r.id,
+            threadId: (r as { threadId?: string }).threadId,
+            sender: r.sender,
+            subject: r.subject,
+            snippet: r.snippet,
+            date: r.date,
+            internalDateMs:
+              typeof (r as { internalDateMs?: number }).internalDateMs === "number"
+                ? (r as { internalDateMs: number }).internalDateMs
+                : undefined,
+            category: normalizeInboxAiCategory(
+              typeof r.category === "string" ? r.category : "needs_attention",
+            ),
+            categoryConfidence:
+              typeof r.categoryConfidence === "number" ? r.categoryConfidence : undefined,
+            categorySource:
+              r.categorySource === "rule" ||
+              r.categorySource === "ai" ||
+              r.categorySource === "heuristic" ||
+              r.categorySource === "ai_coerced" ||
+              r.categorySource === "user_rule" ||
+              r.categorySource === "sender_rule" ||
+              r.categorySource === "manual_override" ||
+              r.categorySource === "relationship_rule" ||
+              r.categorySource === "semantic_rule" ||
+              r.categorySource === "multilingual_rule"
+                ? r.categorySource
+                : undefined,
+            hasUnsubscribeSignal: Boolean(r.hasUnsubscribeSignal),
+            needsCalendarContext: Boolean(r.needsCalendarContext),
+            actionIntelligence: (r as { actionIntelligence?: GmailCardMessage["actionIntelligence"] })
+              .actionIntelligence,
+            timelineIntelligence: (
+              r as { timelineIntelligence?: GmailCardMessage["timelineIntelligence"] }
+            ).timelineIntelligence,
+            relationship:
+              (r as { relationship?: SenderRelationshipProfile }).relationship ?? undefined,
+          };
+        });
+        const localRecords = loadClientEmailOverrides();
+        const serverRecords =
+          body.emailOverrideRecords ??
+          Object.entries(body.categoryOverrides ?? {}).map(([emailId, overriddenCategory]) => ({
+            emailId,
+            originalCategory: null,
+            overriddenCategory,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }));
+        const mergedRecords = mergeEmailOverridesLocalWins(localRecords, serverRecords);
+        const mergedOverrideMap = overridesToCategoryMap(mergedRecords);
+        saveClientEmailOverrides(mergedRecords);
+        setCategoryOverrides(mergedOverrideMap);
+
+        const stampedMsgs = stampEmailOverridesOnMessages(msgs, mergedOverrideMap);
+        const syncedAt = new Date().toISOString();
+
+        if (append) {
+          setGmailMessages((prev) => {
+            const seen = new Set(prev.map((m) => m.id));
+            const additions = stampedMsgs.filter((m) => !seen.has(m.id));
+            const merged = [...prev, ...additions];
+            saveInboxCache({
+              savedAt: Date.now(),
+              gmailMessages: merged,
+              categoryOverrides: mergedOverrideMap,
+              nextPageToken: body.nextPageToken ?? null,
+              lastSyncedAt: syncedAt,
+            });
+            return merged;
+          });
+          setNextPageToken(body.nextPageToken ?? null);
+        } else if (refresh) {
+          setGmailMessages((prev) => {
+            const merged = mergeInboxRefreshMessages(prev, stampedMsgs);
+            saveInboxCache({
+              savedAt: Date.now(),
+              gmailMessages: merged,
+              categoryOverrides: mergedOverrideMap,
+              nextPageToken: nextPageTokenRef.current,
+              lastSyncedAt: syncedAt,
+            });
+            return merged;
+          });
+        } else {
+          setGmailMessages(stampedMsgs);
+          setNextPageToken(body.nextPageToken ?? null);
+          saveInboxCache({
+            savedAt: Date.now(),
+            gmailMessages: stampedMsgs,
+            categoryOverrides: mergedOverrideMap,
+            nextPageToken: body.nextPageToken ?? null,
+            lastSyncedAt: syncedAt,
+          });
+        }
+
+        for (const local of localRecords) {
+          const server = serverRecords.find((s) => s.emailId === local.emailId);
+          if (
+            !server ||
+            new Date(local.updatedAt).getTime() > new Date(server.updatedAt).getTime()
+          ) {
+            void persistEmailOverrideToAccount({
+              emailId: local.emailId,
+              overriddenCategory: local.overriddenCategory,
+              originalCategory: local.originalCategory,
+            });
+          }
+        }
+        if (append) {
+          setInboxMode("gmail");
+        } else {
+          setInboxMode(msgs.length || refresh ? "gmail" : "gmail_empty");
+        }
+        setLastSyncedAt(syncedAt);
+        hasLoadedInboxRef.current = true;
+
+        const serverDiag = body.diagnostics;
+        const timings = mergeTimings(clientTimings, serverDiag?.timings, {
+          totalMs: elapsedMs(loadStarted),
+        });
+        logInboxLoadComplete({
+          loadId,
+          startedAt: loadStarted,
+          paginated,
+          pageToken: options?.pageToken ?? null,
+          append,
+          refresh,
+          emailCount: msgs.length,
+          timings,
+          slow: (timings.totalMs ?? 0) >= 5000,
+        });
+      } catch (e) {
+        const failureReason = classifyFetchError(e);
+        const userMessage = inboxLoadUserMessage(failureReason, locale);
 
         logInboxLoadFailed({
           loadId,
@@ -666,172 +965,29 @@ export default function EmailsInboxPage() {
           paginated,
           pageToken: options?.pageToken ?? null,
           append,
+          refresh,
           failureReason,
-          failureStage,
-          gmailStatus: body.gmailStatus ?? res.status,
-          gmailReason: body.gmailReason ?? null,
-          timings: mergeTimings(clientTimings, body.diagnostics?.timings, {
-            totalMs: elapsedMs(loadStarted),
-          }),
+          failureStage: "client_fetch",
+          timings: mergeTimings(clientTimings, { totalMs: elapsedMs(loadStarted) }),
         });
 
         if (!append) {
           setGmailError(userMessage);
           setInboxMode("gmail_error");
-        } else {
-          console.warn("[inbox-load] load-more failed", {
-            loadId,
-            failureReason,
-            failureStage,
-          });
         }
-        return;
-      }
+      } finally {
+        loadInFlightRef.current = false;
+        setIsRefreshing(false);
+        setIsLoadingMore(false);
 
-      if (body.personalCategories?.length) {
-        saveClientPersonalCategories(
-          normalizePersonalCategoriesList(body.personalCategories),
-        );
-        window.dispatchEvent(new Event("handled-personal-categories-changed"));
-      }
-
-      const msgsRaw = body.messages ?? [];
-      const msgs: GmailInboxMessage[] = msgsRaw.map((row) => {
-        const r = row as GmailInboxMessage & {
-          category?: string;
-          categoryConfidence?: number;
-          categorySource?: CategorySource;
-          hasUnsubscribeSignal?: boolean;
-          needsCalendarContext?: boolean;
-          actionIntelligence?: GmailCardMessage["actionIntelligence"];
-        };
-        return {
-          id: r.id,
-          threadId: (r as { threadId?: string }).threadId,
-          sender: r.sender,
-          subject: r.subject,
-          snippet: r.snippet,
-          date: r.date,
-          internalDateMs:
-            typeof (r as { internalDateMs?: number }).internalDateMs === "number"
-              ? (r as { internalDateMs: number }).internalDateMs
-              : undefined,
-          category: normalizeInboxAiCategory(
-            typeof r.category === "string" ? r.category : "needs_attention",
-          ),
-          categoryConfidence:
-            typeof r.categoryConfidence === "number" ? r.categoryConfidence : undefined,
-          categorySource:
-            r.categorySource === "rule" ||
-            r.categorySource === "ai" ||
-            r.categorySource === "heuristic" ||
-            r.categorySource === "ai_coerced" ||
-            r.categorySource === "user_rule" ||
-            r.categorySource === "sender_rule" ||
-            r.categorySource === "manual_override" ||
-            r.categorySource === "relationship_rule" ||
-            r.categorySource === "semantic_rule" ||
-            r.categorySource === "multilingual_rule"
-              ? r.categorySource
-              : undefined,
-          hasUnsubscribeSignal: Boolean(r.hasUnsubscribeSignal),
-          needsCalendarContext: Boolean(r.needsCalendarContext),
-          actionIntelligence: (r as { actionIntelligence?: GmailCardMessage["actionIntelligence"] })
-            .actionIntelligence,
-          timelineIntelligence: (
-            r as { timelineIntelligence?: GmailCardMessage["timelineIntelligence"] }
-          ).timelineIntelligence,
-          relationship:
-            (r as { relationship?: SenderRelationshipProfile }).relationship ?? undefined,
-        };
-      });
-      const localRecords = loadClientEmailOverrides();
-      const serverRecords =
-        body.emailOverrideRecords ??
-        Object.entries(body.categoryOverrides ?? {}).map(([emailId, overriddenCategory]) => ({
-          emailId,
-          originalCategory: null,
-          overriddenCategory,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }));
-      const mergedRecords = mergeEmailOverridesLocalWins(localRecords, serverRecords);
-      const mergedOverrideMap = overridesToCategoryMap(mergedRecords);
-      saveClientEmailOverrides(mergedRecords);
-      setCategoryOverrides(mergedOverrideMap);
-
-      const stampedMsgs = stampEmailOverridesOnMessages(msgs, mergedOverrideMap);
-      if (append) {
-        setGmailMessages((prev) => {
-          const seen = new Set(prev.map((m) => m.id));
-          const additions = stampedMsgs.filter((m) => !seen.has(m.id));
-          return [...prev, ...additions];
-        });
-      } else {
-        setGmailMessages(stampedMsgs);
-      }
-      setNextPageToken(body.nextPageToken ?? null);
-
-      for (const local of localRecords) {
-        const server = serverRecords.find((s) => s.emailId === local.emailId);
-        if (
-          !server ||
-          new Date(local.updatedAt).getTime() > new Date(server.updatedAt).getTime()
-        ) {
-          void persistEmailOverrideToAccount({
-            emailId: local.emailId,
-            overriddenCategory: local.overriddenCategory,
-            originalCategory: local.originalCategory,
-          });
+        if (pendingSilentRefreshRef.current && !isInboxLoadBackoffActive()) {
+          pendingSilentRefreshRef.current = false;
+          void loadInbox({ silent: true, refresh: true });
         }
       }
-      if (append) {
-        setInboxMode("gmail");
-      } else {
-        setInboxMode(msgs.length ? "gmail" : "gmail_empty");
-      }
-      setLastSyncedAt(new Date().toISOString());
-
-      const serverDiag = body.diagnostics;
-      const timings = mergeTimings(clientTimings, serverDiag?.timings, {
-        totalMs: elapsedMs(loadStarted),
-      });
-      logInboxLoadComplete({
-        loadId,
-        startedAt: loadStarted,
-        paginated,
-        pageToken: options?.pageToken ?? null,
-        append,
-        emailCount: msgs.length,
-        timings,
-        slow: (timings.totalMs ?? 0) >= 5000,
-      });
-    } catch (e) {
-      const failureReason = classifyFetchError(e);
-      const userMessage = inboxLoadUserMessage(failureReason, locale);
-
-      logInboxLoadFailed({
-        loadId,
-        startedAt: loadStarted,
-        paginated,
-        pageToken: options?.pageToken ?? null,
-        append,
-        failureReason,
-        failureStage: "client_fetch",
-        timings: mergeTimings(clientTimings, { totalMs: elapsedMs(loadStarted) }),
-      });
-
-      if (!append) {
-        setGmailError(userMessage);
-        setInboxMode("gmail_error");
-      }
-    } finally {
-      setIsRefreshing(false);
-      setIsLoadingMore(false);
-    }
-  },
-  [uiLanguage],
-);
+    },
+    [showCachedInboxOnRateLimit, uiLanguage],
+  );
 
   const handleLoadMore = useCallback(() => {
     if (!nextPageToken || isLoadingMore) return;
@@ -875,8 +1031,14 @@ export default function EmailsInboxPage() {
 
   useEffect(() => {
     if (!persistenceReady) return;
-    void loadInbox();
-  }, [loadInbox, persistenceReady]);
+    const cache = loadInboxCache();
+    const hasCache = Boolean(cache?.gmailMessages.length);
+    if (hasCache && cache) {
+      applyInboxCacheSnapshot(cache);
+      hasLoadedInboxRef.current = true;
+    }
+    void loadInbox(hasCache ? { silent: true } : undefined);
+  }, [applyInboxCacheSnapshot, loadInbox, persistenceReady]);
 
   useEffect(() => {
     const onModeChange = () => {
@@ -913,8 +1075,9 @@ export default function EmailsInboxPage() {
   useEffect(() => {
     if (inboxMode !== "gmail") return;
     const intervalId = window.setInterval(() => {
-      void loadInbox({ silent: true });
-    }, 3 * 60 * 1000);
+      if (isInboxLoadBackoffActive()) return;
+      void loadInbox({ silent: true, refresh: true });
+    }, INBOX_AUTO_REFRESH_MS);
     return () => window.clearInterval(intervalId);
   }, [inboxMode, loadInbox]);
 
@@ -1525,7 +1688,7 @@ export default function EmailsInboxPage() {
         delete next[id];
         return next;
       });
-      void loadInbox({ silent: true });
+      void loadInbox({ silent: true, refresh: true });
     },
     [loadInbox, dismissUndoToast],
   );
@@ -1681,8 +1844,9 @@ export default function EmailsInboxPage() {
               <InboxSyncBar
                 lastSyncedAt={lastSyncedAt}
                 isRefreshing={isRefreshing}
+                rateLimitNotice={rateLimitNotice}
                 locale={inboxLocale}
-                onRefresh={() => void loadInbox({ silent: true })}
+                onRefresh={() => void loadInbox({ silent: true, refresh: true, force: true })}
               />
               <p className="text-xs text-gray-400">
                 {inboxLocale === "it"

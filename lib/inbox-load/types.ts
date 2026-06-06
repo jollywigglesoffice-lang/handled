@@ -41,11 +41,15 @@ export type InboxLoadDiagnostics = {
   paginated: boolean;
   pageToken?: string | null;
   append?: boolean;
+  refresh?: boolean;
   emailCount?: number;
   failureReason?: InboxLoadFailureReason;
   failureStage?: InboxLoadStage;
   gmailStatus?: number | null;
   gmailReason?: string | null;
+  retryAfterMs?: number | null;
+  backoffDelayMs?: number;
+  consecutive429Count?: number;
   timings: InboxLoadTimings;
   slow?: boolean;
 };
@@ -57,6 +61,9 @@ export type InboxLoadApiErrorBody = {
   message?: string;
   gmailStatus?: number | null;
   gmailReason?: string | null;
+  retryAfterMs?: number | null;
+  backoffDelayMs?: number;
+  consecutive429Count?: number;
   diagnostics?: InboxLoadDiagnostics;
 };
 

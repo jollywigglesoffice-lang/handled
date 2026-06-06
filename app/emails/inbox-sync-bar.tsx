@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useUiCopy } from "@/app/use-ui-copy";
+import { INBOX_AUTO_REFRESH_MS } from "@/lib/inbox-load/constants";
 import { inboxLoadUserMessage } from "@/lib/inbox-load/user-messages";
 
 function formatRelativeSync(iso: string | null): string {
@@ -20,14 +21,18 @@ type InboxSyncBarProps = {
   lastSyncedAt: string | null;
   isRefreshing: boolean;
   autoRefreshEnabled?: boolean;
+  rateLimitNotice?: string;
   locale?: "en" | "it";
   onRefresh: () => void;
 };
+
+const AUTO_REFRESH_MINUTES = Math.round(INBOX_AUTO_REFRESH_MS / 60_000);
 
 export function InboxSyncBar({
   lastSyncedAt,
   isRefreshing,
   autoRefreshEnabled = true,
+  rateLimitNotice,
   locale = "en",
   onRefresh,
 }: InboxSyncBarProps) {
@@ -40,30 +45,37 @@ export function InboxSyncBar({
   }, []);
 
   return (
-    <div className="-mt-2 flex flex-wrap items-center justify-between gap-3 text-sm">
-      <div className="flex items-center gap-2 text-sm text-gray-600">
-        {isRefreshing ? (
-          <span className="calm-accent-pulse h-2 w-2 rounded-full" aria-hidden />
-        ) : (
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-        )}
-        <span>
-          {isRefreshing
-            ? inboxLoadUserMessage("reconnecting", locale)
-            : `Last synced ${formatRelativeSync(lastSyncedAt)}`}
-        </span>
-        {autoRefreshEnabled && !isRefreshing ? (
-          <span className="text-xs text-gray-400">· auto every 3 min</span>
-        ) : null}
+    <div className="-mt-2 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          {isRefreshing ? (
+            <span className="calm-accent-pulse h-2 w-2 rounded-full" aria-hidden />
+          ) : (
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+          )}
+          <span>
+            {isRefreshing
+              ? inboxLoadUserMessage("reconnecting", locale)
+              : `Last synced ${formatRelativeSync(lastSyncedAt)}`}
+          </span>
+          {autoRefreshEnabled && !isRefreshing ? (
+            <span className="text-xs text-gray-400">
+              · auto every {AUTO_REFRESH_MINUTES} min
+            </span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          className="text-xs font-medium text-accent transition hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Refresh inbox
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={onRefresh}
-        disabled={isRefreshing}
-        className="text-xs font-medium text-accent transition hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Refresh inbox
-      </button>
+      {rateLimitNotice ? (
+        <p className="text-xs text-amber-700/90">{rateLimitNotice}</p>
+      ) : null}
     </div>
   );
 }

@@ -4,7 +4,17 @@ import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
 import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-messages";
 
 export const dynamic = "force-dynamic";
+import { GmailApiError } from "@/lib/gmail-api-error";
 import { gmailGetMessagesMetadata, gmailListInboxPage } from "@/lib/gmail-api";
+import {
+  INBOX_INITIAL_PAGE_SIZE,
+  INBOX_LOAD_MORE_PAGE_SIZE,
+  INBOX_REFRESH_PAGE_SIZE,
+} from "@/lib/inbox-load/constants";
+import {
+  computeBackoffDelayMs,
+  parseRetryAfterMs,
+} from "@/lib/inbox-load/rate-limit-backoff";
 import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
 import { withGoogleAuthRetry } from "@/lib/google/google-access-token";
@@ -35,9 +45,6 @@ import type {
   InboxLoadTimings,
 } from "@/lib/inbox-load/types";
 
-/** Newest inbox messages fetched per page. */
-const INBOX_PAGE_SIZE = 200;
-
 function inboxErrorResponse(
   applyAuthCookies: (r: NextResponse) => NextResponse,
   input: {
@@ -48,6 +55,8 @@ function inboxErrorResponse(
     diagnostics: InboxLoadDiagnostics;
     gmailStatus?: number | null;
     gmailReason?: string | null;
+    retryAfterMs?: number | null;
+    backoffDelayMs?: number;
   },
 ): NextResponse {
   logInboxLoadFailed({
@@ -67,6 +76,8 @@ function inboxErrorResponse(
         message: input.message,
         gmailStatus: input.gmailStatus ?? null,
         gmailReason: input.gmailReason ?? null,
+        retryAfterMs: input.retryAfterMs ?? null,
+        backoffDelayMs: input.backoffDelayMs ?? null,
         diagnostics: input.diagnostics,
       },
       { status: input.status },
@@ -77,8 +88,16 @@ function inboxErrorResponse(
 export async function GET(request: Request) {
   const loadId = createInboxLoadId();
   const startedAt = Date.now();
-  const pageToken = new URL(request.url).searchParams.get("pageToken");
+  const searchParams = new URL(request.url).searchParams;
+  const pageToken = searchParams.get("pageToken");
+  const refresh = searchParams.get("refresh") === "1";
   const paginated = Boolean(pageToken);
+
+  const maxResults = pageToken
+    ? INBOX_LOAD_MORE_PAGE_SIZE
+    : refresh
+      ? INBOX_REFRESH_PAGE_SIZE
+      : INBOX_INITIAL_PAGE_SIZE;
 
   let timings: InboxLoadTimings = {};
   const baseDiagnostics = (): InboxLoadDiagnostics => ({
@@ -86,10 +105,11 @@ export async function GET(request: Request) {
     startedAt,
     paginated,
     pageToken,
+    refresh,
     timings: { ...timings, totalMs: elapsedMs(startedAt) },
   });
 
-  logInboxLoadStart({ loadId, paginated, pageToken, append: paginated });
+  logInboxLoadStart({ loadId, paginated, pageToken, append: paginated, refresh });
 
   const { supabase, applyAuthCookies } = createRouteHandlerSupabase(request);
 
@@ -135,7 +155,7 @@ export async function GET(request: Request) {
       accessToken,
       (token) =>
         gmailListInboxPage(token, {
-          maxResults: INBOX_PAGE_SIZE,
+          maxResults,
           pageToken,
         }),
     );
@@ -208,6 +228,7 @@ export async function GET(request: Request) {
       startedAt,
       paginated,
       pageToken,
+      refresh,
       emailCount: messagesForClient.length,
       timings,
       slow: (timings.totalMs ?? 0) >= 5000,
@@ -231,7 +252,8 @@ export async function GET(request: Request) {
         categoryOverrides: rulesCtx.emailOverrides,
         emailOverrideRecords: rulesCtx.emailOverrideRecords,
         personalCategories: rulesCtx.personalCategories,
-        nextPageToken,
+        nextPageToken: refresh ? null : nextPageToken,
+        refresh,
         diagnostics,
       }),
     );
@@ -263,14 +285,43 @@ export async function GET(request: Request) {
       failureReason = gmailClass.reason;
     }
 
+    let retryAfterMs: number | null = null;
+    if (e instanceof GmailApiError) {
+      retryAfterMs = e.retryAfterMs;
+    } else if (gmailStatus === 429) {
+      retryAfterMs = parseRetryAfterMs(gmailStatus, String(e));
+    }
+    const backoffDelayMs =
+      failureReason === "gmail_rate_limit"
+        ? computeBackoffDelayMs(1, retryAfterMs)
+        : undefined;
+
+    if (failureReason === "gmail_rate_limit") {
+      console.warn("[inbox-load] Gmail rate limit on server", {
+        loadId,
+        retryAfterMs,
+        backoffDelayMs,
+        gmailStatus,
+        gmailReason,
+        refresh,
+        maxResults,
+      });
+    }
+
     return inboxErrorResponse(applyAuthCookies, {
       status: failureReason === "gmail_rate_limit" ? 429 : 502,
       failureReason,
       failureStage,
       message: inboxLoadUserMessage(failureReason),
-      diagnostics: baseDiagnostics(),
+      diagnostics: {
+        ...baseDiagnostics(),
+        retryAfterMs,
+        backoffDelayMs,
+      },
       gmailStatus,
       gmailReason,
+      retryAfterMs,
+      backoffDelayMs,
     });
   }
 }

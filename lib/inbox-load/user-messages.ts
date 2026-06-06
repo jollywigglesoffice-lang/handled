@@ -1,7 +1,7 @@
 import type { InboxLoadFailureReason } from "@/lib/inbox-load/types";
 import type { UiLocale } from "@/lib/ui-copy";
 
-const MESSAGES_EN: Record<InboxLoadFailureReason | "reconnecting", string> = {
+const MESSAGES_EN: Record<InboxLoadFailureReason | "reconnecting" | "rate_limit_soft", string> = {
   network_failure: "Network connection lost — check your connection and try again.",
   timeout: "Inbox load timed out — try again in a moment.",
   oauth_expired: "Gmail connection expired — sign in with Google again.",
@@ -14,9 +14,11 @@ const MESSAGES_EN: Record<InboxLoadFailureReason | "reconnecting", string> = {
   categorization_failure: "Handled couldn't organize your inbox — try again.",
   unknown: "Handled couldn't load your inbox just now.",
   reconnecting: "Reconnecting to Gmail…",
+  rate_limit_soft:
+    "Refreshing too quickly. Showing your latest inbox while Gmail cools down.",
 };
 
-const MESSAGES_IT: Record<InboxLoadFailureReason | "reconnecting", string> = {
+const MESSAGES_IT: Record<InboxLoadFailureReason | "reconnecting" | "rate_limit_soft", string> = {
   network_failure: "Connessione persa — controlla la rete e riprova.",
   timeout: "Caricamento inbox scaduto — riprova tra un attimo.",
   oauth_expired: "Connessione Gmail scaduta — accedi di nuovo con Google.",
@@ -29,10 +31,12 @@ const MESSAGES_IT: Record<InboxLoadFailureReason | "reconnecting", string> = {
   categorization_failure: "Handled non ha organizzato la inbox — riprova.",
   unknown: "Handled non ha caricato la inbox in questo momento.",
   reconnecting: "Riconnessione a Gmail…",
+  rate_limit_soft:
+    "Aggiornamento troppo frequente. Mostriamo l'ultima inbox mentre Gmail si raffredda.",
 };
 
 export function inboxLoadUserMessage(
-  reason: InboxLoadFailureReason | "reconnecting",
+  reason: InboxLoadFailureReason | "reconnecting" | "rate_limit_soft",
   locale: UiLocale = "en",
 ): string {
   const table = locale === "it" ? MESSAGES_IT : MESSAGES_EN;

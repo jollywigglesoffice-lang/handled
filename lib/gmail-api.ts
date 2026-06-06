@@ -1,5 +1,6 @@
 /** Gmail REST helpers (server-side only — pass OAuth access token from Supabase session). */
 
+import { GmailApiError } from "@/lib/gmail-api-error";
 import {
   extractEmailBodyFromPayload,
   htmlToPlainText,
@@ -109,7 +110,9 @@ export async function gmailListInboxPage(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Gmail list failed: ${res.status} ${text}`);
+    throw new GmailApiError("Gmail list", res.status, text, {
+      retryAfterHeader: res.headers.get("Retry-After"),
+    });
   }
 
   const data = (await res.json()) as {
