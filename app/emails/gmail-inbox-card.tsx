@@ -43,6 +43,7 @@ import { buildInboxGlanceLine } from "@/lib/glance-clarity";
 import { buildSituationSummary } from "@/lib/situational-understanding";
 import { CompletionLikelyBadge } from "@/app/emails/completion-likely-badge";
 import { WaitingResponseBadge } from "@/app/emails/waiting-response-badge";
+import { trackEvent } from "@/lib/analytics";
 
 export type GmailCardMessage = {
   id: string;
@@ -314,6 +315,13 @@ export function GmailInboxCard({
             className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
             onClick={() => {
               captureReturn();
+              if (message.waitingResponseUpdate) {
+                trackEvent("response_received_opened", {
+                  response_email_id: message.id,
+                  thread_id: message.threadId ?? null,
+                  source: "inbox",
+                });
+              }
               const preview = buildInboxMessagePreview(message, locale);
               saveEmailPreview({
                 id: message.id,

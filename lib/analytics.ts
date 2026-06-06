@@ -31,6 +31,7 @@ export type AnalyticsEvent =
   | "waiting_resolved"
   | "waiting_item_resolved"
   | "response_detected"
+  | "response_received_opened"
   | "followup_reminder_created";
 
 type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;

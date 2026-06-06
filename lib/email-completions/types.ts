@@ -16,6 +16,8 @@ export type EmailCompletionRecord = {
   threadId?: string;
   /** Who the user is waiting on (waiting_on_someone). */
   waitingOn?: string;
+  /** waiting → response_received while unresolved; cleared on resolve. */
+  waitingStatus?: "waiting" | "response_received";
   /** Detected reply in the same thread. */
   waitingResponseEmailId?: string;
   waitingResponseDetectedAt?: number;

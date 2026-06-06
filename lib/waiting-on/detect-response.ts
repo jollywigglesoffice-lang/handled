@@ -1,6 +1,6 @@
 import type { EmailCompletionRecord } from "@/lib/email-completions/types";
 import { isActiveWaiting } from "@/lib/waiting-on/helpers";
-import { senderMatchesWaitingTarget } from "@/lib/waiting-on/match-sender";
+import { isSenderUser } from "@/lib/waiting-on/is-from-user";
 
 export type InboxMessageForWaitingDetect = {
   id: string;
@@ -21,6 +21,11 @@ export type WaitingResponseDetection = {
   threadId: string;
 };
 
+export type WaitingDetectOptions = {
+  /** Authenticated Gmail address — replies from this sender are ignored. */
+  userEmail?: string | null;
+};
+
 function messageMs(m: InboxMessageForWaitingDetect): number {
   if (typeof m.internalDateMs === "number" && m.internalDateMs > 0) return m.internalDateMs;
   if (m.date) {
@@ -30,56 +35,45 @@ function messageMs(m: InboxMessageForWaitingDetect): number {
   return 0;
 }
 
-function normalizeSubject(subject: string): string {
-  return subject.replace(/^(re|fwd|fw):\s*/gi, "").trim().toLowerCase();
-}
-
+/** Phase 1: same Gmail thread only — no subject or AI fallback. */
 function threadsMatch(
   message: InboxMessageForWaitingDetect,
   record: EmailCompletionRecord,
 ): boolean {
-  const msgThread = message.threadId ?? message.id;
-  const recordThread = record.threadId ?? record.emailId;
-  if (msgThread === recordThread) return true;
-
-  const msgSubj = normalizeSubject(message.subject);
-  const recordSubj = normalizeSubject(record.subject);
-  if (msgSubj && recordSubj && msgSubj === recordSubj) return true;
-
-  if (
-    message.subject.toLowerCase().startsWith("re:") &&
-    recordSubj &&
-    normalizeSubject(message.subject) === recordSubj
-  ) {
-    return true;
-  }
-
-  return false;
+  const msgThread = message.threadId?.trim();
+  const recordThread = record.threadId?.trim();
+  if (!msgThread || !recordThread) return false;
+  return msgThread === recordThread;
 }
 
-function isReplyFromWaitingParty(
+function isInboundThreadReply(
   message: InboxMessageForWaitingDetect,
   record: EmailCompletionRecord,
   startedAt: number,
+  userEmail?: string | null,
 ): boolean {
   if (message.id === record.emailId) return false;
   const ms = messageMs(message);
   if (ms <= startedAt) return false;
-  if (!senderMatchesWaitingTarget(message.sender, record)) return false;
   if (!threadsMatch(message, record)) return false;
+  if (isSenderUser(message.sender, userEmail)) return false;
   return true;
 }
 
-/** Find the newest inbox reply to an active waiting item. */
+/** Find the newest inbound reply in the same thread as an active waiting item. */
 export function detectWaitingResponse(
   record: EmailCompletionRecord,
   messages: InboxMessageForWaitingDetect[],
+  options?: WaitingDetectOptions,
 ): WaitingResponseDetection | null {
   if (!isActiveWaiting(record)) return null;
   if (record.waitingResponseDetectedAt && record.waitingResponseEmailId) return null;
+  if (!record.threadId?.trim()) return null;
 
   const startedAt = record.stillWaitingAt ?? record.completedAt;
-  const candidates = messages.filter((m) => isReplyFromWaitingParty(m, record, startedAt));
+  const candidates = messages.filter((m) =>
+    isInboundThreadReply(m, record, startedAt, options?.userEmail),
+  );
   if (!candidates.length) return null;
 
   const best = [...candidates].sort((a, b) => messageMs(b) - messageMs(a))[0];
@@ -89,19 +83,20 @@ export function detectWaitingResponse(
     responseSubject: best.subject,
     responseSnippet: best.snippet,
     responseAt: messageMs(best),
-    threadId: best.threadId ?? best.id,
+    threadId: best.threadId ?? record.threadId!,
   };
 }
 
 export function scanWaitingResponseDetections(
   waitingRecords: EmailCompletionRecord[],
   messages: InboxMessageForWaitingDetect[],
+  options?: WaitingDetectOptions,
 ): Array<{ waitingEmailId: string; detection: WaitingResponseDetection }> {
   const out: Array<{ waitingEmailId: string; detection: WaitingResponseDetection }> = [];
 
   for (const record of waitingRecords) {
     if (record.waitingResponseDetectedAt) continue;
-    const detection = detectWaitingResponse(record, messages);
+    const detection = detectWaitingResponse(record, messages, options);
     if (detection) {
       out.push({ waitingEmailId: record.emailId, detection });
     }

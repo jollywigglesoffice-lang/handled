@@ -26,6 +26,10 @@ export function parseEmailCompletionsJson(raw: unknown): EmailCompletionMap {
       senderDomain: typeof row.senderDomain === "string" ? row.senderDomain : undefined,
       threadId: typeof row.threadId === "string" ? row.threadId : undefined,
       waitingOn: typeof row.waitingOn === "string" ? row.waitingOn : undefined,
+      waitingStatus:
+        row.waitingStatus === "waiting" || row.waitingStatus === "response_received"
+          ? row.waitingStatus
+          : undefined,
       waitingResponseEmailId:
         typeof row.waitingResponseEmailId === "string" ? row.waitingResponseEmailId : undefined,
       waitingResponseDetectedAt:

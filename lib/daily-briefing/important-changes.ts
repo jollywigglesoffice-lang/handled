@@ -3,7 +3,6 @@ import type { DailyBriefingMessage } from "@/lib/daily-briefing/types";
 import { isEmailNewSinceVisit, type InboxVisitSnapshot } from "@/lib/daily-briefing/visit-snapshot";
 import type { EmailCompletionRecord } from "@/lib/email-completions/types";
 import { hasWaitingResponse, waitingOnLabel } from "@/lib/waiting-on/helpers";
-import { senderMatchesWaitingTarget } from "@/lib/waiting-on/match-sender";
 
 const TAX = /\b(tax|irs|hmrc|1040|w-?2|1099|deduction|refund|tasse|fisco)\b/i;
 
@@ -24,10 +23,6 @@ function messageMs(m: DailyBriefingMessage): number {
 
 function isNewMessage(m: DailyBriefingMessage, snapshot: InboxVisitSnapshot | null): boolean {
   return isEmailNewSinceVisit(m.id, messageMs(m), snapshot);
-}
-
-function senderMatchesWaiting(m: DailyBriefingMessage, record: EmailCompletionRecord): boolean {
-  return senderMatchesWaitingTarget(m.sender, record);
 }
 
 export function detectImportantChanges(
@@ -78,18 +73,11 @@ export function detectImportantChanges(
   }
 
   for (const record of waitingRecords) {
+    if (!hasWaitingResponse(record) || !record.waitingResponseEmailId) continue;
     const who = waitingOnLabel(record, locale);
-    const response =
-      hasWaitingResponse(record) && record.waitingResponseEmailId
-        ? messages.find(
-            (m) => m.id === record.waitingResponseEmailId && isNewMessage(m, snapshot),
-          )
-        : messages.find(
-          (m) =>
-            isNewMessage(m, snapshot) &&
-            senderMatchesWaiting(m, record) &&
-            messageMs(m) >= (record.stillWaitingAt ?? record.completedAt),
-        );
+    const response = messages.find(
+      (m) => m.id === record.waitingResponseEmailId && isNewMessage(m, snapshot),
+    );
     if (response && !seen.has(`waiting-${record.emailId}`)) {
       seen.add(`waiting-${record.emailId}`);
       out.push({

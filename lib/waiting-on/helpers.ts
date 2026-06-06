@@ -12,7 +12,10 @@ export function isActiveWaiting(record: EmailCompletionRecord): boolean {
 }
 
 export function hasWaitingResponse(record: EmailCompletionRecord): boolean {
-  return isActiveWaiting(record) && Boolean(record.waitingResponseDetectedAt);
+  return (
+    isActiveWaiting(record) &&
+    (record.waitingStatus === "response_received" || Boolean(record.waitingResponseDetectedAt))
+  );
 }
 
 export function activeWaitingRecords(completions: EmailCompletionMap): EmailCompletionRecord[] {
@@ -79,9 +82,34 @@ export function receivedLabel(record: EmailCompletionRecord, locale: "en" | "it"
   return locale === "it" ? `Ricevuta: ${rel}` : `Received: ${rel}`;
 }
 
+export function responseReceivedHeadline(locale: "en" | "it"): string {
+  return locale === "it" ? "✓ Risposta ricevuta" : "✓ Response received";
+}
+
 export function repliedLabel(record: EmailCompletionRecord, locale: "en" | "it"): string {
   const who = waitingOnLabel(record, locale);
-  return locale === "it" ? `✓ ${who} ha risposto` : `✓ ${who} replied`;
+  return locale === "it" ? `${who} ha risposto` : `${who} replied`;
+}
+
+export function responsePersonLabel(record: EmailCompletionRecord): string {
+  const sender = record.waitingResponseSender?.trim();
+  if (!sender) return "";
+  const paren = sender.match(/^"?([^"<]+)"?\s*</);
+  if (paren?.[1]?.trim()) return paren[1].trim();
+  const email = sender.match(/<([^>]+)>/);
+  if (email?.[1]) return email[1].split("@")[0] ?? email[1];
+  if (sender.includes("@")) return sender.split("@")[0] ?? sender;
+  return sender;
+}
+
+export function receivedRelativeLabel(
+  record: EmailCompletionRecord,
+  locale: "en" | "it",
+  now = Date.now(),
+): string {
+  const ms = record.waitingResponseAt ?? record.waitingResponseDetectedAt;
+  if (!ms) return "";
+  return formatRelativeReceived(ms, locale, now);
 }
 
 export function waitingStartAt(record: EmailCompletionRecord): number {

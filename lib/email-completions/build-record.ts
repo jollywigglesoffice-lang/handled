@@ -34,6 +34,7 @@ export function buildEmailCompletionRecord(
     senderDomain: domain,
     threadId: input.threadId,
     waitingOn,
+    waitingStatus: input.actionId === "waiting_on_someone" ? "waiting" : undefined,
     followUpAfterDays,
     followUpAt: computeFollowUpAt(completedAt, followUpAfterDays),
   };
@@ -46,6 +47,10 @@ export function mergeWaitingFieldsFromRaw(
   return {
     ...record,
     waitingOn: typeof raw.waitingOn === "string" ? raw.waitingOn : record.waitingOn,
+    waitingStatus:
+      raw.waitingStatus === "waiting" || raw.waitingStatus === "response_received"
+        ? raw.waitingStatus
+        : record.waitingStatus,
     followUpAfterDays:
       typeof raw.followUpAfterDays === "number"
         ? raw.followUpAfterDays

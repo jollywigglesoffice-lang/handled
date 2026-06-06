@@ -588,6 +588,7 @@ export default function EmailsInboxPage() {
   );
   const [senderPrefsVersion, setSenderPrefsVersion] = useState(0);
   const [persistenceReady, setPersistenceReady] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [workflowMode, setWorkflowMode] = useState(readWorkflowModeFromStorage);
   const [gmailError, setGmailError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -1016,6 +1017,7 @@ export default function EmailsInboxPage() {
       if (session?.provider_token) {
         saveGoogleProviderToken(session.provider_token);
       }
+      setUserEmail(session?.user?.email ?? null);
       const [mode, overrides, senderPrefs] = await Promise.all([
         syncWorkflowModeFromAccount(),
         session ? syncEmailOverridesFromAccount() : Promise.resolve(loadClientEmailOverrideMap()),
@@ -1185,8 +1187,9 @@ export default function EmailsInboxPage() {
         internalDateMs: m.internalDateMs,
         date: m.date,
       })),
+      { userEmail },
     );
-  }, [inboxMode, gmailMessages, dismissedIds, scanWaitingResponses]);
+  }, [inboxMode, gmailMessages, dismissedIds, scanWaitingResponses, userEmail]);
 
   const messagesForDisplay = useMemo(() => {
     const responseEmailIds = new Set(

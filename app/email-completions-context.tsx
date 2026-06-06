@@ -29,12 +29,14 @@ import { trackEvent } from "@/lib/analytics";
 import {
   activeWaitingRecords,
   buildResolvedWaitingLabel,
+  hasWaitingResponse,
   waitingOpenRecords,
   waitingResponseReceivedRecords,
 } from "@/lib/waiting-on/helpers";
 import {
   scanWaitingResponseDetections,
   type InboxMessageForWaitingDetect,
+  type WaitingDetectOptions,
 } from "@/lib/waiting-on/detect-response";
 import type { WaitingResolutionReason } from "@/lib/waiting-on/types";
 
@@ -56,7 +58,10 @@ type EmailCompletionsContextValue = {
   ) => Promise<void>;
   markStillWaiting: (emailId: string) => Promise<void>;
   dismissWaitingResponse: (emailId: string) => Promise<void>;
-  scanWaitingResponses: (messages: InboxMessageForWaitingDetect[]) => Promise<void>;
+  scanWaitingResponses: (
+    messages: InboxMessageForWaitingDetect[],
+    options?: WaitingDetectOptions,
+  ) => Promise<void>;
   activeWaitingRecords: EmailCompletionRecord[];
   waitingOpenRecords: EmailCompletionRecord[];
   waitingResponseRecords: EmailCompletionRecord[];
@@ -278,7 +283,7 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
   const dismissWaitingResponse = useCallback(
     async (emailId: string) => {
       const record = completions[emailId];
-      if (!record || !record.waitingResponseDetectedAt) return;
+      if (!record || !hasWaitingResponse(record)) return;
       const {
         waitingResponseEmailId: _a,
         waitingResponseDetectedAt: _b,
@@ -288,19 +293,20 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
         waitingResponseAt: _f,
         ...cleared
       } = record;
-      const nextMap = { ...completions, [emailId]: cleared };
-      await persistMap(nextMap, learning, { records: [cleared] });
+      const restored: EmailCompletionRecord = { ...cleared, waitingStatus: "waiting" };
+      const nextMap = { ...completions, [emailId]: restored };
+      await persistMap(nextMap, learning, { records: [restored] });
       window.dispatchEvent(new Event("handled-emails-changed"));
     },
     [completions, learning, persistMap],
   );
 
   const scanWaitingResponses = useCallback(
-    async (messages: InboxMessageForWaitingDetect[]) => {
+    async (messages: InboxMessageForWaitingDetect[], options?: WaitingDetectOptions) => {
       const pending = waitingOpenRecords(completions);
       if (!pending.length || !messages.length) return;
 
-      const detections = scanWaitingResponseDetections(pending, messages);
+      const detections = scanWaitingResponseDetections(pending, messages, options);
       if (!detections.length) return;
 
       const now = Date.now();
@@ -313,6 +319,7 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
 
         const updated: EmailCompletionRecord = {
           ...existing,
+          waitingStatus: "response_received",
           waitingResponseEmailId: detection.responseEmailId,
           waitingResponseDetectedAt: now,
           waitingResponseSender: detection.responseSender,
