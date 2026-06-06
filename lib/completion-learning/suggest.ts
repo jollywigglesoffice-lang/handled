@@ -1,6 +1,10 @@
 import {
+  COMPLETION_INBOX_BADGE_MIN_DOMINANCE,
+  COMPLETION_INBOX_BADGE_MIN_TOP_SAMPLES,
   COMPLETION_SUGGESTION_MIN_CONFIDENCE,
-  COMPLETION_SUGGESTION_MIN_SAMPLES,
+  COMPLETION_SUGGESTION_MIN_DOMINANCE,
+  COMPLETION_SUGGESTION_MIN_SIMILAR_TOTAL,
+  COMPLETION_SUGGESTION_MIN_TOP_SAMPLES,
   completionPatternConfidence,
 } from "@/lib/completion-learning/confidence";
 import { subjectKeywordsForLearning } from "@/lib/completion-learning/pattern";
@@ -12,9 +16,6 @@ import type {
 import type { CompletionActionId } from "@/lib/completion-actions/types";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { resolveSenderIdentity, type SenderIdentity } from "@/lib/sender-identity";
-
-/** How often the top action wins within a signal group (e.g. 11/12 → 0.92). */
-export const COMPLETION_SUGGESTION_MIN_DOMINANCE = 0.75;
 
 const SUGGESTION_SCOPE_ORDER: CompletionPatternScope[] = [
   "sender",
@@ -100,11 +101,10 @@ function suggestionFromScopeGroup(
   const volumeConfidence = completionPatternConfidence(top.sampleCount);
   const confidence = Math.round(dominance * volumeConfidence * 100) / 100;
 
-  const passesVolume = top.sampleCount >= COMPLETION_SUGGESTION_MIN_SAMPLES;
+  const passesVolume = top.sampleCount >= COMPLETION_SUGGESTION_MIN_TOP_SAMPLES;
   const passesDominance = dominance >= COMPLETION_SUGGESTION_MIN_DOMINANCE;
   const passesConfidence = confidence >= COMPLETION_SUGGESTION_MIN_CONFIDENCE;
-  const passesTotal =
-    similarTotal >= COMPLETION_SUGGESTION_MIN_SAMPLES + 1 || top.sampleCount >= 5;
+  const passesTotal = similarTotal >= COMPLETION_SUGGESTION_MIN_SIMILAR_TOTAL;
 
   if (!passesVolume || !passesDominance || !passesConfidence || !passesTotal) {
     return null;
@@ -141,6 +141,14 @@ export function suggestCompletionAction(
   }
 
   return null;
+}
+
+/** Very high confidence only — for subtle inbox badge. */
+export function qualifiesForInboxBadge(suggestion: CompletionSuggestion): boolean {
+  return (
+    suggestion.sampleCount >= COMPLETION_INBOX_BADGE_MIN_TOP_SAMPLES &&
+    suggestion.dominance >= COMPLETION_INBOX_BADGE_MIN_DOMINANCE
+  );
 }
 
 export function completionSuggestionExplanation(

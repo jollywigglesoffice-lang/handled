@@ -41,6 +41,7 @@ import {
 import { buildContinuityContext } from "@/lib/continuity-context";
 import { buildInboxGlanceLine } from "@/lib/glance-clarity";
 import { buildSituationSummary } from "@/lib/situational-understanding";
+import { CompletionLikelyBadge } from "@/app/emails/completion-likely-badge";
 
 export type GmailCardMessage = {
   id: string;
@@ -297,6 +298,7 @@ export function GmailInboxCard({
             locale={locale}
             isUnread={isUnread}
             lifecycle={emailStatus.lifecycle}
+            showCompletionLikely={!emailStatus.completed}
             onOpenEmail={captureReturn}
           />
 
@@ -467,6 +469,7 @@ function CardHeader({
   locale,
   isUnread = false,
   lifecycle,
+  showCompletionLikely = false,
   onOpenEmail,
 }: {
   message: GmailCardMessage;
@@ -478,6 +481,7 @@ function CardHeader({
   locale: "en" | "it";
   isUnread?: boolean;
   lifecycle: EmailLifecycleState;
+  showCompletionLikely?: boolean;
   onOpenEmail?: () => void;
 }) {
   return (
@@ -529,6 +533,15 @@ function CardHeader({
           >
             Rule applied
           </span>
+        ) : null}
+        {showCompletionLikely ? (
+          <CompletionLikelyBadge
+            emailId={message.id}
+            sender={message.sender}
+            subject={message.subject}
+            category={message.category}
+            locale={locale}
+          />
         ) : null}
         <span
           className="rounded-full border border-[#E2E8F0] bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent"

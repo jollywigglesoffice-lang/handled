@@ -30,11 +30,11 @@ const DISMISS_PREFIX = "handled_suggest_dismiss_";
 
 const COPY = {
   en: {
-    suggested: "Suggested",
+    suggestedAction: "Suggested action",
     notNow: "Not now",
   },
   it: {
-    suggested: "Suggerito",
+    suggestedAction: "Azione suggerita",
     notNow: "Non ora",
   },
 } as const;
@@ -58,17 +58,34 @@ export function CompletionSuggestion({
       return false;
     }
   });
+  const generatedRef = useRef(false);
   const shownRef = useRef(false);
   const t = COPY[locale];
 
-  const suggestion = useMemo(() => {
-    if (dismissed) return null;
-    return suggestCompletionAction(
-      learning,
-      { sender, subject, category },
-      (id) => catalog.labelFor(id, locale),
-    );
-  }, [dismissed, learning, sender, subject, category, catalog, locale]);
+  const rawSuggestion = useMemo(
+    () =>
+      suggestCompletionAction(
+        learning,
+        { sender, subject, category },
+        (id) => catalog.labelFor(id, locale),
+      ),
+    [learning, sender, subject, category, catalog, locale],
+  );
+
+  const suggestion = dismissed ? null : rawSuggestion;
+
+  useEffect(() => {
+    if (!rawSuggestion || generatedRef.current) return;
+    generatedRef.current = true;
+    trackEvent("completion_suggestion_generated", {
+      email_id: emailId,
+      action_id: rawSuggestion.actionId,
+      sample_count: rawSuggestion.sampleCount,
+      scope: rawSuggestion.scope,
+      completion_pattern: rawSuggestion.completionPattern,
+      surface: "detail",
+    });
+  }, [rawSuggestion, emailId]);
 
   useEffect(() => {
     if (!suggestion || shownRef.current) return;
@@ -79,6 +96,7 @@ export function CompletionSuggestion({
       sample_count: suggestion.sampleCount,
       scope: suggestion.scope,
       completion_pattern: suggestion.completionPattern,
+      surface: "detail",
     });
   }, [suggestion, emailId]);
 
@@ -93,6 +111,7 @@ export function CompletionSuggestion({
       sample_count: suggestion!.sampleCount,
       scope: suggestion!.scope,
       completion_pattern: suggestion!.completionPattern,
+      surface: "detail",
     });
     onSelect(suggestion!.actionId, suggestion!.actionLabel);
   }
@@ -103,6 +122,7 @@ export function CompletionSuggestion({
       action_id: suggestion!.actionId,
       sample_count: suggestion!.sampleCount,
       scope: suggestion!.scope,
+      surface: "detail",
     });
     try {
       sessionStorage.setItem(`${DISMISS_PREFIX}${emailId}`, "1");
@@ -116,7 +136,7 @@ export function CompletionSuggestion({
     <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 px-3 py-3 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="text-xs font-medium uppercase tracking-wide text-emerald-800/80">
-          {t.suggested}
+          {t.suggestedAction}
         </p>
         <button
           type="button"
