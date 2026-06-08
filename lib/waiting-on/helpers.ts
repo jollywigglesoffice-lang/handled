@@ -1,5 +1,5 @@
 import type { EmailCompletionMap, EmailCompletionRecord } from "@/lib/email-completions/types";
-import type { WaitingResolutionReason } from "@/lib/waiting-on/types";
+import { FOLLOW_UP_PRESETS, type WaitingResolutionReason } from "@/lib/waiting-on/types";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -132,23 +132,56 @@ export function daysWaitingLabel(days: number, locale: "en" | "it"): string {
   return days === 1 ? "Waiting 1 day" : `Waiting ${days} days`;
 }
 
-export function formatWaitingStartedDate(
+/** Milestone label for follow-up timer row, e.g. "Waiting 14 days". */
+export function followUpMilestoneLabel(days: number, locale: "en" | "it"): string {
+  if (locale === "it") {
+    return days === 1 ? "In attesa 1 giorno" : `In attesa ${days} giorni`;
+  }
+  return days === 1 ? "Waiting 1 day" : `Waiting ${days} days`;
+}
+
+export function formatWaitingSinceDate(
   record: EmailCompletionRecord,
   locale: "en" | "it",
 ): string {
   const d = new Date(waitingStartAt(record));
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString(locale === "it" ? "it-IT" : "en-US", {
-    month: "short",
+    month: "long",
     day: "numeric",
-    year: "numeric",
   });
 }
 
-export function startedOnLabel(record: EmailCompletionRecord, locale: "en" | "it"): string {
-  const date = formatWaitingStartedDate(record, locale);
+export function waitingSinceLabel(record: EmailCompletionRecord, locale: "en" | "it"): string {
+  const date = formatWaitingSinceDate(record, locale);
   if (!date) return "";
-  return locale === "it" ? `Iniziato il ${date}` : `Started ${date}`;
+  return locale === "it" ? `In attesa dal ${date}` : `Waiting since ${date}`;
+}
+
+export function waitingStatusLabel(locale: "en" | "it"): string {
+  return locale === "it" ? "In attesa" : "Waiting";
+}
+
+export function followUpTimerMilestones(
+  daysWaiting: number,
+): Array<{ days: (typeof FOLLOW_UP_PRESETS)[number]; reached: boolean }> {
+  return FOLLOW_UP_PRESETS.map((days) => ({
+    days,
+    reached: daysWaiting >= days,
+  }));
+}
+
+/** @deprecated Use formatWaitingSinceDate */
+export function formatWaitingStartedDate(
+  record: EmailCompletionRecord,
+  locale: "en" | "it",
+): string {
+  return formatWaitingSinceDate(record, locale);
+}
+
+/** @deprecated Use waitingSinceLabel */
+export function startedOnLabel(record: EmailCompletionRecord, locale: "en" | "it"): string {
+  return waitingSinceLabel(record, locale);
 }
 
 /** @deprecated Reminders UI not shipped — kept for stored followUpAt data. */

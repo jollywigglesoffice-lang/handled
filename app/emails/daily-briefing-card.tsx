@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useEmailCompletions } from "@/app/email-completions-context";
+import { useWaitingOnMetadata } from "@/app/waiting-on-metadata-context";
+import { buildWaitingBriefingLines } from "@/lib/waiting-on/dashboard";
 import { useUserPreferences } from "@/app/user-preferences-context";
 import {
   buildInboxBriefingCard,
@@ -54,10 +56,16 @@ export function DailyBriefingCard({
   onInboxZero,
 }: DailyBriefingCardProps) {
   const { waitingOpenRecords, waitingResponseRecords } = useEmailCompletions();
+  const { summary: waitingSummary } = useWaitingOnMetadata();
   const { userName } = useUserPreferences();
   const t = COPY[locale];
 
   const [previousSnapshot] = useState(() => loadVisitSnapshot());
+
+  const waitingBriefingLines = useMemo(
+    () => buildWaitingBriefingLines(waitingSummary, locale),
+    [waitingSummary, locale],
+  );
 
   const briefing = useMemo(
     () =>
@@ -121,6 +129,7 @@ export function DailyBriefingCard({
 
   const hasContent =
     briefing.lines.length > 0 ||
+    waitingBriefingLines.length > 0 ||
     briefing.importantChanges.length > 0 ||
     briefing.showEffort;
 
@@ -152,6 +161,16 @@ export function DailyBriefingCard({
             ))}
           </ul>
         </div>
+      ) : null}
+
+      {waitingBriefingLines.length > 0 ? (
+        <ul className="mt-4 space-y-1 border-t border-[#EEF2F6] pt-4">
+          {waitingBriefingLines.map((line) => (
+            <li key={line.id} className="text-sm text-gray-700">
+              {line.label}
+            </li>
+          ))}
+        </ul>
       ) : null}
 
       {briefing.importantChanges.length > 0 ? (

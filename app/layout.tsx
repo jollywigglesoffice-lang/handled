@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Handled",
-  description: "Your inbox. Handled.",
+  title: "Handled — Email that remembers",
+  description: "Handle what matters. Forget what doesn't. Handled learns what you do with email.",
 };
 
 export default function RootLayout({

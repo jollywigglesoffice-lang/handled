@@ -118,6 +118,31 @@ body {
   }
 }
 
+@keyframes landingJourneyEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.landing-journey-enter {
+  animation: landingJourneyEnter 0.7s ease-out;
+}
+
+.landing-inbox-zero-glow {
+  box-shadow:
+    0 8px 30px rgba(15, 23, 42, 0.06),
+    0 0 56px rgba(151, 51, 255, 0.1);
+}
+
+.landing-inbox-zero-badge {
+  box-shadow: 0 0 28px rgba(151, 51, 255, 0.08);
+}
+
 @keyframes accentPulseSoft {
   0%,
   100% {

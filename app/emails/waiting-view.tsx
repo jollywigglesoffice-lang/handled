@@ -4,42 +4,69 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AuthNav } from "@/app/components/auth-nav";
 import { useEmailCompletions } from "@/app/email-completions-context";
+import { WaitingDashboardSummary } from "@/app/emails/waiting-dashboard-summary";
 import { InboxViewNav } from "@/app/emails/inbox-view-nav";
 import { InboxEmptyState } from "@/app/emails/inbox-empty-state";
 import { WaitingOnCard } from "@/app/emails/waiting-on-card";
 import { WaitingResponseCard } from "@/app/emails/waiting-response-card";
+import { useWaitingOnMetadata, useSyncWaitingMetadata } from "@/app/waiting-on-metadata-context";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
+import {
+  buildWaitingBriefingLines,
+  buildWaitingDashboardItems,
+  computeWaitingDashboardSummary,
+} from "@/lib/waiting-on/dashboard";
 
 const COPY = {
   en: {
     title: "Waiting On",
-    subtitle: "A simple list of who still owes you a reply.",
+    subtitle: "Track commitments and responses you're waiting to receive.",
     search: "Search waiting…",
     empty: "Nothing waiting on",
-    emptyHint: "When you’re waiting on someone, mark an email ✓ Waiting on someone.",
+    emptyHint: "When you're waiting on someone, mark an email ✓ Waiting on someone.",
     responseSection: "Response received",
     waitingSection: "Still waiting",
+    briefingTitle: "Morning briefing",
   },
   it: {
     title: "In attesa",
-    subtitle: "Un elenco semplice di chi deve ancora risponderti.",
+    subtitle: "Tieni traccia di impegni e risposte che stai aspettando.",
     search: "Cerca in attesa…",
     empty: "Niente in attesa",
-    emptyHint: "Quando aspetti qualcuno, segna l’email come ✓ In attesa.",
+    emptyHint: "Quando aspetti qualcuno, segna l'email come ✓ In attesa.",
     responseSection: "Risposta ricevuta",
     waitingSection: "Ancora in attesa",
+    briefingTitle: "Briefing del mattino",
   },
 } as const;
 
 export function WaitingView() {
-  const { activeWaitingRecords, waitingOpenRecords, waitingResponseRecords } =
+  const { completions, activeWaitingRecords, waitingOpenRecords, waitingResponseRecords } =
     useEmailCompletions();
+  const { metadata } = useWaitingOnMetadata();
+  useSyncWaitingMetadata(completions);
+
   const { uiLanguage } = useUserPreferences();
   const ui = useUiCopy();
   const locale = uiLanguage === "it" ? "it" : "en";
   const t = COPY[locale];
   const [query, setQuery] = useState("");
+
+  const dashboardItems = useMemo(
+    () => buildWaitingDashboardItems(completions, metadata, locale),
+    [completions, metadata, locale],
+  );
+
+  const summary = useMemo(
+    () => computeWaitingDashboardSummary(dashboardItems),
+    [dashboardItems],
+  );
+
+  const briefingLines = useMemo(
+    () => buildWaitingBriefingLines(summary, locale),
+    [summary, locale],
+  );
 
   const filterRecords = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -83,13 +110,32 @@ export function WaitingView() {
 
         <section className="mt-8 space-y-6">
           {hasAny ? (
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t.search}
-              className="w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20"
-            />
+            <>
+              <WaitingDashboardSummary summary={summary} locale={locale} linkToWaiting={false} />
+
+              {briefingLines.length > 0 ? (
+                <section className="rounded-xl border border-[#E2E8F0] bg-[#FAFBFC] px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                    {t.briefingTitle}
+                  </p>
+                  <ul className="mt-2 space-y-1">
+                    {briefingLines.map((line) => (
+                      <li key={line.id} className="text-sm text-gray-700">
+                        {line.label}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t.search}
+                className="w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm outline-none focus:border-accent/40 focus:ring-1 focus:ring-accent/20"
+              />
+            </>
           ) : null}
 
           {!hasAny ? (

@@ -2,12 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  fakeEmails,
-  getInboxSections,
-  type FakeEmail,
-  type InboxSectionTitle,
-} from "@/lib/fake-emails";
+import { useRouter } from "next/navigation";
+import type { InboxSectionTitle } from "@/lib/fake-emails";
 import { ensureApiSessionCookies } from "@/lib/auth/ensure-api-session";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { saveGoogleProviderToken } from "@/lib/google-provider-token";
@@ -46,7 +42,6 @@ import {
 } from "@/lib/email-overrides/client-sync";
 import { syncSenderRelationshipsFromAccount } from "@/lib/relationship-intelligence/client-sync";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
-import { fakeEmailsToInboxMessages } from "@/lib/inbox-buckets-mock";
 import { syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
 import { InboxSecondaryTools } from "@/app/emails/inbox-secondary-tools";
 import { getWorkflowModeProfile } from "@/lib/workflow-mode/profiles";
@@ -63,7 +58,6 @@ import {
   pickFocusReassurance,
   type AttentionSnapshot,
 } from "@/lib/attention-calm";
-import { healthyCompletionState } from "@/lib/daily-rhythm";
 import { InboxEmptyState } from "@/app/emails/inbox-empty-state";
 import {
   categoryEmptyMessage,
@@ -129,6 +123,8 @@ import {
   type ReadStateMap,
 } from "@/lib/read-state/client-storage";
 import { GmailTruthPanel } from "@/app/emails/gmail-truth-panel";
+import { WaitingDashboardSummary } from "@/app/emails/waiting-dashboard-summary";
+import { useWaitingOnMetadata } from "@/app/waiting-on-metadata-context";
 import { applyDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
 import { buildInboxTruthSnapshot } from "@/lib/inbox-truth/compute-snapshot";
 import type { GmailTruthStats } from "@/lib/inbox-truth/types";
@@ -180,7 +176,6 @@ type InboxMode =
   | "loading"
   | "gmail"
   | "gmail_empty"
-  | "mock"
   | "no_google"
   | "gmail_error";
 
@@ -263,16 +258,6 @@ function SectionIcon({ title }: { title: InboxSectionTitle }) {
       />
     </svg>
   );
-}
-
-function getSectionLabel(title: InboxSectionTitle, ui: ReturnType<typeof useUiCopy>) {
-  if (title === "Needs Your Attention") {
-    return ui.sections.needsYourAttention;
-  }
-  if (title === "Handled For You") {
-    return ui.sections.handledForYou;
-  }
-  return ui.sections.hiddenInbox;
 }
 
 function formatInboxDate(iso: string): string {
@@ -473,50 +458,6 @@ function GmailCategorySection({
   );
 }
 
-function mockSectionToCategory(section: FakeEmail["section"]): InboxAiCategory {
-  if (section === "Handled For You") return "handled";
-  if (section === "Hidden Inbox") return "newsletter";
-  return "needs_attention";
-}
-
-function MockEmailCard({
-  id,
-  section,
-  sender,
-  subject,
-  summary,
-  locale,
-  readStateMap,
-  onCategoryChange,
-}: FakeEmail & {
-  locale: "en" | "it";
-  readStateMap: ReadStateMap;
-  onCategoryChange: (
-    id: string,
-    category: InboxAiCategory,
-    options?: InboxCategoryChangeOptions,
-  ) => void;
-}) {
-  const message: GmailCardMessage = {
-    id,
-    sender,
-    subject,
-    snippet: summary,
-    date: new Date().toISOString(),
-    category: mockSectionToCategory(section),
-  };
-
-  return (
-    <GmailInboxCard
-      message={message}
-      locale={locale}
-      readStateMap={readStateMap}
-      onCategoryChange={onCategoryChange}
-    />
-  );
-}
-
-
 function EmailCardSkeleton() {
   return (
     <div className="rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-4 shadow-sm sm:p-5">
@@ -533,39 +474,8 @@ function EmailCardSkeleton() {
   );
 }
 
-function HandledTodayItem({ id, sender, subject }: Pick<FakeEmail, "id" | "sender" | "subject">) {
-  return (
-    <Link
-      href={`/emails/${id}`}
-      className="flex items-start gap-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-left transition-all duration-200 hover:bg-[#F1F5F9]"
-    >
-      <span
-        aria-hidden="true"
-        className="mt-1 inline-block h-2.5 w-2.5 rounded-full bg-[#94A3B8]"
-      />
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-[#64748B]">{sender}</p>
-        <p className="truncate text-sm text-gray-500">{subject}</p>
-      </div>
-    </Link>
-  );
-}
-
-function EmptyNeedsAttentionState({ show, locale }: { show: boolean; locale: "en" | "it" }) {
-  const completion = healthyCompletionState(locale);
-
-  return (
-    <InboxEmptyState
-      show={show}
-      tone="attention"
-      title={completion.title}
-      subtitle={completion.subtitle}
-      footer={completion.footer}
-    />
-  );
-}
-
 export default function EmailsInboxPage() {
+  const router = useRouter();
   const ui = useUiCopy();
   const { catalog } = useInboxCategories();
   const validTabIds = useMemo(
@@ -579,21 +489,12 @@ export default function EmailsInboxPage() {
     [uiLanguage],
   );
   const {
-    completedEmailIds,
     completions,
-    isCompleted,
     completeEmails,
     scanWaitingResponses,
     waitingResponseRecords,
   } = useEmailCompletions();
 
-  const inboxSections = getInboxSections().map((section) => ({
-    ...section,
-    emails:
-      section.title === "Needs Your Attention" || section.title === "Handled For You"
-        ? section.emails.filter((email) => !isCompleted(email.id))
-        : section.emails,
-  }));
   const [inboxMode, setInboxMode] = useState<InboxMode>("loading");
   const [gmailMessages, setGmailMessages] = useState<GmailInboxMessage[]>([]);
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, InboxAiCategory>>(
@@ -700,7 +601,7 @@ export default function EmailsInboxPage() {
 
       try {
         if (!hasSession) {
-          setInboxMode("mock");
+          router.replace("/");
           return;
         }
 
@@ -1022,7 +923,7 @@ export default function EmailsInboxPage() {
         }
       }
     },
-    [showCachedInboxOnRateLimit, uiLanguage],
+    [router, showCachedInboxOnRateLimit, uiLanguage],
   );
 
   const handleLoadMore = useCallback(() => {
@@ -1258,6 +1159,8 @@ export default function EmailsInboxPage() {
     [gmailTruth, gmailMessages.length, gmailBuckets.allVisible.length, completions],
   );
 
+  const { summary: waitingSummary } = useWaitingOnMetadata();
+
   const briefingCounts = useMemo(() => {
     const responseInInbox = messagesForDisplay.filter((m) => m.waitingResponseUpdate).length;
     return {
@@ -1284,19 +1187,6 @@ export default function EmailsInboxPage() {
       needsCalendarContext: m.needsCalendarContext,
     }));
   }, [messagesWithOverrides]);
-
-  const mockInboxMessages = useMemo(
-    () => fakeEmailsToInboxMessages(fakeEmails, completedEmailIds),
-    [completedEmailIds],
-  );
-
-  const { buckets: mockBuckets } = useStableInboxBuckets({
-    messages: mockInboxMessages,
-    workflowMode,
-    isRefreshing: false,
-    isInitialLoading: false,
-    catalog,
-  });
 
   const inboxLocale = uiLanguage === "it" ? "it" : "en";
 
@@ -1865,19 +1755,17 @@ export default function EmailsInboxPage() {
     [loadInbox, dismissUndoToast],
   );
 
-  const activeBuckets = inboxMode === "gmail" ? gmailBuckets : mockBuckets;
-
   const attentionSnapshot: AttentionSnapshot = useMemo(
     () => ({
-      needsAttention: activeBuckets.todayAttentionCount,
-      quickReply: activeBuckets.quickReplyEmails.length,
-      handled: activeBuckets.handledEmails.length,
-      newsletter: activeBuckets.newsletterEmails.length,
-      promotion: activeBuckets.promotionEmails.length,
-      clutter: activeBuckets.clutterCount,
-      totalVisible: activeBuckets.allVisible.length,
+      needsAttention: gmailBuckets.todayAttentionCount,
+      quickReply: gmailBuckets.quickReplyEmails.length,
+      handled: gmailBuckets.handledEmails.length,
+      newsletter: gmailBuckets.newsletterEmails.length,
+      promotion: gmailBuckets.promotionEmails.length,
+      clutter: gmailBuckets.clutterCount,
+      totalVisible: gmailBuckets.allVisible.length,
     }),
-    [activeBuckets],
+    [gmailBuckets],
   );
   const todayHeadline = calmTodayHeadline(attentionSnapshot, inboxLocale);
   const reliefMessage = useMemo(
@@ -2033,6 +1921,7 @@ export default function EmailsInboxPage() {
                 onHandleQuickReplies={handleStartQuickReplies}
                 onInboxZero={handleStartInboxZero}
               />
+              <WaitingDashboardSummary summary={waitingSummary} locale={inboxLocale} compact />
               <CategoryTabs
                 active={activeCategoryTab}
                 counts={gmailBuckets.counts}
@@ -2135,64 +2024,8 @@ export default function EmailsInboxPage() {
                 </div>
               ) : null}
             </div>
-          ) : (
-            inboxSections.map((section) => (
-              <section key={section.title} className="space-y-3">
-                  <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                    <SectionIcon title={section.title} />
-                    {getSectionLabel(section.title, ui)}
-                  </h2>
-                  <div className="space-y-2">
-                    {section.title === "Needs Your Attention" &&
-                    section.emails.length === 0 ? (
-                      <EmptyNeedsAttentionState
-                        show={showContent}
-                        locale={uiLanguage === "it" ? "it" : "en"}
-                      />
-                    ) : section.title === "Handled For You" &&
-                      section.emails.length === 0 ? (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-relaxed text-gray-600">
-                        {ui.home.handledSectionEmpty}
-                      </div>
-                    ) : (
-                      section.emails.map((email) => (
-                        <div
-                          key={email.id}
-                          className={`transition-opacity duration-500 ${
-                            showContent ? "opacity-100" : "opacity-0"
-                          }`}
-                        >
-                          <MockEmailCard
-                            locale={inboxLocale}
-                            readStateMap={readStateMap}
-                            onCategoryChange={handleCategoryChange}
-                            {...email}
-                          />
-                        </div>
-                      ))
-                    )}
-                  </div>
-              </section>
-            ))
-          )}
+          ) : null}
         </section>
-
-        {inboxMode === "mock" && completedEmailIds.length > 0 ? (
-          <section
-            className={`rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-4 shadow-sm transition-opacity duration-500 sm:p-5 ${
-              showContent ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            <Link
-              href="/emails/completed"
-              className="text-sm font-medium text-accent hover:underline"
-            >
-              {inboxLocale === "it"
-                ? `Vedi ${completedEmailIds.length} email completate →`
-                : `View ${completedEmailIds.length} completed email${completedEmailIds.length === 1 ? "" : "s"} →`}
-            </Link>
-          </section>
-        ) : null}
       </div>
 
       {undoToast ? (

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { WAITING_ON_PRESETS } from "@/lib/waiting-on/types";
+import { FOLLOW_UP_PRESETS, WAITING_ON_PRESETS } from "@/lib/waiting-on/types";
 import type { WaitingOnExtras } from "@/lib/waiting-on/types";
+import { followUpMilestoneLabel } from "@/lib/waiting-on/helpers";
 
 type WaitingOnDetailsPanelProps = {
   locale: "en" | "it";
@@ -13,14 +14,18 @@ type WaitingOnDetailsPanelProps = {
 
 const COPY = {
   en: {
-    who: "Who are you waiting on?",
+    waitingOn: "Waiting on:",
+    followUpTimer: "Follow-up timer",
+    followUpOptional: "Optional — remind me to follow up",
     custom: "Custom…",
     customWho: "Type a name…",
     done: "Done",
     back: "← Back",
   },
   it: {
-    who: "Chi stai aspettando?",
+    waitingOn: "In attesa di:",
+    followUpTimer: "Timer follow-up",
+    followUpOptional: "Opzionale — ricordami di fare follow-up",
     custom: "Personalizzato…",
     customWho: "Scrivi un nome…",
     done: "Fatto",
@@ -38,6 +43,7 @@ export function WaitingOnDetailsPanel({
   const [selectedWho, setSelectedWho] = useState<string | null>(null);
   const [customWho, setCustomWho] = useState("");
   const [showCustomWho, setShowCustomWho] = useState(false);
+  const [followUpDays, setFollowUpDays] = useState<number | undefined>(undefined);
 
   function resolveWho(): string | undefined {
     if (showCustomWho) return customWho.trim() || undefined;
@@ -49,36 +55,42 @@ export function WaitingOnDetailsPanel({
 
   function handleConfirm() {
     if (!who) return;
-    onConfirm({ waitingOn: who });
+    onConfirm({
+      waitingOn: who,
+      followUpAfterDays: followUpDays,
+    });
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
-        <p className="text-sm font-medium text-[#0F172A]">{t.who}</p>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <p className="text-sm font-medium text-[#0F172A]">{t.waitingOn}</p>
+        <ul className="mt-2 flex flex-wrap gap-2">
           {WAITING_ON_PRESETS.map((preset) => (
+            <li key={preset}>
+              <Chip
+                active={selectedWho === preset && !showCustomWho}
+                onClick={() => {
+                  setShowCustomWho(false);
+                  setSelectedWho(preset);
+                }}
+              >
+                {preset}
+              </Chip>
+            </li>
+          ))}
+          <li>
             <Chip
-              key={preset}
-              active={selectedWho === preset && !showCustomWho}
+              active={showCustomWho}
               onClick={() => {
-                setShowCustomWho(false);
-                setSelectedWho(preset);
+                setShowCustomWho(true);
+                setSelectedWho(null);
               }}
             >
-              {preset}
+              {t.custom}
             </Chip>
-          ))}
-          <Chip
-            active={showCustomWho}
-            onClick={() => {
-              setShowCustomWho(true);
-              setSelectedWho(null);
-            }}
-          >
-            {t.custom}
-          </Chip>
-        </div>
+          </li>
+        </ul>
         {showCustomWho ? (
           <input
             type="text"
@@ -90,6 +102,23 @@ export function WaitingOnDetailsPanel({
             className="mt-2 w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm"
           />
         ) : null}
+      </div>
+
+      <div>
+        <p className="text-sm font-medium text-[#0F172A]">{t.followUpTimer}</p>
+        <p className="mt-0.5 text-xs text-gray-500">{t.followUpOptional}</p>
+        <ul className="mt-2 flex flex-wrap gap-2">
+          {FOLLOW_UP_PRESETS.map((days) => (
+            <li key={days}>
+              <Chip
+                active={followUpDays === days}
+                onClick={() => setFollowUpDays(followUpDays === days ? undefined : days)}
+              >
+                {followUpMilestoneLabel(days, locale)}
+              </Chip>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 pt-1">

@@ -1,14 +1,13 @@
 export const WAITING_ON_PRESETS = [
   "Accountant",
-  "Lawyer",
-  "School",
   "Supplier",
   "Client",
+  "School",
 ] as const;
 
 export type WaitingOnPreset = (typeof WAITING_ON_PRESETS)[number];
 
-export const FOLLOW_UP_PRESETS = [3, 7, 14] as const;
+export const FOLLOW_UP_PRESETS = [3, 14, 30] as const;
 
 export type FollowUpPreset = (typeof FOLLOW_UP_PRESETS)[number];
 

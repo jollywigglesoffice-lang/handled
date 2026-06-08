@@ -39,6 +39,11 @@ import {
   type WaitingDetectOptions,
 } from "@/lib/waiting-on/detect-response";
 import type { WaitingResolutionReason } from "@/lib/waiting-on/types";
+import {
+  createWaitingOnMetadata,
+  loadWaitingOnMetadata,
+  saveWaitingOnMetadata,
+} from "@/lib/waiting-on/metadata-storage";
 
 type EmailCompletionsContextValue = {
   completions: EmailCompletionMap;
@@ -57,6 +62,10 @@ type EmailCompletionsContextValue = {
     locale?: "en" | "it",
   ) => Promise<void>;
   markStillWaiting: (emailId: string) => Promise<void>;
+  patchCompletion: (
+    emailId: string,
+    patch: Partial<EmailCompletionRecord>,
+  ) => Promise<void>;
   dismissWaitingResponse: (emailId: string) => Promise<void>;
   scanWaitingResponses: (
     messages: InboxMessageForWaitingDetect[],
@@ -220,6 +229,20 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       }
 
       const nextMap = mergeCompletionsIntoMap(completions, records);
+      let nextMeta = loadWaitingOnMetadata();
+      let metaChanged = false;
+      for (const record of records) {
+        if (record.actionId !== "waiting_on_someone" || nextMeta[record.emailId]) continue;
+        nextMeta = {
+          ...nextMeta,
+          [record.emailId]: createWaitingOnMetadata(record.emailId, {
+            followUpAt: record.followUpAt,
+          }),
+        };
+        metaChanged = true;
+      }
+      if (metaChanged) saveWaitingOnMetadata(nextMeta);
+
       await persistMap(nextMap, nextLearning, { records });
       window.dispatchEvent(new Event("handled-emails-changed"));
     },
@@ -265,6 +288,14 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
         waitingResolutionReason: reason,
         actionLabel: buildResolvedWaitingLabel(record, reason, locale),
       });
+
+      const meta = loadWaitingOnMetadata();
+      if (meta[emailId]) {
+        saveWaitingOnMetadata({
+          ...meta,
+          [emailId]: { ...meta[emailId], workflowStatus: "resolved", updatedAt: now },
+        });
+      }
       const resolveProps = {
         email_id: emailId,
         waiting_on: record.waitingOn ?? null,
@@ -383,6 +414,7 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       uncompleteEmails,
       resolveWaiting,
       markStillWaiting,
+      patchCompletion,
       dismissWaitingResponse,
       scanWaitingResponses,
       activeWaitingRecords: activeWaiting,
@@ -398,6 +430,7 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       uncompleteEmails,
       resolveWaiting,
       markStillWaiting,
+      patchCompletion,
       dismissWaitingResponse,
       scanWaitingResponses,
       activeWaiting,
@@ -424,6 +457,7 @@ const EMPTY_COMPLETIONS_CTX: EmailCompletionsContextValue = {
   uncompleteEmails: async () => {},
   resolveWaiting: async () => {},
   markStillWaiting: async () => {},
+  patchCompletion: async () => {},
   dismissWaitingResponse: async () => {},
   scanWaitingResponses: async () => {},
   activeWaitingRecords: [],

@@ -11,18 +11,18 @@ export type WaitingFollowUpMilestone = (typeof FOLLOW_UP_PRESETS)[number];
 export type WaitingFollowUpSignal = {
   mayNeedFollowUp: boolean;
   daysWaiting: number;
-  /** Highest day threshold reached (3, 7, or 14). */
+  /** Highest day threshold reached (3, 14, or 30). */
   milestoneDays: WaitingFollowUpMilestone | null;
 };
 
 function milestoneForDays(days: number): WaitingFollowUpMilestone | null {
+  if (days >= 30) return 30;
   if (days >= 14) return 14;
-  if (days >= 7) return 7;
   if (days >= 3) return 3;
   return null;
 }
 
-/** Unresolved Waiting On items past 3/7/14 days — suggest follow-up only, never auto-send. */
+/** Unresolved Waiting On items past 3/14/30 days — suggest follow-up only, never auto-send. */
 export function detectWaitingFollowUp(
   record: EmailCompletionRecord,
   now = Date.now(),
