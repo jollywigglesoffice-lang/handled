@@ -1,4 +1,5 @@
 import { INBOX_CACHE_KEY } from "@/lib/inbox-load/constants";
+import type { GmailTruthStats } from "@/lib/inbox-truth/types";
 
 export type InboxCacheSnapshot = {
   savedAt: number;
@@ -6,6 +7,7 @@ export type InboxCacheSnapshot = {
   categoryOverrides: Record<string, string>;
   nextPageToken: string | null;
   lastSyncedAt: string | null;
+  gmailTruth?: GmailTruthStats | null;
 };
 
 export function saveInboxCache(snapshot: InboxCacheSnapshot): void {

@@ -21,6 +21,52 @@ export type GmailListPage = {
   nextPageToken: string | null;
 };
 
+/** Gmail system label for unread messages. */
+export const GMAIL_UNREAD_LABEL = "UNREAD";
+
+/** Gmail system label for the inbox. */
+export const GMAIL_INBOX_LABEL = "INBOX";
+
+export type GmailInboxLabelStats = {
+  inboxTotal: number;
+  unreadTotal: number;
+};
+
+/**
+ * Official Gmail inbox totals from the Labels API (source of truth for reconciliation).
+ */
+export async function gmailGetInboxLabelStats(
+  accessToken: string,
+): Promise<GmailInboxLabelStats> {
+  const url = `${GMAIL_BASE}/labels/${encodeURIComponent(GMAIL_INBOX_LABEL)}`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new GmailApiError("Gmail label", res.status, text, {
+      retryAfterHeader: res.headers.get("Retry-After"),
+    });
+  }
+
+  const data = (await res.json()) as {
+    messagesTotal?: number;
+    messagesUnread?: number;
+  };
+
+  return {
+    inboxTotal: typeof data.messagesTotal === "number" ? data.messagesTotal : 0,
+    unreadTotal: typeof data.messagesUnread === "number" ? data.messagesUnread : 0,
+  };
+}
+
+export function isGmailUnread(labelIds: string[] | undefined): boolean {
+  return Boolean(labelIds?.includes(GMAIL_UNREAD_LABEL));
+}
+
 export type GmailInboxRow = {
   id: string;
   threadId: string;
@@ -29,6 +75,8 @@ export type GmailInboxRow = {
   snippet: string;
   date: string;
   internalDateMs: number;
+  /** Gmail label ids on the message (includes UNREAD when unread). */
+  labelIds?: string[];
   listUnsubscribe?: string;
   listUnsubscribePost?: string;
 };
@@ -182,6 +230,7 @@ export async function gmailGetMessageMetadata(
     threadId?: string;
     snippet?: string;
     internalDate?: string;
+    labelIds?: string[];
     payload?: { headers?: Array<{ name?: string; value?: string }> };
   };
 
@@ -195,6 +244,10 @@ export async function gmailGetMessageMetadata(
       ? new Date(internalMs).toISOString()
       : dateHeader || "";
 
+  const labelIds = Array.isArray(msg.labelIds)
+    ? msg.labelIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : undefined;
+
   return {
     id: msg.id,
     threadId: msg.threadId ?? msg.id,
@@ -203,6 +256,7 @@ export async function gmailGetMessageMetadata(
     snippet: msg.snippet ?? "",
     date,
     internalDateMs: Number.isNaN(internalMs) ? 0 : internalMs,
+    labelIds,
     listUnsubscribe: headerValue(headers, "List-Unsubscribe") || undefined,
     listUnsubscribePost: headerValue(headers, "List-Unsubscribe-Post") || undefined,
   };

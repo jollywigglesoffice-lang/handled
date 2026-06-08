@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useEmailCompletions } from "@/app/email-completions-context";
 import { useInboxCategories } from "@/app/inbox-categories-context";
+import { buildSenderImportanceMemory } from "@/lib/importance-memory";
 import { buildSenderRelationshipMemory } from "@/lib/relationship-memory";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 
@@ -51,11 +52,28 @@ export function SenderRelationshipMemoryCard({
     [sender, completions, relationship, locale, catalog, currentEmailMs],
   );
 
-  if (!memory) return null;
+  const importance = useMemo(
+    () => buildSenderImportanceMemory({ senderLine: sender, completions, locale }),
+    [sender, completions, locale],
+  );
+
+  if (!memory && !importance) return null;
 
   return (
     <section className="border-l-2 border-[#E8ECF1] pl-3">
-      <p className="text-sm font-medium text-gray-600">{memory.profileName}</p>
+      <p className="text-sm font-medium text-gray-600">
+        {memory?.profileName ?? sender.replace(/<[^>]+>/, "").trim()}
+      </p>
+      {importance ? (
+        <p
+          className={`mt-0.5 text-sm ${
+            importance.level === "important" ? "text-gray-700" : "text-gray-400"
+          }`}
+        >
+          {importance.label}
+        </p>
+      ) : null}
+      {memory ? (
       <dl className="mt-1.5 space-y-1 text-sm text-gray-600">
         {memory.typicalCategory ? (
           <div className="flex flex-wrap gap-x-1.5">
@@ -85,6 +103,7 @@ export function SenderRelationshipMemoryCard({
           </div>
         ) : null}
       </dl>
+      ) : null}
     </section>
   );
 }

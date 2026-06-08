@@ -5,7 +5,11 @@ import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-me
 
 export const dynamic = "force-dynamic";
 import { GmailApiError } from "@/lib/gmail-api-error";
-import { gmailGetMessagesMetadata, gmailListInboxPage } from "@/lib/gmail-api";
+import {
+  gmailGetInboxLabelStats,
+  gmailGetMessagesMetadata,
+  gmailListInboxPage,
+} from "@/lib/gmail-api";
 import {
   INBOX_INITIAL_PAGE_SIZE,
   INBOX_LOAD_MORE_PAGE_SIZE,
@@ -150,15 +154,21 @@ export async function GET(request: Request) {
 
   try {
     const listStarted = Date.now();
-    const { items, nextPageToken } = await withGoogleAuthRetry(
-      userId,
-      accessToken,
-      (token) =>
+    const [listPage, gmailTruth] = await Promise.all([
+      withGoogleAuthRetry(userId, accessToken, (token) =>
         gmailListInboxPage(token, {
           maxResults,
           pageToken,
         }),
-    );
+      ),
+      withGoogleAuthRetry(userId, accessToken, (token) =>
+        gmailGetInboxLabelStats(token),
+      ).catch((err) => {
+        console.warn("[api/gmail/messages] Gmail label stats unavailable", err);
+        return null;
+      }),
+    ]);
+    const { items, nextPageToken } = listPage;
     timings = mergeTimings(timings, { gmailListMs: elapsedMs(listStarted) });
 
     const metaStarted = Date.now();
@@ -254,6 +264,7 @@ export async function GET(request: Request) {
         personalCategories: rulesCtx.personalCategories,
         nextPageToken: refresh ? null : nextPageToken,
         refresh,
+        gmailTruth,
         diagnostics,
       }),
     );

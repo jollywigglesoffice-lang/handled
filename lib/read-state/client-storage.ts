@@ -39,3 +39,29 @@ export function setReadStateForIds(ids: string[], state: EmailReadState): void {
 export function isUnread(id: string, map: ReadStateMap): boolean {
   return map[id] === "unread";
 }
+
+/**
+ * Apply Gmail labelIds as source of truth for fetched messages (import only —
+ * does not push changes back to Gmail).
+ */
+export function mergeReadStateFromGmail(
+  messages: ReadonlyArray<{ id: string; labelIds?: string[] }>,
+): void {
+  if (!messages.length) return;
+
+  const map = loadReadStateMap();
+  let changed = false;
+
+  for (const { id, labelIds } of messages) {
+    if (!labelIds) continue;
+    const next: EmailReadState = labelIds.includes("UNREAD") ? "unread" : "read";
+    if (map[id] !== next) {
+      map[id] = next;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    saveReadStateMap(map);
+  }
+}

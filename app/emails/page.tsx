@@ -51,6 +51,7 @@ import { syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
 import { InboxSecondaryTools } from "@/app/emails/inbox-secondary-tools";
 import { getWorkflowModeProfile } from "@/lib/workflow-mode/profiles";
 import { InboxClutterSection } from "@/app/emails/inbox-clutter-section";
+import { applyImportanceOrderingToBuckets } from "@/lib/importance-memory";
 import { useStableInboxBuckets } from "@/app/emails/use-stable-inbox-buckets";
 import { GmailInboxCard, type GmailCardMessage } from "@/app/emails/gmail-inbox-card";
 import { InboxSyncBar } from "@/app/emails/inbox-sync-bar";
@@ -123,9 +124,14 @@ import { useInboxSelection } from "@/app/emails/use-inbox-selection";
 import { BulkActionBar } from "@/app/emails/bulk-action-bar";
 import {
   loadReadStateMap,
+  mergeReadStateFromGmail,
   READ_STATE_EVENT,
   type ReadStateMap,
 } from "@/lib/read-state/client-storage";
+import { GmailTruthPanel } from "@/app/emails/gmail-truth-panel";
+import { applyDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
+import { buildInboxTruthSnapshot } from "@/lib/inbox-truth/compute-snapshot";
+import type { GmailTruthStats } from "@/lib/inbox-truth/types";
 import { markEmailsRead, markEmailsUnread } from "@/lib/read-state/gmail-sync";
 import {
   loadDismissedIds,
@@ -158,6 +164,7 @@ type GmailInboxMessage = {
   snippet: string;
   date: string;
   internalDateMs?: number;
+  labelIds?: string[];
   waitingResponseUpdate?: boolean;
   category: InboxAiCategory;
   categoryConfidence?: number;
@@ -598,6 +605,7 @@ export default function EmailsInboxPage() {
   const [workflowMode, setWorkflowMode] = useState(readWorkflowModeFromStorage);
   const [gmailError, setGmailError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [gmailTruth, setGmailTruth] = useState<GmailTruthStats | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Pagination plumbing (Gmail nextPageToken). UI only exposes a manual
   // "load more" for now — no infinite scroll yet.
@@ -617,6 +625,7 @@ export default function EmailsInboxPage() {
     setGmailMessages(cache.gmailMessages as GmailInboxMessage[]);
     setCategoryOverrides(cache.categoryOverrides as Record<string, InboxAiCategory>);
     setNextPageToken(cache.nextPageToken);
+    if (cache.gmailTruth) setGmailTruth(cache.gmailTruth);
     if (cache.lastSyncedAt) setLastSyncedAt(cache.lastSyncedAt);
     setGmailError("");
     setInboxMode("gmail");
@@ -722,6 +731,7 @@ export default function EmailsInboxPage() {
           personalCategories?: import("@/lib/personal-categories/types").PersonalInboxCategory[];
           nextPageToken?: string | null;
           refresh?: boolean;
+          gmailTruth?: GmailTruthStats | null;
           diagnostics?: InboxLoadApiErrorBody["diagnostics"];
         };
 
@@ -848,6 +858,9 @@ export default function EmailsInboxPage() {
               typeof (r as { internalDateMs?: number }).internalDateMs === "number"
                 ? (r as { internalDateMs: number }).internalDateMs
                 : undefined,
+            labelIds: Array.isArray((r as { labelIds?: string[] }).labelIds)
+              ? (r as { labelIds: string[] }).labelIds
+              : undefined,
             category: normalizeInboxAiCategory(
               typeof r.category === "string" ? r.category : "needs_attention",
             ),
@@ -893,7 +906,12 @@ export default function EmailsInboxPage() {
         setCategoryOverrides(mergedOverrideMap);
 
         const stampedMsgs = stampEmailOverridesOnMessages(msgs, mergedOverrideMap);
+        mergeReadStateFromGmail(stampedMsgs);
         const syncedAt = new Date().toISOString();
+        if (body.gmailTruth) {
+          setGmailTruth(body.gmailTruth);
+        }
+        const cachedGmailTruth = body.gmailTruth ?? undefined;
 
         if (append) {
           setGmailMessages((prev) => {
@@ -906,6 +924,7 @@ export default function EmailsInboxPage() {
               categoryOverrides: mergedOverrideMap,
               nextPageToken: body.nextPageToken ?? null,
               lastSyncedAt: syncedAt,
+              gmailTruth: cachedGmailTruth,
             });
             return merged;
           });
@@ -919,6 +938,7 @@ export default function EmailsInboxPage() {
               categoryOverrides: mergedOverrideMap,
               nextPageToken: nextPageTokenRef.current,
               lastSyncedAt: syncedAt,
+              gmailTruth: cachedGmailTruth,
             });
             return merged;
           });
@@ -931,6 +951,7 @@ export default function EmailsInboxPage() {
             categoryOverrides: mergedOverrideMap,
             nextPageToken: body.nextPageToken ?? null,
             lastSyncedAt: syncedAt,
+            gmailTruth: cachedGmailTruth,
           });
         }
 
@@ -1213,13 +1234,29 @@ export default function EmailsInboxPage() {
     });
   }, [messagesWithOverrides, waitingResponseRecords]);
 
-  const { buckets: gmailBuckets, isCountsPending } = useStableInboxBuckets({
+  const { buckets: gmailBucketsRaw, isCountsPending } = useStableInboxBuckets({
     messages: messagesForDisplay,
     workflowMode,
     isRefreshing,
     isInitialLoading: inboxMode === "loading",
     catalog,
   });
+
+  const gmailBuckets = useMemo(
+    () => applyImportanceOrderingToBuckets(gmailBucketsRaw, completions),
+    [gmailBucketsRaw, completions],
+  );
+
+  const inboxTruthSnapshot = useMemo(
+    () =>
+      buildInboxTruthSnapshot({
+        gmailTruth,
+        loadedCount: gmailMessages.length,
+        visibleCount: gmailBuckets.allVisible.length,
+        completions,
+      }),
+    [gmailTruth, gmailMessages.length, gmailBuckets.allVisible.length, completions],
+  );
 
   const briefingCounts = useMemo(() => {
     const responseInInbox = messagesForDisplay.filter((m) => m.waitingResponseUpdate).length;
@@ -1627,19 +1664,13 @@ export default function EmailsInboxPage() {
         ],
         { locale: inboxLocale },
       );
+      applyDoneInboxEffects([id], { actionId });
       notifyCompleted({
         emailIds: [id],
         actionId,
         actionLabel,
         locale: inboxLocale,
       });
-      addDismissedIds([id]);
-      setDismissedIds((prev) => {
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
-      markEmailsRead([id]);
     },
     [gmailMessages, completeEmails, notifyCompleted, inboxLocale],
   );
@@ -1989,11 +2020,11 @@ export default function EmailsInboxPage() {
                 locale={inboxLocale}
                 onRefresh={() => void loadInbox({ silent: true, refresh: true, force: true })}
               />
-              <p className="text-xs text-gray-400">
-                {inboxLocale === "it"
-                  ? `Mostrando le ${gmailMessages.length} email più recenti`
-                  : `Showing newest ${gmailMessages.length} inbox emails`}
-              </p>
+              <GmailTruthPanel
+                snapshot={inboxTruthSnapshot}
+                locale={inboxLocale}
+                hasMoreToLoad={Boolean(nextPageToken)}
+              />
               <DailyBriefingCard
                 counts={briefingCounts}
                 messages={briefingMessages}

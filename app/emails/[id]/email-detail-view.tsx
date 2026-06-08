@@ -35,6 +35,7 @@ import { continuityFromEmailDetail } from "@/lib/continuity-context";
 import { loadClientHandledBrain } from "@/lib/handled-brain/client-storage";
 import { retrieveBrainUsageDto } from "@/lib/knowledge/retrieve";
 import { buildGlancePresentation } from "@/lib/glance-clarity";
+import { recordSenderEmailOpen } from "@/lib/importance-memory";
 import {
   getIntelligenceVerbosity,
   recordEmailEngagement,
@@ -99,7 +100,8 @@ export function EmailDetailView({
 
   useEffect(() => {
     recordEmailEngagement();
-  }, [email.id]);
+    recordSenderEmailOpen(email.sender);
+  }, [email.id, email.sender]);
 
   const verbosity = useMemo(() => getIntelligenceVerbosity(), [email.id]);
 

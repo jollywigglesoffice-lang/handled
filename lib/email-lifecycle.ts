@@ -9,7 +9,8 @@ export const LIFECYCLE_LABELS = {
 
 /**
  * READ ≠ DONE. Completed is Handled-only; read/unread sync with Gmail.
- * Missing read-map entry → treated as read (Gmail default once synced).
+ * Fetched messages import UNREAD from Gmail labelIds on inbox load.
+ * Missing read-map entry → treated as read (not yet synced or outside loaded slice).
  */
 export function resolveEmailLifecycle(
   emailId: string,

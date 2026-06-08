@@ -11,6 +11,7 @@ import {
   READ_STATE_EVENT,
   type ReadStateMap,
 } from "@/lib/read-state/client-storage";
+import { applyDoneInboxEffects, revertDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
 import { markEmailsRead, markEmailsUnread } from "@/lib/read-state/gmail-sync";
 import type { CompleteEmailExtras, EmailCompletionRecord } from "@/lib/email-completions/types";
 import { isActiveWaiting } from "@/lib/waiting-on/helpers";
@@ -125,6 +126,7 @@ export function useEmailStatusActions({
           ],
           { locale },
         );
+        applyDoneInboxEffects([emailId], { actionId });
         setShowDonePicker(false);
         if (!onCompleted) {
           notifyCompleted({ emailIds: [emailId], actionId, actionLabel, locale });
@@ -140,6 +142,7 @@ export function useEmailStatusActions({
   const handleUndo = useCallback(async () => {
     setBusy(true);
     try {
+      revertDoneInboxEffects([emailId]);
       await uncompleteEmails([emailId]);
       showFeedback(t.undone);
     } finally {

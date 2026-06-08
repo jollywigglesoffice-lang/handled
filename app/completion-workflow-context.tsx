@@ -11,6 +11,7 @@ import {
 import { CategoryUndoToast } from "@/app/emails/category-undo-toast";
 import { useEmailCompletions } from "@/app/email-completions-context";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
+import { revertDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
 import { trackEvent } from "@/lib/analytics";
 
 const UNDO_VISIBLE_MS = 8000;
@@ -94,6 +95,7 @@ export function CompletionWorkflowProvider({ children }: { children: React.React
     if (!toast) return;
     const ids = toast.emailIds;
     dismiss();
+    revertDoneInboxEffects(ids);
     await uncompleteEmails(ids);
     trackEvent("completion_action_undo", { count: ids.length, action_id: toast.actionId });
   }, [toast, dismiss, uncompleteEmails]);

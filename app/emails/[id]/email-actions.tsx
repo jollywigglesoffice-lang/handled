@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEmailCompletions } from "@/app/email-completions-context";
+import { applyDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
 import { useReplyUsage } from "@/app/reply-usage-context";
 import {
   useUserPreferences,
@@ -1579,7 +1580,9 @@ return () => clearTimeout(timeout);
         snippet,
         category: inboxCategory,
       },
-    ]);
+    ]).then(() => {
+      applyDoneInboxEffects([emailId], { actionId: "replied" });
+    });
 
     sendFeedbackFadeTimerRef.current = window.setTimeout(() => {
       setShowSendSuccess(false);
