@@ -2,7 +2,7 @@
 
 import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { FREE_LIMIT, readUsageCountWithDailyReset } from "@/lib/daily-usage";
 import { WORKFLOW_MODE_KEY, type WorkflowMode } from "@/lib/workflow-mode";
@@ -11,6 +11,7 @@ import { persistWorkflowModeToAccount, syncWorkflowModeFromAccount } from "@/lib
 import { CalmCollapsible } from "@/app/components/calm-collapsible";
 import { WorkflowModeSelector } from "./workflow-mode-selector";
 import { CalendarSettings } from "./calendar-settings";
+import { ConnectedAccountsSettings } from "./connected-accounts-settings";
 import { HandledBrainSettings } from "./handled-brain-settings";
 import { InboxPrioritySettings } from "./inbox-priority-settings";
 import { SenderRelationshipsSettings } from "./sender-relationships-settings";
@@ -643,10 +644,6 @@ export default function SettingsPage() {
                     ? "Unlimited replies"
                     : `${usageCount} used · ${repliesLeft} left (limit ${FREE_LIMIT})`}
                 </p>
-              </section>
-              <section className="space-y-2">
-                <h3 className="text-sm font-semibold text-foreground">Multiple inboxes</h3>
-                <p className="text-sm text-secondary">Coming soon — Pro gets early access.</p>
               </section>
             </div>
           </CalmCollapsible>

@@ -5,11 +5,8 @@ import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-me
 
 export const dynamic = "force-dynamic";
 import { GmailApiError } from "@/lib/gmail-api-error";
-import {
-  gmailGetInboxLabelStats,
-  gmailGetMessagesMetadata,
-  gmailListInboxPage,
-} from "@/lib/gmail-api";
+import { listConnectedGmailAccounts } from "@/lib/google/connected-accounts";
+import { fetchUnifiedInboxPage } from "@/lib/gmail/fetch-unified-inbox";
 import {
   INBOX_INITIAL_PAGE_SIZE,
   INBOX_LOAD_MORE_PAGE_SIZE,
@@ -21,7 +18,6 @@ import {
 } from "@/lib/inbox-load/rate-limit-backoff";
 import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
-import { withGoogleAuthRetry } from "@/lib/google/google-access-token";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 import { parseWorkflowModeHeader } from "@/lib/workflow-mode-effects";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
@@ -95,6 +91,7 @@ export async function GET(request: Request) {
   const searchParams = new URL(request.url).searchParams;
   const pageToken = searchParams.get("pageToken");
   const refresh = searchParams.get("refresh") === "1";
+  const accountFilterId = searchParams.get("accountId");
   const paginated = Boolean(pageToken);
 
   const maxResults = pageToken
@@ -149,34 +146,40 @@ export async function GET(request: Request) {
     });
   }
 
-  const accessToken = googleAuth.accessToken;
   const userId = auth.user.id;
 
   try {
-    const listStarted = Date.now();
-    const [listPage, gmailTruth] = await Promise.all([
-      withGoogleAuthRetry(userId, accessToken, (token) =>
-        gmailListInboxPage(token, {
-          maxResults,
-          pageToken,
-        }),
-      ),
-      withGoogleAuthRetry(userId, accessToken, (token) =>
-        gmailGetInboxLabelStats(token),
-      ).catch((err) => {
-        console.warn("[api/gmail/messages] Gmail label stats unavailable", err);
-        return null;
-      }),
-    ]);
-    const { items, nextPageToken } = listPage;
-    timings = mergeTimings(timings, { gmailListMs: elapsedMs(listStarted) });
+    const accounts = await listConnectedGmailAccounts(userId, auth.user.email);
+    if (accounts.length === 0) {
+      // googleAuth.ok above means a usable token exists (legacy users-table path),
+      // so an empty account list here means the connected_gmail_accounts table is
+      // missing or the migration insert failed — not that the user lacks Gmail OAuth.
+      console.error(
+        "[api/gmail/messages] no connected accounts for user with valid Google token",
+        { userId, loadId },
+      );
+      return inboxErrorResponse(applyAuthCookies, {
+        status: 403,
+        failureReason: "oauth_missing",
+        failureStage: "google_token",
+        message: inboxLoadUserMessage("oauth_missing"),
+        diagnostics: baseDiagnostics(),
+      });
+    }
 
-    const metaStarted = Date.now();
-    const rows = await withGoogleAuthRetry(userId, accessToken, (token) =>
-      gmailGetMessagesMetadata(token, items.map((m) => m.id), 25),
-    );
-    timings = mergeTimings(timings, { gmailMetadataMs: elapsedMs(metaStarted) });
-    rows.sort((a, b) => b.internalDateMs - a.internalDateMs);
+    const listStarted = Date.now();
+    const { rows, gmailTruth } = await fetchUnifiedInboxPage({
+      userId,
+      accounts,
+      accountFilterId,
+      maxResults,
+      pageToken,
+    });
+    timings = mergeTimings(timings, {
+      gmailListMs: elapsedMs(listStarted),
+      gmailMetadataMs: elapsedMs(listStarted),
+    });
+    const nextPageToken = null;
 
     const supabaseStarted = Date.now();
     const rulesCtx = userId
@@ -265,6 +268,7 @@ export async function GET(request: Request) {
         nextPageToken: refresh ? null : nextPageToken,
         refresh,
         gmailTruth,
+        accounts,
         diagnostics,
       }),
     );

@@ -7,6 +7,8 @@ import {
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import { persistEmailOverrideToAccount } from "@/lib/email-overrides/client-sync";
+import { loadClientEmailOverrideMap } from "@/lib/email-overrides/client-storage";
+import { lookupScopedValue, scopedEmailKey } from "@/lib/gmail/account-types";
 import { loadClientInboxRules, saveClientInboxRules } from "@/lib/inbox-rules-client-storage";
 import {
   loadClientSenderPreferences,
@@ -30,6 +32,7 @@ export type CategoryFeedbackInput = {
   guessedCategory: InboxAiCategory;
   chosenCategory: InboxAiCategory;
   scope: CategoryApplyScope;
+  accountId?: string;
 };
 
 export type CategoryFeedbackResult = {
@@ -124,6 +127,7 @@ export async function submitCategoryFeedback(
     sender: input.sender,
     guessedCategory: input.guessedCategory,
     chosenCategory: input.chosenCategory,
+    accountId: input.accountId,
   });
 
   const autoLearnSender =
@@ -135,7 +139,22 @@ export async function submitCategoryFeedback(
       emailId: input.emailId,
       overriddenCategory: input.chosenCategory,
       originalCategory: input.guessedCategory,
+      accountId: input.accountId,
     });
+  } else if (input.scope === "sender") {
+    // Manual overrides outrank sender rules. If the trigger email already has
+    // a persisted manual override, refresh it to the user's latest choice so
+    // a stale override can't snap this email back after the rule applies.
+    const overrideMap = loadClientEmailOverrideMap();
+    const existing = lookupScopedValue(overrideMap, input.emailId, input.accountId);
+    if (existing && existing !== input.chosenCategory) {
+      await persistEmailOverrideToAccount({
+        emailId: input.emailId,
+        overriddenCategory: input.chosenCategory,
+        originalCategory: input.guessedCategory,
+        accountId: input.accountId,
+      });
+    }
   }
 
   if (input.scope === "sender" || autoLearnSender) {
@@ -168,7 +187,8 @@ export async function submitCategoryFeedback(
     },
     body: JSON.stringify({
       action: "correct_category",
-      emailId: input.emailId,
+      // Account-scoped storage key — Gmail ids are only unique per mailbox.
+      emailId: scopedEmailKey(input.emailId, input.accountId),
       sender: input.sender,
       subject: input.subject,
       snippet: input.snippet,

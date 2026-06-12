@@ -39,6 +39,16 @@ export function addDismissedIds(ids: string[]): void {
 export function removeDismissedIds(ids: string[]): void {
   if (!ids.length) return;
   const next = loadDismissedIds();
-  for (const id of ids) next.delete(id);
+  for (const id of ids) {
+    next.delete(id);
+    // Entries may be stored account-scoped (`accountId:emailId`) — when a
+    // caller only has the raw Gmail id, clear scoped variants too.
+    if (!id.includes(":")) {
+      const suffix = `:${id}`;
+      for (const stored of next) {
+        if (stored.endsWith(suffix)) next.delete(stored);
+      }
+    }
+  }
   save(next);
 }

@@ -33,6 +33,10 @@ export type EmailCompletionRecord = {
   waitingResolutionReason?: "received_response" | "no_longer_waiting";
   /** Updated when user taps "Still waiting". */
   stillWaitingAt?: number;
+  /** Connected Gmail account (multi-account V1). */
+  accountId?: string;
+  accountEmail?: string;
+  accountLabel?: string;
 };
 
 export type EmailCompletionMap = Record<string, EmailCompletionRecord>;
@@ -51,4 +55,7 @@ export type CompleteEmailInput = {
   snippet?: string;
   threadId?: string;
   category: InboxAiCategory;
+  accountId?: string;
+  accountEmail?: string;
+  accountLabel?: string;
 } & CompleteEmailExtras;

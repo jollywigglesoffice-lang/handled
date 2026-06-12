@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCompletionWorkflow } from "@/app/completion-workflow-context";
 import { useInboxCategories } from "@/app/inbox-categories-context";
 import { EmailStatusBar } from "@/app/components/email-status-bar";
@@ -91,6 +91,9 @@ export function EmailDetailView({
   );
   const ui = useUiCopy();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Owning Gmail account — keeps completion/read state account-scoped.
+  const accountId = searchParams.get("accountId") ?? undefined;
   const { notifyCompleted } = useCompletionWorkflow();
   const { catalog } = useInboxCategories();
   const { uiLanguage } = useUserPreferences();
@@ -273,6 +276,7 @@ export function EmailDetailView({
         <header className="mt-5 space-y-3">
           <EmailStatusBar
             emailId={email.id}
+            accountId={accountId}
             sender={email.sender}
             subject={email.subject}
             snippet={email.summary}

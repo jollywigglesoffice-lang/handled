@@ -12,6 +12,7 @@ import {
   waitingOpenRecords,
 } from "@/lib/waiting-on/helpers";
 import { isWaitingUrgent } from "@/lib/waiting-on/urgency";
+import { lookupScopedValue } from "@/lib/gmail/account-types";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -74,7 +75,14 @@ export function buildWaitingDashboardItems(
   now = Date.now(),
 ): WaitingDashboardItem[] {
   return waitingOpenRecords(completions)
-    .map((record) => buildWaitingDashboardItem(record, metadataMap[record.emailId], locale, now))
+    .map((record) =>
+      buildWaitingDashboardItem(
+        record,
+        lookupScopedValue(metadataMap, record.emailId, record.accountId),
+        locale,
+        now,
+      ),
+    )
     .sort((a, b) => b.daysWaiting - a.daysWaiting);
 }
 

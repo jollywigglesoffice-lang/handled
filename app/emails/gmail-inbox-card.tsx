@@ -44,6 +44,7 @@ import { buildSituationSummary } from "@/lib/situational-understanding";
 import { CompletionLikelyBadge } from "@/app/emails/completion-likely-badge";
 import { WaitingResponseBadge } from "@/app/emails/waiting-response-badge";
 import { trackEvent } from "@/lib/analytics";
+import { AccountBadge } from "@/app/emails/account-badge";
 
 export type GmailCardMessage = {
   id: string;
@@ -70,7 +71,18 @@ export type GmailCardMessage = {
   };
   relationship?: SenderRelationshipProfile;
   waitingResponseUpdate?: boolean;
+  accountId?: string;
+  accountEmail?: string;
+  accountLabel?: string;
 };
+
+function emailDetailHref(message: GmailCardMessage): string {
+  const base = `/emails/${encodeURIComponent(message.id)}`;
+  if (message.accountId) {
+    return `${base}?accountId=${encodeURIComponent(message.accountId)}`;
+  }
+  return base;
+}
 
 function formatInboxDate(iso: string): string {
   if (!iso) return "";
@@ -93,6 +105,8 @@ type GmailInboxCardProps = {
   onToggleSelect?: (id: string) => void;
   readStateMap?: ReadStateMap;
   inboxReturnCapture?: InboxReturnCapture;
+  /** Show account origin badge (recommended when multiple accounts are connected). */
+  showAccountBadge?: boolean;
 };
 
 export function GmailInboxCard({
@@ -105,6 +119,7 @@ export function GmailInboxCard({
   onToggleSelect,
   readStateMap = {},
   inboxReturnCapture,
+  showAccountBadge = false,
 }: GmailInboxCardProps) {
   const [feedback, setFeedback] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatusState>("idle");
@@ -120,6 +135,9 @@ export function GmailInboxCard({
 
   const emailStatus = useEmailStatusActions({
     emailId: message.id,
+    accountId: message.accountId,
+    accountEmail: message.accountEmail,
+    accountLabel: message.accountLabel,
     threadId: message.threadId,
     sender: message.sender,
     subject: message.subject,
@@ -189,6 +207,7 @@ export function GmailInboxCard({
           guessedCategory: guessedRef.current,
           chosenCategory: chosen,
           scope,
+          accountId: message.accountId,
         });
         logSenderRuleDebug("submitCategoryFeedback done", {
           scope,
@@ -307,11 +326,12 @@ export function GmailInboxCard({
             isUnread={isUnread}
             lifecycle={emailStatus.lifecycle}
             showCompletionLikely={!emailStatus.completed}
+            showAccountBadge={showAccountBadge}
             onOpenEmail={captureReturn}
           />
 
           <Link
-            href={`/emails/${encodeURIComponent(message.id)}`}
+            href={emailDetailHref(message)}
             className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
             onClick={() => {
               captureReturn();
@@ -485,6 +505,7 @@ function CardHeader({
   isUnread = false,
   lifecycle,
   showCompletionLikely = false,
+  showAccountBadge = false,
   onOpenEmail,
 }: {
   message: GmailCardMessage;
@@ -497,6 +518,7 @@ function CardHeader({
   isUnread?: boolean;
   lifecycle: EmailLifecycleState;
   showCompletionLikely?: boolean;
+  showAccountBadge?: boolean;
   onOpenEmail?: () => void;
 }) {
   return (
@@ -509,6 +531,9 @@ function CardHeader({
         {message.sender}
       </p>
       <div className="flex flex-wrap items-center gap-2">
+        {showAccountBadge && message.accountLabel ? (
+          <AccountBadge label={message.accountLabel} />
+        ) : null}
         {message.timelineIntelligence?.active &&
         (message.timelineIntelligence.conversationStatus === "escalating" ||
           message.timelineIntelligence.conversationStatus === "stalled") ? (
@@ -523,7 +548,7 @@ function CardHeader({
         ) : null}
         {showNewsletterBadge ? (
           <Link
-            href={`/emails/${encodeURIComponent(message.id)}`}
+            href={emailDetailHref(message)}
             className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-800 hover:bg-violet-100"
             onClick={onOpenEmail}
           >

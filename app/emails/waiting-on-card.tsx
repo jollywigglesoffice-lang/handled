@@ -11,7 +11,9 @@ import {
 import { daysWaitingLabel, formatWaitingSinceDate } from "@/lib/waiting-on/helpers";
 import { waitingUrgencyStyle } from "@/lib/waiting-on/urgency";
 import type { EmailCompletionRecord } from "@/lib/email-completions/types";
+import { lookupScopedValue } from "@/lib/gmail/account-types";
 import { captureInboxReturnFromOpen } from "@/lib/inbox-return-context";
+import { AccountBadge } from "@/app/emails/account-badge";
 
 const COPY = {
   en: {
@@ -40,7 +42,7 @@ export function WaitingOnCard({
   locale: "en" | "it";
 }) {
   const { metadata } = useWaitingOnMetadata();
-  const meta = metadata[record.emailId];
+  const meta = lookupScopedValue(metadata, record.emailId, record.accountId);
   const item = buildWaitingDashboardItem(record, meta, locale);
   const urgency = waitingUrgencyStyle(item.daysWaiting);
   const followUpDue = followUpDueLabel(item.followUpAt, locale);
@@ -53,6 +55,7 @@ export function WaitingOnCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
+            {record.accountLabel ? <AccountBadge label={record.accountLabel} /> : null}
             <h3 className="text-lg font-semibold text-[#0F172A]">{item.waitingOn}</h3>
             {item.isUrgent ? (
               <span className="rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-800">
@@ -67,7 +70,11 @@ export function WaitingOnCard({
         </div>
 
         <Link
-          href={`/emails/${encodeURIComponent(record.emailId)}`}
+          href={
+            record.accountId
+              ? `/emails/${encodeURIComponent(record.emailId)}?accountId=${encodeURIComponent(record.accountId)}`
+              : `/emails/${encodeURIComponent(record.emailId)}`
+          }
           onClick={() => {
             captureInboxReturnFromOpen(
               { view: "waiting", categoryTab: "all" },

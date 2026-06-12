@@ -48,6 +48,8 @@ type InboxCategoryMeta = {
   learnPriority: number;
   /** Newsletter + promotion — collapsed in Clean mode. */
   isClutter?: boolean;
+  /** Shown on the dedicated category tab when clutter is hidden from the main workflow. */
+  tabGuidance?: Partial<Record<InboxCategoryLocale, string>>;
   /** Tailwind classes for gmail-inbox-card left border. */
   cardAccentClass: string;
 };
@@ -143,6 +145,10 @@ const INBOX_CATEGORY_META: Record<SystemInboxCategory, InboxCategoryMeta> = {
       en: "Offers and marketing — can likely wait.",
       it: "Offerte e marketing — possono aspettare.",
     },
+    tabGuidance: {
+      en: "Promotions are hidden from your main workflow, but you can always review them here.",
+      it: "Le promozioni sono fuori dal flusso principale, ma puoi sempre rivederle qui.",
+    },
     emptyMessage: {
       en: "No promotional emails are waiting.",
       it: "Nessuna email promozionale in attesa.",
@@ -161,6 +167,10 @@ const INBOX_CATEGORY_META: Record<SystemInboxCategory, InboxCategoryMeta> = {
     subtitle: {
       en: "Digests and recurring reads — can likely wait.",
       it: "Digest e letture ricorrenti — possono aspettare.",
+    },
+    tabGuidance: {
+      en: "Newsletters are grouped out of your main workflow, but you can always review them here.",
+      it: "Le newsletter sono fuori dal flusso principale, ma puoi sempre rivederle qui.",
     },
     emptyMessage: {
       en: "No newsletters are waiting.",
@@ -272,6 +282,15 @@ export function inboxCategoryEmptyMessage(
 ): string | undefined {
   if (!isSystemInboxCategory(category)) return undefined;
   return INBOX_CATEGORY_META[category].emptyMessage?.[locale];
+}
+
+/** Reassurance copy on a dedicated category tab (e.g. Promotions). */
+export function inboxCategoryTabGuidance(
+  category: string,
+  locale: InboxCategoryLocale,
+): string | undefined {
+  if (!isSystemInboxCategory(category)) return undefined;
+  return INBOX_CATEGORY_META[category].tabGuidance?.[locale];
 }
 
 export function inboxCategoryClearSeconds(category: string): number {

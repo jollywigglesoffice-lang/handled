@@ -44,6 +44,7 @@ import {
   loadWaitingOnMetadata,
   saveWaitingOnMetadata,
 } from "@/lib/waiting-on/metadata-storage";
+import { completionStorageKey, findScopedEntry } from "@/lib/gmail/account-types";
 
 type EmailCompletionsContextValue = {
   completions: EmailCompletionMap;
@@ -232,10 +233,14 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       let nextMeta = loadWaitingOnMetadata();
       let metaChanged = false;
       for (const record of records) {
-        if (record.actionId !== "waiting_on_someone" || nextMeta[record.emailId]) continue;
+        if (record.actionId !== "waiting_on_someone") continue;
+        // Metadata keys are account-scoped like completion keys; honor any
+        // existing legacy raw-keyed entry.
+        const metaKey = completionStorageKey(record);
+        if (nextMeta[metaKey] || nextMeta[record.emailId]) continue;
         nextMeta = {
           ...nextMeta,
-          [record.emailId]: createWaitingOnMetadata(record.emailId, {
+          [metaKey]: createWaitingOnMetadata(record.emailId, {
             followUpAt: record.followUpAt,
           }),
         };
@@ -249,12 +254,20 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
     [completions, learning, persistMap],
   );
 
+  // Completion map keys are account-scoped (`accountId:emailId`); legacy
+  // entries use the raw Gmail id. Keyed access goes through findScopedEntry.
   const uncompleteEmails = useCallback(
     async (emailIds: string[]) => {
       if (!emailIds.length) return;
       const nextMap = { ...completions };
       for (const id of emailIds) {
         delete nextMap[id];
+        if (!id.includes(":")) {
+          const suffix = `:${id}`;
+          for (const key of Object.keys(nextMap)) {
+            if (key.endsWith(suffix)) delete nextMap[key];
+          }
+        }
       }
       await persistMap(nextMap, learning);
       window.dispatchEvent(new Event("handled-emails-changed"));
@@ -264,10 +277,11 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
 
   const patchCompletion = useCallback(
     async (emailId: string, patch: Partial<EmailCompletionRecord>) => {
-      const existing = completions[emailId];
-      if (!existing) return;
+      const entry = findScopedEntry(completions, emailId);
+      if (!entry) return;
+      const [key, existing] = entry;
       const updated = { ...existing, ...patch };
-      const nextMap = { ...completions, [emailId]: updated };
+      const nextMap = { ...completions, [key]: updated };
       await persistMap(nextMap, learning, { records: [updated] });
       window.dispatchEvent(new Event("handled-emails-changed"));
     },
@@ -280,7 +294,7 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       reason: WaitingResolutionReason,
       locale: "en" | "it" = "en",
     ) => {
-      const record = completions[emailId];
+      const record = findScopedEntry(completions, emailId)?.[1];
       if (!record || record.actionId !== "waiting_on_someone") return;
       const now = Date.now();
       await patchCompletion(emailId, {
@@ -290,10 +304,12 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       });
 
       const meta = loadWaitingOnMetadata();
-      if (meta[emailId]) {
+      const metaEntry = findScopedEntry(meta, emailId, record.accountId);
+      if (metaEntry) {
+        const [metaKey, metaValue] = metaEntry;
         saveWaitingOnMetadata({
           ...meta,
-          [emailId]: { ...meta[emailId], workflowStatus: "resolved", updatedAt: now },
+          [metaKey]: { ...metaValue, workflowStatus: "resolved", updatedAt: now },
         });
       }
       const resolveProps = {
@@ -313,8 +329,10 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
 
   const dismissWaitingResponse = useCallback(
     async (emailId: string) => {
-      const record = completions[emailId];
-      if (!record || !hasWaitingResponse(record)) return;
+      const entry = findScopedEntry(completions, emailId);
+      const record = entry?.[1];
+      if (!entry || !record || !hasWaitingResponse(record)) return;
+      const [recordKey] = entry;
       const {
         waitingResponseEmailId: _a,
         waitingResponseDetectedAt: _b,
@@ -325,7 +343,7 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
         ...cleared
       } = record;
       const restored: EmailCompletionRecord = { ...cleared, waitingStatus: "waiting" };
-      const nextMap = { ...completions, [emailId]: restored };
+      const nextMap = { ...completions, [recordKey]: restored };
       await persistMap(nextMap, learning, { records: [restored] });
       window.dispatchEvent(new Event("handled-emails-changed"));
     },
@@ -345,8 +363,10 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       const patched: EmailCompletionRecord[] = [];
 
       for (const { waitingEmailId, detection } of detections) {
-        const existing = nextMap[waitingEmailId];
-        if (!existing || existing.waitingResponseDetectedAt) continue;
+        const entry = findScopedEntry(nextMap, waitingEmailId);
+        if (!entry) continue;
+        const [recordKey, existing] = entry;
+        if (existing.waitingResponseDetectedAt) continue;
 
         const updated: EmailCompletionRecord = {
           ...existing,
@@ -359,7 +379,7 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
           waitingResponseAt: detection.responseAt,
           threadId: existing.threadId ?? detection.threadId,
         };
-        nextMap[waitingEmailId] = updated;
+        nextMap[recordKey] = updated;
         patched.push(updated);
 
         trackEvent("response_detected", {
@@ -380,7 +400,7 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
 
   const markStillWaiting = useCallback(
     async (emailId: string) => {
-      const record = completions[emailId];
+      const record = findScopedEntry(completions, emailId)?.[1];
       if (!record || record.actionId !== "waiting_on_someone") return;
       await patchCompletion(emailId, { stillWaitingAt: Date.now() });
     },
@@ -408,8 +428,8 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
       completions,
       completedEmailIds,
       learning,
-      isCompleted: (id: string) => Boolean(completions[id]),
-      getCompletion: (id: string) => completions[id],
+      isCompleted: (id: string) => Boolean(findScopedEntry(completions, id)),
+      getCompletion: (id: string) => findScopedEntry(completions, id)?.[1],
       completeEmails,
       uncompleteEmails,
       resolveWaiting,

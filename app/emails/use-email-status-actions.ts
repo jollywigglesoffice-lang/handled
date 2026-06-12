@@ -41,6 +41,10 @@ export const EMAIL_STATUS_COPY = {
 
 export type EmailStatusActionsInput = {
   emailId: string;
+  /** Connected Gmail account that owns this message (multi-account scoping). */
+  accountId?: string;
+  accountEmail?: string;
+  accountLabel?: string;
   threadId?: string;
   sender: string;
   subject: string;
@@ -53,6 +57,9 @@ export type EmailStatusActionsInput = {
 
 export function useEmailStatusActions({
   emailId,
+  accountId,
+  accountEmail,
+  accountLabel,
   threadId,
   sender,
   subject,
@@ -94,14 +101,14 @@ export function useEmailStatusActions({
   }, []);
 
   const handleMarkRead = useCallback(() => {
-    markEmailsRead([emailId]);
+    markEmailsRead([emailId], { accountId });
     setReadMap((prev) => ({ ...prev, [emailId]: "read" }));
-  }, [emailId]);
+  }, [emailId, accountId]);
 
   const handleMarkUnread = useCallback(() => {
-    markEmailsUnread([emailId]);
+    markEmailsUnread([emailId], { accountId });
     setReadMap((prev) => ({ ...prev, [emailId]: "unread" }));
-  }, [emailId]);
+  }, [emailId, accountId]);
 
   const handleComplete = useCallback(
     async (
@@ -115,6 +122,9 @@ export function useEmailStatusActions({
           [
             {
               emailId,
+              accountId,
+              accountEmail,
+              accountLabel,
               actionId,
               actionLabel,
               sender,
@@ -126,7 +136,7 @@ export function useEmailStatusActions({
           ],
           { locale },
         );
-        applyDoneInboxEffects([emailId], { actionId });
+        applyDoneInboxEffects([{ id: emailId, accountId }], { actionId });
         setShowDonePicker(false);
         if (!onCompleted) {
           notifyCompleted({ emailIds: [emailId], actionId, actionLabel, locale });
@@ -136,19 +146,19 @@ export function useEmailStatusActions({
         setBusy(false);
       }
     },
-    [emailId, threadId, sender, subject, snippet, category, completeEmails, notifyCompleted, locale, onCompleted],
+    [emailId, accountId, accountEmail, accountLabel, threadId, sender, subject, snippet, category, completeEmails, notifyCompleted, locale, onCompleted],
   );
 
   const handleUndo = useCallback(async () => {
     setBusy(true);
     try {
-      revertDoneInboxEffects([emailId]);
+      revertDoneInboxEffects([{ id: emailId, accountId }]);
       await uncompleteEmails([emailId]);
       showFeedback(t.undone);
     } finally {
       setBusy(false);
     }
-  }, [emailId, uncompleteEmails, showFeedback, t]);
+  }, [emailId, accountId, uncompleteEmails, showFeedback, t]);
 
   const isActiveWaitingItem = completion ? isActiveWaiting(completion) : false;
 

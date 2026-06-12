@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEmailCompletions } from "@/app/email-completions-context";
 import { applyDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
 import { useReplyUsage } from "@/app/reply-usage-context";
@@ -426,6 +426,10 @@ export function EmailActions({
 }: EmailActionsProps) {
   const ui = useUiCopy();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Account that owns this message — completion state and Gmail side effects
+  // must be scoped to it (Gmail ids are only unique per mailbox).
+  const accountId = searchParams.get("accountId") ?? undefined;
   const { completeEmails } = useEmailCompletions();
   const { generatedRepliesCount, incrementGeneratedRepliesCount } = useReplyUsage();
   const {
@@ -1573,6 +1577,7 @@ return () => clearTimeout(timeout);
     void completeEmails([
       {
         emailId,
+        accountId,
         actionId: "replied",
         actionLabel: inboxLocale === "it" ? "Risposto" : "Replied",
         sender: _senderName ?? "",
@@ -1581,7 +1586,7 @@ return () => clearTimeout(timeout);
         category: inboxCategory,
       },
     ]).then(() => {
-      applyDoneInboxEffects([emailId], { actionId: "replied" });
+      applyDoneInboxEffects([{ id: emailId, accountId }], { actionId: "replied" });
     });
 
     sendFeedbackFadeTimerRef.current = window.setTimeout(() => {

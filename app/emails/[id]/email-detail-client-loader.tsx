@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CalmFadeIn } from "@/app/components/calm-loading";
 import { EmailDetailSkeleton } from "@/app/components/email-detail-skeleton";
 import { EmailDetailView, type EmailDetailPayload } from "./email-detail-view";
@@ -36,6 +37,8 @@ type EmailDetailClientLoaderProps = {
 
 export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProps) {
   const ui = useUiCopy();
+  const searchParams = useSearchParams();
+  const accountId = searchParams.get("accountId");
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [preview] = useState<EmailPreviewCache | null>(() =>
     typeof window !== "undefined" ? readEmailPreview(emailId) : null,
@@ -43,7 +46,10 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
 
   const loadEmail = useCallback(async () => {
     setState({ status: "loading" });
-    const endpoint = `/api/gmail/messages/${encodeURIComponent(emailId)}`;
+    const params = new URLSearchParams();
+    if (accountId) params.set("accountId", accountId);
+    const qs = params.toString();
+    const endpoint = `/api/gmail/messages/${encodeURIComponent(emailId)}${qs ? `?${qs}` : ""}`;
 
     try {
       const hasCookies = await ensureApiSessionCookies();
@@ -131,18 +137,19 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
         raw: error,
       });
     }
-  }, [emailId]);
+  }, [emailId, accountId]);
 
   useEffect(() => {
     void loadEmail();
   }, [loadEmail]);
 
-  // Opening an email marks it read locally + removes Gmail's UNREAD label.
+  // Opening an email marks it read locally + removes Gmail's UNREAD label
+  // (synced to the account that owns the message).
   useEffect(() => {
     if (state.status !== "ready") return;
     if (loadReadStateMap()[emailId] === "read") return;
-    markEmailsRead([emailId]);
-  }, [state.status, emailId]);
+    markEmailsRead([emailId], { accountId: accountId ?? undefined });
+  }, [state.status, emailId, accountId]);
 
   const skeletonPreview = useMemo(() => preview, [preview]);
 

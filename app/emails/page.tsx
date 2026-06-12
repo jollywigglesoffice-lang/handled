@@ -43,7 +43,14 @@ import {
 import { syncSenderRelationshipsFromAccount } from "@/lib/relationship-intelligence/client-sync";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import { syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
+import { AccountFilter, type AccountFilterValue } from "@/app/emails/account-filter";
 import { InboxSecondaryTools } from "@/app/emails/inbox-secondary-tools";
+import {
+  isEmailCompleted,
+  lookupScopedValue,
+  scopedEmailKey,
+} from "@/lib/gmail/account-types";
+import type { ConnectedGmailAccount } from "@/lib/gmail/account-types";
 import { getWorkflowModeProfile } from "@/lib/workflow-mode/profiles";
 import { InboxClutterSection } from "@/app/emails/inbox-clutter-section";
 import { applyImportanceOrderingToBuckets } from "@/lib/importance-memory";
@@ -125,6 +132,8 @@ import {
 import { GmailTruthPanel } from "@/app/emails/gmail-truth-panel";
 import { WaitingDashboardSummary } from "@/app/emails/waiting-dashboard-summary";
 import { useWaitingOnMetadata } from "@/app/waiting-on-metadata-context";
+import { isActiveWaiting } from "@/lib/waiting-on/helpers";
+import { INBOX_CLUTTER_CATEGORIES } from "@/lib/inbox-ai-categories";
 import { applyDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
 import { buildInboxTruthSnapshot } from "@/lib/inbox-truth/compute-snapshot";
 import type { GmailTruthStats } from "@/lib/inbox-truth/types";
@@ -146,6 +155,7 @@ import {
 import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import { CategoryTabs, type CategoryTab } from "@/app/emails/category-tabs";
+import { CategoryViewGuidance } from "@/app/emails/category-view-guidance";
 import {
   consumeInboxScrollRestore,
   inboxEmailAnchorId,
@@ -170,6 +180,9 @@ type GmailInboxMessage = {
   actionIntelligence?: import("@/lib/action-intelligence").ActionIntelligenceSummary;
   timelineIntelligence?: import("@/lib/timeline-intelligence").TimelineIntelligenceSummary;
   relationship?: SenderRelationshipProfile;
+  accountId?: string;
+  accountEmail?: string;
+  accountLabel?: string;
 };
 
 type InboxMode =
@@ -180,6 +193,27 @@ type InboxMode =
   | "gmail_error";
 
 const CATEGORY_TAB_KEY = "handled_category_tab_v1";
+const ACCOUNT_FILTER_KEY = "handled_account_filter_v1";
+
+function loadAccountFilter(): AccountFilterValue {
+  if (typeof window === "undefined") return "all";
+  try {
+    const raw = localStorage.getItem(ACCOUNT_FILTER_KEY);
+    if (raw === "all" || (raw && raw.length > 0)) return raw;
+  } catch {
+    /* ignore */
+  }
+  return "all";
+}
+
+function saveAccountFilter(value: AccountFilterValue): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(ACCOUNT_FILTER_KEY, value);
+  } catch {
+    /* ignore */
+  }
+}
 
 function loadCategoryTab(validIds: ReadonlySet<string>): CategoryTab {
   if (typeof window === "undefined") return "all";
@@ -406,6 +440,7 @@ function GmailCategorySection({
   onCategoryChange,
   onResetOverride,
   activeCategoryTab,
+  showAccountBadges,
 }: {
   category: InboxAiCategory;
   list: GmailCardMessage[];
@@ -422,6 +457,7 @@ function GmailCategorySection({
   ) => void;
   onResetOverride: (id: string) => void;
   activeCategoryTab: CategoryTab;
+  showAccountBadges: boolean;
 }) {
   return (
     <section className="space-y-3">
@@ -450,6 +486,7 @@ function GmailCategorySection({
               onToggleSelect={selection.toggle}
               readStateMap={readStateMap}
               inboxReturnCapture={{ view: "inbox", categoryTab: activeCategoryTab }}
+              showAccountBadge={showAccountBadges}
             />
           </div>
         ))}
@@ -497,6 +534,10 @@ export default function EmailsInboxPage() {
 
   const [inboxMode, setInboxMode] = useState<InboxMode>("loading");
   const [gmailMessages, setGmailMessages] = useState<GmailInboxMessage[]>([]);
+  // Stable handle for callbacks that need to resolve a message's accountId
+  // without re-creating on every message change.
+  const gmailMessagesRef = useRef<GmailInboxMessage[]>([]);
+  gmailMessagesRef.current = gmailMessages;
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, InboxAiCategory>>(
     {},
   );
@@ -507,6 +548,8 @@ export default function EmailsInboxPage() {
   const [gmailError, setGmailError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [gmailTruth, setGmailTruth] = useState<GmailTruthStats | null>(null);
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedGmailAccount[]>([]);
+  const [activeAccountFilter, setActiveAccountFilter] = useState<AccountFilterValue>("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Pagination plumbing (Gmail nextPageToken). UI only exposes a manual
   // "load more" for now — no infinite scroll yet.
@@ -611,6 +654,9 @@ export default function EmailsInboxPage() {
         } else if (refresh) {
           params.set("refresh", "1");
         }
+        if (activeAccountFilter !== "all") {
+          params.set("accountId", activeAccountFilter);
+        }
         const url = params.toString()
           ? `/api/gmail/messages?${params.toString()}`
           : "/api/gmail/messages";
@@ -633,6 +679,7 @@ export default function EmailsInboxPage() {
           nextPageToken?: string | null;
           refresh?: boolean;
           gmailTruth?: GmailTruthStats | null;
+          accounts?: ConnectedGmailAccount[];
           diagnostics?: InboxLoadApiErrorBody["diagnostics"];
         };
 
@@ -789,8 +836,14 @@ export default function EmailsInboxPage() {
             ).timelineIntelligence,
             relationship:
               (r as { relationship?: SenderRelationshipProfile }).relationship ?? undefined,
+            accountId: (r as { accountId?: string }).accountId,
+            accountEmail: (r as { accountEmail?: string }).accountEmail,
+            accountLabel: (r as { accountLabel?: string }).accountLabel,
           };
         });
+        if (body.accounts?.length) {
+          setConnectedAccounts(body.accounts);
+        }
         const localRecords = loadClientEmailOverrides();
         const serverRecords =
           body.emailOverrideRecords ??
@@ -923,7 +976,7 @@ export default function EmailsInboxPage() {
         }
       }
     },
-    [router, showCachedInboxOnRateLimit, uiLanguage],
+    [router, showCachedInboxOnRateLimit, uiLanguage, activeAccountFilter],
   );
 
   const handleLoadMore = useCallback(() => {
@@ -1089,22 +1142,29 @@ export default function EmailsInboxPage() {
     return () => window.removeEventListener(DISMISSED_EVENT, sync);
   }, []);
 
+  // Dismissed entries are account-scoped (`accountId:emailId`) with legacy
+  // raw-id entries still honored.
+  const isDismissedMessage = useCallback(
+    (m: { id: string; accountId?: string }) =>
+      dismissedIds.has(scopedEmailKey(m.id, m.accountId)) || dismissedIds.has(m.id),
+    [dismissedIds],
+  );
+
   const messagesWithOverrides = useMemo(() => {
     const visible =
       dismissedIds.size === 0
         ? gmailMessages
-        : gmailMessages.filter((m) => !dismissedIds.has(m.id));
+        : gmailMessages.filter((m) => !isDismissedMessage(m));
     const resolved = resolveAllInboxMessagesForDisplay(visible, categoryResolutionContext);
-    const completedSet = new Set(Object.keys(completions));
-    return resolved.filter((m) => !completedSet.has(m.id));
-  }, [gmailMessages, categoryResolutionContext, dismissedIds, completions]);
+    return resolved.filter((m) => !isEmailCompleted(m, completions));
+  }, [gmailMessages, categoryResolutionContext, dismissedIds, isDismissedMessage, completions]);
 
   useEffect(() => {
     if (inboxMode !== "gmail" || gmailMessages.length === 0) return;
     const visible =
       dismissedIds.size === 0
         ? gmailMessages
-        : gmailMessages.filter((m) => !dismissedIds.has(m.id));
+        : gmailMessages.filter((m) => !isDismissedMessage(m));
     void scanWaitingResponses(
       visible.map((m) => ({
         id: m.id,
@@ -1117,7 +1177,7 @@ export default function EmailsInboxPage() {
       })),
       { userEmail },
     );
-  }, [inboxMode, gmailMessages, dismissedIds, scanWaitingResponses, userEmail]);
+  }, [inboxMode, gmailMessages, dismissedIds, isDismissedMessage, scanWaitingResponses, userEmail]);
 
   const messagesForDisplay = useMemo(() => {
     const responseEmailIds = new Set(
@@ -1127,6 +1187,11 @@ export default function EmailsInboxPage() {
     );
     return messagesWithOverrides.map((m) => {
       if (!responseEmailIds.has(m.id)) return m;
+      // Manual overrides are the highest-priority source of truth: keep the
+      // waiting-response badge, but never recategorize a user-set category.
+      if (m.categorySource === "manual_override") {
+        return { ...m, waitingResponseUpdate: true };
+      }
       return {
         ...m,
         category: "needs_attention" as InboxAiCategory,
@@ -1161,8 +1226,17 @@ export default function EmailsInboxPage() {
 
   const { summary: waitingSummary } = useWaitingOnMetadata();
 
+  const completedCount = useMemo(
+    () => Object.values(completions).filter((r) => !isActiveWaiting(r)).length,
+    [completions],
+  );
+
   const briefingCounts = useMemo(() => {
-    const responseInInbox = messagesForDisplay.filter((m) => m.waitingResponseUpdate).length;
+    const responseInInbox = messagesForDisplay.filter(
+      // Manual-override emails keep their category, so only subtract the ones
+      // actually promoted into needs_attention.
+      (m) => m.waitingResponseUpdate && m.category === "needs_attention",
+    ).length;
     return {
       ...gmailBuckets.counts,
       needs_attention: Math.max(
@@ -1230,7 +1304,14 @@ export default function EmailsInboxPage() {
   const [activeCategoryTab, setActiveCategoryTab] = useState<CategoryTab>("all");
   useEffect(() => {
     setActiveCategoryTab(loadCategoryTab(validTabIds));
+    setActiveAccountFilter(loadAccountFilter());
   }, [validTabIds]);
+
+  const handleAccountFilterChange = useCallback((value: AccountFilterValue) => {
+    setActiveAccountFilter(value);
+    saveAccountFilter(value);
+    void loadInbox({ refresh: true, force: true });
+  }, [loadInbox]);
 
   const handleCategoryTabChange = useCallback((tab: CategoryTab) => {
     setActiveCategoryTab(tab);
@@ -1256,13 +1337,20 @@ export default function EmailsInboxPage() {
   }, [inboxLoading, showContent, inboxMode, validTabIds]);
 
   // Core move: persist overrides + update UI for a set of ids. No undo/toast.
+  // Override keys are account-scoped (`accountId:emailId`) — Gmail ids are
+  // only unique within one mailbox.
   const applyCategoryToIds = useCallback(
     (ids: string[], category: InboxAiCategory) => {
       if (ids.length === 0) return;
       const now = new Date().toISOString();
+      const accountById = new Map(
+        gmailMessagesRef.current.map((m) => [m.id, m.accountId] as const),
+      );
+      const keyFor = (id: string) => scopedEmailKey(id, accountById.get(id));
+
       for (const id of ids) {
         upsertClientEmailOverride({
-          emailId: id,
+          emailId: keyFor(id),
           originalCategory: null,
           overriddenCategory: category,
           createdAt: now,
@@ -1273,7 +1361,11 @@ export default function EmailsInboxPage() {
       const idSet = new Set(ids);
       setCategoryOverrides((prev) => {
         const next = { ...prev };
-        for (const id of ids) next[id] = category;
+        for (const id of ids) {
+          const key = keyFor(id);
+          next[key] = category;
+          if (key !== id) delete next[id];
+        }
         return next;
       });
       setGmailMessages((prev) =>
@@ -1290,7 +1382,11 @@ export default function EmailsInboxPage() {
       );
 
       for (const id of ids) {
-        void persistEmailOverrideToAccount({ emailId: id, overriddenCategory: category });
+        void persistEmailOverrideToAccount({
+          emailId: id,
+          overriddenCategory: category,
+          accountId: accountById.get(id),
+        });
       }
     },
     [],
@@ -1312,6 +1408,10 @@ export default function EmailsInboxPage() {
 
       applyCategoryToIds(ids, category);
 
+      if (category === "promotion" || category === "newsletter") {
+        handleCategoryTabChange(category);
+      }
+
       trackEvent("bulk_action_used", {
         bulk_action_type: `move:${category}`,
         count: ids.length,
@@ -1319,35 +1419,59 @@ export default function EmailsInboxPage() {
       offerCategoryUndo(snapshot, category, ids.length);
       selection.clear();
     },
-    [selection, gmailMessages, categoryOverrides, offerCategoryUndo, applyCategoryToIds],
+    [selection, gmailMessages, categoryOverrides, offerCategoryUndo, applyCategoryToIds, handleCategoryTabChange],
   );
+
+  // Bulk read-state changes group ids by account so each Gmail mailbox
+  // receives only its own message ids.
+  const groupIdsByAccount = useCallback((ids: string[]) => {
+    const accountById = new Map(
+      gmailMessagesRef.current.map((m) => [m.id, m.accountId] as const),
+    );
+    const groups = new Map<string | undefined, string[]>();
+    for (const id of ids) {
+      const accountId = accountById.get(id);
+      const list = groups.get(accountId) ?? [];
+      list.push(id);
+      groups.set(accountId, list);
+    }
+    return groups;
+  }, []);
 
   const handleBulkMarkRead = useCallback(() => {
     const ids = [...selection.selectedIds];
-    markEmailsRead(ids);
+    for (const [accountId, group] of groupIdsByAccount(ids)) {
+      markEmailsRead(group, { accountId });
+    }
     trackEvent("bulk_action_used", { bulk_action_type: "mark_read", count: ids.length });
-  }, [selection.selectedIds]);
+  }, [selection.selectedIds, groupIdsByAccount]);
 
   const handleBulkMarkUnread = useCallback(() => {
     const ids = [...selection.selectedIds];
-    markEmailsUnread(ids);
+    for (const [accountId, group] of groupIdsByAccount(ids)) {
+      markEmailsUnread(group, { accountId });
+    }
     trackEvent("bulk_action_used", { bulk_action_type: "mark_unread", count: ids.length });
-  }, [selection.selectedIds]);
+  }, [selection.selectedIds, groupIdsByAccount]);
 
   const handleSelectAllVisible = useCallback(() => {
     const source =
       activeCategoryTab === "all"
         ? gmailBuckets.allVisible
-        : gmailBuckets.byCategory[activeCategoryTab] ?? [];
+        : gmailBuckets.byCategoryAll[activeCategoryTab] ?? [];
     selection.selectAll(source.map((m) => m.id));
-  }, [selection, gmailBuckets.allVisible, gmailBuckets.byCategory, activeCategoryTab]);
+  }, [selection, gmailBuckets.allVisible, gmailBuckets.byCategoryAll, activeCategoryTab]);
 
   const handleSelectAllInSection = useCallback(
     (category: InboxAiCategory) => {
-      const ids = (gmailBuckets.byCategory[category] ?? []).map((m) => m.id);
+      const source =
+        activeCategoryTab === category
+          ? gmailBuckets.byCategoryAll[category]
+          : gmailBuckets.byCategory[category];
+      const ids = (source ?? []).map((m) => m.id);
       if (ids.length) selection.selectMany(ids);
     },
-    [selection, gmailBuckets.byCategory],
+    [selection, gmailBuckets.byCategory, gmailBuckets.byCategoryAll, activeCategoryTab],
   );
 
   const handleBulkComplete = useCallback(
@@ -1368,6 +1492,9 @@ export default function EmailsInboxPage() {
             snippet: m?.snippet,
             threadId: m?.threadId,
             category: m?.category ?? "needs_attention",
+            accountId: m?.accountId,
+            accountEmail: m?.accountEmail,
+            accountLabel: m?.accountLabel,
           };
         }),
         { locale: inboxLocale },
@@ -1395,10 +1522,17 @@ export default function EmailsInboxPage() {
       const ids = [...selection.selectedIds];
       if (ids.length === 0) return;
 
-      addDismissedIds(ids);
+      // Dismissed entries are account-scoped — raw Gmail ids collide across
+      // mailboxes.
+      const accountById = new Map(
+        gmailMessagesRef.current.map((m) => [m.id, m.accountId] as const),
+      );
+      const scopedIds = ids.map((id) => scopedEmailKey(id, accountById.get(id)));
+
+      addDismissedIds(scopedIds);
       setDismissedIds((prev) => {
         const next = new Set(prev);
-        for (const id of ids) next.add(id);
+        for (const key of scopedIds) next.add(key);
         return next;
       });
       trackEvent("bulk_action_used", { bulk_action_type: actionType, count: ids.length });
@@ -1425,10 +1559,10 @@ export default function EmailsInboxPage() {
         message: verb,
         actionType,
         onUndo: () => {
-          removeDismissedIds(ids);
+          removeDismissedIds(scopedIds);
           setDismissedIds((prev) => {
             const next = new Set(prev);
-            for (const id of ids) next.delete(id);
+            for (const key of scopedIds) next.delete(key);
             return next;
           });
         },
@@ -1449,7 +1583,7 @@ export default function EmailsInboxPage() {
 
   // One-click: move all visible promotions to Handled, with undo.
   const handleClearPromotions = useCallback(() => {
-    const ids = (gmailBuckets.byCategory.promotion ?? []).map((m) => m.id);
+    const ids = gmailBuckets.promotionEmails.map((m) => m.id);
     if (ids.length === 0) return;
 
     const snapshot = buildCategoryUndoSnapshot({
@@ -1501,7 +1635,7 @@ export default function EmailsInboxPage() {
     const responseReceived = needsAttentionAll.filter(
       (m) => (m as GmailInboxMessage).waitingResponseUpdate,
     );
-    const promotions = gmailBuckets.byCategory.promotion ?? [];
+    const promotions = gmailBuckets.promotionEmails;
 
     const steps: InboxZeroStep[] = [
       ...quickReplies.map((message) => ({
@@ -1550,11 +1684,14 @@ export default function EmailsInboxPage() {
             snippet: m?.snippet,
             threadId: m?.threadId,
             category: m?.category ?? "needs_attention",
+            accountId: m?.accountId,
+            accountEmail: m?.accountEmail,
+            accountLabel: m?.accountLabel,
           },
         ],
         { locale: inboxLocale },
       );
-      applyDoneInboxEffects([id], { actionId });
+      applyDoneInboxEffects([{ id, accountId: m?.accountId }], { actionId });
       notifyCompleted({
         emailIds: [id],
         actionId,
@@ -1649,35 +1786,60 @@ export default function EmailsInboxPage() {
         categoryOverrides,
       });
 
+      const accountId = gmailMessagesRef.current.find((m) => m.id === id)?.accountId;
+      const scopedKey = scopedEmailKey(id, accountId);
+
       if (scope === "sender" && options?.sender) {
         logSenderRuleDebug("handleCategoryChange sender scope", {
           emailId: id,
           ...resolveSenderIdentity(options.sender),
           category,
         });
-        const { messages, affectedIds } = applySenderRuleToMessages(
+        const { messages } = applySenderRuleToMessages(
           gmailMessages,
           options.sender,
           category,
+          { triggerEmailId: id },
         );
         setGmailMessages(messages);
-        setCategoryOverrides((ov) => {
-          const next = { ...ov };
-          for (const affectedId of affectedIds) {
-            next[affectedId] = category;
-          }
-          return next;
-        });
+        // Gap #2: sender-scope changes must NOT write per-email manual
+        // override state for matched emails — that would mask persisted
+        // manual overrides. The sender rule itself (persisted separately)
+        // drives the recategorization, and manual overrides keep outranking
+        // it at resolution time. Only the trigger email's own pre-existing
+        // manual override is refreshed to the user's latest choice, so a
+        // stale override can't snap it back.
+        const hasExistingOverride =
+          lookupScopedValue(categoryOverrides, id, accountId) !== undefined ||
+          lookupScopedValue(loadClientEmailOverrideMap(), id, accountId) !== undefined;
+        if (hasExistingOverride) {
+          setCategoryOverrides((prev) => {
+            const next = { ...prev };
+            next[scopedKey] = category;
+            if (scopedKey !== id) delete next[id];
+            return next;
+          });
+          void persistEmailOverrideToAccount({
+            emailId: id,
+            overriddenCategory: category,
+            originalCategory: options?.guessedCategory,
+            accountId,
+          });
+        }
       } else {
         const now = new Date().toISOString();
         upsertClientEmailOverride({
-          emailId: id,
+          emailId: scopedKey,
           originalCategory: options?.guessedCategory ?? null,
           overriddenCategory: category,
           createdAt: now,
           updatedAt: now,
         });
-        setCategoryOverrides((prev) => ({ ...prev, [id]: category }));
+        setCategoryOverrides((prev) => {
+          const next = { ...prev, [scopedKey]: category };
+          if (scopedKey !== id) delete next[id];
+          return next;
+        });
         setGmailMessages((prev) =>
           prev.map((m) =>
             m.id === id
@@ -1694,12 +1856,23 @@ export default function EmailsInboxPage() {
           emailId: id,
           overriddenCategory: category,
           originalCategory: options?.guessedCategory,
+          accountId,
         });
       }
 
       offerCategoryUndo(snapshot, category);
+
+      // Jump to the destination tab so moved emails never feel like they vanished.
+      if (
+        scope === "this_email" &&
+        (category === "promotion" ||
+          category === "newsletter" ||
+          INBOX_CLUTTER_CATEGORIES.includes(category))
+      ) {
+        handleCategoryTabChange(category);
+      }
     },
-    [gmailMessages, categoryOverrides, offerCategoryUndo],
+    [gmailMessages, categoryOverrides, offerCategoryUndo, handleCategoryTabChange],
   );
 
   const handleRecategorizeInZero = useCallback(
@@ -1724,6 +1897,7 @@ export default function EmailsInboxPage() {
           guessedCategory: meta.guessedCategory,
           chosenCategory: chosen,
           scope,
+          accountId: gmailMessagesRef.current.find((m) => m.id === id)?.accountId,
         });
         if (scope === "this_email") {
           window.dispatchEvent(new Event("handled-email-overrides-changed"));
@@ -1744,10 +1918,12 @@ export default function EmailsInboxPage() {
   const handleResetCategoryOverride = useCallback(
     async (id: string) => {
       dismissUndoToast();
-      await removeEmailOverrideFromAccount(id);
+      const accountId = gmailMessagesRef.current.find((m) => m.id === id)?.accountId;
+      await removeEmailOverrideFromAccount(id, accountId);
       setCategoryOverrides((prev) => {
         const next = { ...prev };
         delete next[id];
+        delete next[scopedEmailKey(id, accountId)];
         return next;
       });
       void loadInbox({ silent: true, refresh: true });
@@ -1922,13 +2098,23 @@ export default function EmailsInboxPage() {
                 onInboxZero={handleStartInboxZero}
               />
               <WaitingDashboardSummary summary={waitingSummary} locale={inboxLocale} compact />
-              <CategoryTabs
-                active={activeCategoryTab}
-                counts={gmailBuckets.counts}
-                total={gmailBuckets.allVisible.length}
+              <AccountFilter
+                accounts={connectedAccounts}
+                value={activeAccountFilter}
                 locale={inboxLocale}
-                onChange={handleCategoryTabChange}
+                onChange={handleAccountFilterChange}
               />
+              <div className="sticky top-0 z-10 -mx-1 bg-[#fafafa]/95 py-2 backdrop-blur-sm">
+                <CategoryTabs
+                  active={activeCategoryTab}
+                  counts={gmailBuckets.counts}
+                  total={gmailBuckets.totalAccessible}
+                  locale={inboxLocale}
+                  waitingCount={waitingSummary.total}
+                  completedCount={completedCount}
+                  onChange={handleCategoryTabChange}
+                />
+              </div>
               {activeCategoryTab === "all" ? (
                 <>
                   {gmailBuckets.counts.needs_attention === 0 &&
@@ -1964,6 +2150,7 @@ export default function EmailsInboxPage() {
                         onCategoryChange={handleCategoryChange}
                         onResetOverride={handleResetCategoryOverride}
                         activeCategoryTab={activeCategoryTab}
+                        showAccountBadges={connectedAccounts.length > 1}
                       />
                     );
                   })}
@@ -1975,23 +2162,34 @@ export default function EmailsInboxPage() {
                       readStateMap={readStateMap}
                       defaultCollapsed
                       inboxReturnCapture={{ view: "inbox", categoryTab: activeCategoryTab }}
+                      onOpenPromotionsTab={() => handleCategoryTabChange("promotion")}
+                      showAccountBadges={connectedAccounts.length > 1}
                     />
                   ) : null}
                 </>
-              ) : (gmailBuckets.byCategory[activeCategoryTab] ?? []).length > 0 ? (
-                <GmailCategorySection
-                  category={activeCategoryTab}
-                  list={gmailBuckets.byCategory[activeCategoryTab]}
-                  uiLanguage={uiLanguage}
-                  count={gmailBuckets.counts[activeCategoryTab]}
-                  onSelectAll={() => handleSelectAllInSection(activeCategoryTab)}
-                  showContent={showContent}
-                  selection={selection}
-                  readStateMap={readStateMap}
-                  onCategoryChange={handleCategoryChange}
-                  onResetOverride={handleResetCategoryOverride}
-                  activeCategoryTab={activeCategoryTab}
-                />
+              ) : (gmailBuckets.byCategoryAll[activeCategoryTab] ?? []).length > 0 ? (
+                <div className="space-y-4">
+                  <CategoryViewGuidance
+                    category={activeCategoryTab}
+                    locale={inboxLocale}
+                    workflowMode={workflowMode}
+                    count={gmailBuckets.counts[activeCategoryTab] ?? 0}
+                  />
+                  <GmailCategorySection
+                    category={activeCategoryTab}
+                    list={gmailBuckets.byCategoryAll[activeCategoryTab]}
+                    uiLanguage={uiLanguage}
+                    count={gmailBuckets.counts[activeCategoryTab]}
+                    onSelectAll={() => handleSelectAllInSection(activeCategoryTab)}
+                    showContent={showContent}
+                    selection={selection}
+                    readStateMap={readStateMap}
+                    onCategoryChange={handleCategoryChange}
+                    onResetOverride={handleResetCategoryOverride}
+                    activeCategoryTab={activeCategoryTab}
+                    showAccountBadges={connectedAccounts.length > 1}
+                  />
+                </div>
               ) : (
                 <InboxEmptyState
                   tone="calm"

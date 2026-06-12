@@ -6,6 +6,8 @@ import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
 
 export type CategoryUndoMessageState = {
   id: string;
+  /** Owning connected account — needed for account-scoped override keys. */
+  accountId?: string;
   category: InboxAiCategory;
   categorySource?: string;
 };

@@ -29,6 +29,7 @@ export async function buildEmailDetailFromGmailMessage(
   msg: GmailMessageFull,
   userId: string,
   workflowMode: WorkflowMode,
+  options?: { accountId?: string },
 ): Promise<EmailDetailPayload> {
   const bodyHtml = msg.bodyHtml?.trim() ?? "";
   const bodyPlain = msg.bodyText?.trim() ?? "";
@@ -37,6 +38,7 @@ export async function buildEmailDetailFromGmailMessage(
 
   const meta = toEnrichmentMeta({
     id: msg.id,
+    accountId: options?.accountId,
     threadId: msg.threadId,
     sender: msg.sender,
     subject: msg.subject,
@@ -113,9 +115,10 @@ export async function buildEmailDetailFromGmailMetadata(
   id: string,
   userId: string,
   workflowMode: WorkflowMode,
+  options?: { accountId?: string },
 ): Promise<EmailDetailPayload> {
   const meta = await gmailGetMessageMetadata(accessToken, id);
-  const enrichmentMeta = toEnrichmentMeta(meta);
+  const enrichmentMeta = toEnrichmentMeta({ ...meta, accountId: options?.accountId });
   const intel = await enrichEmailDetailIntelligence(
     enrichmentMeta,
     userId,

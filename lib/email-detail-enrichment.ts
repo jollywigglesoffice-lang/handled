@@ -24,6 +24,8 @@ import type { WorkflowMode } from "@/lib/workflow-mode";
 
 export type EmailDetailEnrichmentMeta = {
   id: string;
+  /** Connected account that owns the message — scopes manual override lookups. */
+  accountId?: string;
   threadId: string;
   sender: string;
   subject: string;
@@ -138,6 +140,7 @@ async function safeAsync<T>(
 
 export function toEnrichmentMeta(input: {
   id: string;
+  accountId?: string;
   threadId?: string;
   sender: string;
   subject: string;
@@ -147,6 +150,7 @@ export function toEnrichmentMeta(input: {
 }): EmailDetailEnrichmentMeta {
   return {
     id: input.id,
+    accountId: input.accountId,
     threadId: input.threadId ?? input.id,
     sender: input.sender ?? "",
     subject: input.subject ?? "(No subject)",
@@ -162,6 +166,7 @@ export function toEnrichmentMeta(input: {
 export function toGmailRow(meta: EmailDetailEnrichmentMeta): GmailInboxRow {
   return {
     id: meta.id,
+    accountId: meta.accountId,
     threadId: meta.threadId,
     sender: meta.sender,
     subject: meta.subject,

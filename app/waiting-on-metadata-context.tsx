@@ -25,6 +25,7 @@ import {
   saveWaitingOnMetadata,
   WAITING_ON_METADATA_EVENT,
 } from "@/lib/waiting-on/metadata-storage";
+import { completionStorageKey, findScopedEntry } from "@/lib/gmail/account-types";
 import { useEmailCompletions } from "@/app/email-completions-context";
 
 type WaitingOnMetadataContextValue = {
@@ -63,29 +64,37 @@ export function WaitingOnMetadataProvider({ children }: { children: React.ReactN
     saveWaitingOnMetadata(next);
   }, []);
 
+  // Metadata keys may be account-scoped (`accountId:emailId`) or legacy raw
+  // ids — keyed access resolves the existing entry's actual key.
   const ensureMetadataForWaiting = useCallback(
     (emailId: string, input?: { followUpAt?: number }) => {
-      if (metadata[emailId]) return;
+      if (findScopedEntry(metadata, emailId)) return;
       const now = Date.now();
+      const key = completionStorageKey(
+        findScopedEntry(completions, emailId)?.[1] ?? { emailId },
+      );
       persistMetadata({
         ...metadata,
-        [emailId]: createWaitingOnMetadata(emailId, input, now),
+        [key]: createWaitingOnMetadata(emailId, input, now),
       });
     },
-    [metadata, persistMetadata],
+    [metadata, completions, persistMetadata],
   );
 
   const upsertMetadata = useCallback(
     (emailId: string, patch: Partial<WaitingOnMetadataMap[string]>) => {
       const now = Date.now();
-      const existing =
-        metadata[emailId] ?? createWaitingOnMetadata(emailId, undefined, now);
+      const entry = findScopedEntry(metadata, emailId);
+      const key =
+        entry?.[0] ??
+        completionStorageKey(findScopedEntry(completions, emailId)?.[1] ?? { emailId });
+      const existing = entry?.[1] ?? createWaitingOnMetadata(emailId, undefined, now);
       persistMetadata({
         ...metadata,
-        [emailId]: { ...existing, ...patch, updatedAt: now },
+        [key]: { ...existing, ...patch, updatedAt: now },
       });
     },
-    [metadata, persistMetadata],
+    [metadata, completions, persistMetadata],
   );
 
   const updateWaitingNote = useCallback(
@@ -126,13 +135,16 @@ export function WaitingOnMetadataProvider({ children }: { children: React.ReactN
 
   const returnWaitingToInbox = useCallback(
     async (emailId: string) => {
-      revertDoneInboxEffects([emailId]);
+      const record = findScopedEntry(completions, emailId)?.[1];
+      revertDoneInboxEffects([{ id: emailId, accountId: record?.accountId }]);
       const next = { ...metadata };
       delete next[emailId];
+      const metaEntry = findScopedEntry(next, emailId, record?.accountId);
+      if (metaEntry) delete next[metaEntry[0]];
       persistMetadata(next);
       await uncompleteEmails([emailId]);
     },
-    [metadata, persistMetadata, uncompleteEmails],
+    [metadata, completions, persistMetadata, uncompleteEmails],
   );
 
   const dashboardItems = useMemo(
@@ -205,10 +217,11 @@ export function useSyncWaitingMetadata(completions: Record<string, EmailCompleti
 
     for (const record of Object.values(completions)) {
       if (record.actionId !== "waiting_on_someone" || record.waitingResolvedAt) continue;
-      if (next[record.emailId]) continue;
+      const key = completionStorageKey(record);
+      if (next[key] || next[record.emailId]) continue;
       next = {
         ...next,
-        [record.emailId]: createWaitingOnMetadata(record.emailId, {
+        [key]: createWaitingOnMetadata(record.emailId, {
           followUpAt: record.followUpAt,
         }, now),
       };

@@ -52,12 +52,13 @@ export async function requireApiAuth(
  */
 export async function requireGoogleProviderToken(
   auth: ServerAuthSession | ResolvedApiAuth,
-  extra?: Record<string, unknown>,
+  extra?: Record<string, unknown> & { accountId?: string | null },
 ): Promise<GoogleTokenResult> {
   const userId = auth.user?.id;
+  const accountId = extra?.accountId ?? null;
 
   if (userId) {
-    const fresh = await getFreshGoogleAccessToken(userId);
+    const fresh = await getFreshGoogleAccessToken(userId, { accountId });
     if (fresh) {
       return { ok: true, accessToken: fresh };
     }

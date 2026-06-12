@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useInboxCategories } from "@/app/inbox-categories-context";
 import { inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
 
@@ -10,6 +11,8 @@ type CategoryTabsProps = {
   counts: Record<string, number>;
   total: number;
   locale: "en" | "it";
+  waitingCount: number;
+  completedCount: number;
   onChange: (tab: CategoryTab) => void;
 };
 
@@ -18,10 +21,14 @@ export function CategoryTabs({
   counts,
   total,
   locale,
+  waitingCount,
+  completedCount,
   onChange,
 }: CategoryTabsProps) {
   const { catalog } = useInboxCategories();
   const allLabel = locale === "it" ? "Tutte" : "All";
+  const waitingLabel = locale === "it" ? "In attesa" : "Waiting On";
+  const completedLabel = locale === "it" ? "Completate" : "Completed";
 
   return (
     <nav
@@ -43,6 +50,18 @@ export function CategoryTabs({
           onClick={() => onChange(category)}
         />
       ))}
+      <ViewLinkPill
+        href="/emails/waiting"
+        label={waitingLabel}
+        count={waitingCount}
+        active={false}
+      />
+      <ViewLinkPill
+        href="/emails/completed"
+        label={completedLabel}
+        count={completedCount}
+        active={false}
+      />
     </nav>
   );
 }
@@ -63,12 +82,42 @@ function TabPill({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`group inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-        active
-          ? "bg-[#9733ff] text-white shadow-sm shadow-accent/20"
-          : "bg-gray-50 text-gray-600 hover:bg-accent-muted hover:text-accent"
-      }`}
+      className={pillClass(active)}
     >
+      <PillContent label={label} count={count} active={active} />
+    </button>
+  );
+}
+
+function ViewLinkPill({
+  href,
+  label,
+  count,
+  active,
+}: {
+  href: string;
+  label: string;
+  count: number;
+  active: boolean;
+}) {
+  return (
+    <Link href={href} className={pillClass(active)} aria-current={active ? "page" : undefined}>
+      <PillContent label={label} count={count} active={active} />
+    </Link>
+  );
+}
+
+function PillContent({
+  label,
+  count,
+  active,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+}) {
+  return (
+    <>
       <span>{label}</span>
       <span
         className={`min-w-4 rounded-full px-1 text-center text-xs tabular-nums transition ${
@@ -77,6 +126,14 @@ function TabPill({
       >
         {count}
       </span>
-    </button>
+    </>
   );
+}
+
+function pillClass(active: boolean): string {
+  return `group inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+    active
+      ? "bg-[#9733ff] text-white shadow-sm shadow-accent/20"
+      : "bg-gray-50 text-gray-600 hover:bg-accent-muted hover:text-accent"
+  }`;
 }

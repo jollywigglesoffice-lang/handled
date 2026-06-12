@@ -9,6 +9,7 @@ export const runtime = "nodejs";
 type ReadStateBody = {
   ids?: unknown;
   state?: unknown;
+  accountId?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -25,12 +26,6 @@ export async function POST(request: Request) {
     }
 
     const { auth } = authResult;
-    const googleAuth = await requireGoogleProviderToken(auth);
-    if (!googleAuth.ok) {
-      return applyAuthCookies(googleAuth.response);
-    }
-
-    const accessToken = googleAuth.accessToken;
 
     let body: ReadStateBody;
     try {
@@ -40,6 +35,20 @@ export async function POST(request: Request) {
         NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 }),
       );
     }
+
+    // Gmail ids are only unique per mailbox — resolve the token for the
+    // account that owns these messages (primary account when omitted).
+    const accountId =
+      typeof body.accountId === "string" && body.accountId.trim()
+        ? body.accountId.trim()
+        : null;
+
+    const googleAuth = await requireGoogleProviderToken(auth, { accountId });
+    if (!googleAuth.ok) {
+      return applyAuthCookies(googleAuth.response);
+    }
+
+    const accessToken = googleAuth.accessToken;
 
     const ids = Array.isArray(body.ids)
       ? body.ids.filter((id): id is string => typeof id === "string" && id.length > 0)
@@ -70,12 +79,16 @@ export async function POST(request: Request) {
 
     try {
       // Read  → remove the UNREAD label. Unread → add it back.
-      await withGoogleAuthRetry(auth.user.id, accessToken, (token) =>
-        gmailBatchModifyLabels(
-          token,
-          ids,
-          state === "read" ? { remove: ["UNREAD"] } : { add: ["UNREAD"] },
-        ),
+      await withGoogleAuthRetry(
+        auth.user.id,
+        accessToken,
+        (token) =>
+          gmailBatchModifyLabels(
+            token,
+            ids,
+            state === "read" ? { remove: ["UNREAD"] } : { add: ["UNREAD"] },
+          ),
+        { accountId },
       );
       console.log("[DEBUG read-state] ✓ Gmail batchModify succeeded");
     } catch (gmailError) {

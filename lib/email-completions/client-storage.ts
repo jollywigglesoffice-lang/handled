@@ -1,3 +1,4 @@
+import { completionStorageKey } from "@/lib/gmail/account-types";
 import type { EmailCompletionMap, EmailCompletionRecord } from "@/lib/email-completions/types";
 
 export const EMAIL_COMPLETIONS_KEY = "handled_email_completions_v1";
@@ -117,7 +118,7 @@ export function mergeCompletionsIntoMap(
 ): EmailCompletionMap {
   const next = { ...existing };
   for (const record of records) {
-    next[record.emailId] = record;
+    next[completionStorageKey(record)] = record;
   }
   return next;
 }

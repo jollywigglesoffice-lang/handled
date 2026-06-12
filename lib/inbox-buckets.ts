@@ -22,8 +22,15 @@ export type InboxBucketMessage = {
 
 export type InboxBuckets<T extends InboxBucketMessage> = {
   catalog: InboxCategoryCatalog;
+  /** Messages shown in the main "All" workflow view (may exclude clutter). */
   allVisible: T[];
+  /** Workflow-filtered buckets for the main "All" view sections. */
   byCategory: Record<string, T[]>;
+  /**
+   * Full category buckets — every loaded, non-completed message by category.
+   * Tab views and tab counts always use this so nothing disappears from navigation.
+   */
+  byCategoryAll: Record<string, T[]>;
   counts: Record<string, number>;
   categoryOrder: InboxAiCategory[];
   needsAttentionEmails: T[];
@@ -34,6 +41,8 @@ export type InboxBuckets<T extends InboxBucketMessage> = {
   todayAttentionCount: number;
   priorityCount: number;
   totalVisible: number;
+  /** Total accessible emails (matches sum of tab counts). */
+  totalAccessible: number;
   clutterEmails: T[];
   clutterCount: number;
   showClutterSection: boolean;
@@ -49,6 +58,7 @@ function emptyBuckets<T extends InboxBucketMessage>(
     catalog,
     allVisible: [],
     byCategory,
+    byCategoryAll: byCategory,
     counts,
     categoryOrder: [],
     needsAttentionEmails: [],
@@ -59,6 +69,7 @@ function emptyBuckets<T extends InboxBucketMessage>(
     todayAttentionCount: 0,
     priorityCount: 0,
     totalVisible: 0,
+    totalAccessible: 0,
     clutterEmails: [],
     clutterCount: 0,
     showClutterSection: false,
@@ -80,13 +91,27 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
 
   const collapseClutter = shouldCollapseClutter(workflowMode);
 
+  // Full buckets: every message, always — powers category tabs and counts.
+  const byCategoryAll = initCategoryBuckets<T>(catalog);
+  for (const raw of messages) {
+    const category = resolveCategoryWithCatalog(raw.category, catalog);
+    const row = { ...raw, category };
+    if (!byCategoryAll[category]) byCategoryAll[category] = [];
+    byCategoryAll[category].push(row);
+  }
+
+  const counts = { ...initCategoryCounts(catalog) };
+  for (const id of catalog.allIds) {
+    counts[id] = byCategoryAll[id]?.length ?? 0;
+  }
+  for (const id of Object.keys(byCategoryAll)) {
+    counts[id] = byCategoryAll[id]?.length ?? 0;
+  }
+
   const clutterEmails = collapseClutter
-    ? messages
-        .filter((m) => isClutterCategory(m.category))
-        .map((m) => ({
-          ...m,
-          category: resolveCategoryWithCatalog(m.category, catalog),
-        }))
+    ? (byCategoryAll.promotion ?? [])
+        .concat(byCategoryAll.newsletter ?? [])
+        .map((m) => ({ ...m }))
     : [];
 
   const visible = messages.filter((m) =>
@@ -109,14 +134,6 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
     byCategory[category].push(row);
   }
 
-  const counts = { ...initCategoryCounts(catalog) };
-  for (const id of catalog.allIds) {
-    counts[id] = byCategory[id]?.length ?? 0;
-  }
-  for (const id of Object.keys(byCategory)) {
-    counts[id] = byCategory[id]?.length ?? 0;
-  }
-
   const orderSource = collapseClutter
     ? primaryCategoryOrderForMode(workflowMode, catalog)
     : gmailCategoryOrderForMode(workflowMode, catalog);
@@ -130,16 +147,18 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
     catalog,
     allVisible: categoryOrder.flatMap((c) => byCategory[c] ?? []),
     byCategory,
+    byCategoryAll,
     counts,
     categoryOrder,
     needsAttentionEmails,
     quickReplyEmails,
-    handledEmails: byCategory.handled ?? [],
-    newsletterEmails: byCategory.newsletter ?? [],
-    promotionEmails: byCategory.promotion ?? [],
+    handledEmails: byCategoryAll.handled ?? [],
+    newsletterEmails: byCategoryAll.newsletter ?? [],
+    promotionEmails: byCategoryAll.promotion ?? [],
     todayAttentionCount: needsAttentionEmails.length,
     priorityCount: needsAttentionEmails.length + quickReplyEmails.length,
     totalVisible: visible.length,
+    totalAccessible: messages.length,
     clutterEmails,
     clutterCount: clutterEmails.length,
     showClutterSection: collapseClutter && clutterEmails.length > 0,

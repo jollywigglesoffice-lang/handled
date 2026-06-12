@@ -37,6 +37,9 @@ export function buildEmailCompletionRecord(
     waitingStatus: input.actionId === "waiting_on_someone" ? "waiting" : undefined,
     followUpAfterDays,
     followUpAt: computeFollowUpAt(completedAt, followUpAfterDays),
+    accountId: input.accountId,
+    accountEmail: input.accountEmail,
+    accountLabel: input.accountLabel,
   };
 }
 

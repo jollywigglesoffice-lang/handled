@@ -79,7 +79,33 @@ export type GmailInboxRow = {
   labelIds?: string[];
   listUnsubscribe?: string;
   listUnsubscribePost?: string;
+  /** Connected Gmail account (multi-account V1). */
+  accountId?: string;
+  accountEmail?: string;
+  accountLabel?: string;
 };
+
+export type GmailUserProfile = {
+  email: string;
+};
+
+/** Resolve the mailbox address for the token's authorized user. */
+export async function gmailGetUserProfile(
+  accessToken: string,
+): Promise<GmailUserProfile> {
+  const res = await fetch(`${GMAIL_BASE}/profile`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new GmailApiError("Gmail profile", res.status, text);
+  }
+
+  const data = (await res.json()) as { emailAddress?: string };
+  return { email: data.emailAddress?.trim() ?? "" };
+}
 
 function decodeBase64Url(data: string): string {
   const normalized = data.replace(/-/g, "+").replace(/_/g, "/");

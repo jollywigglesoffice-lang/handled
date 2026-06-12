@@ -11,6 +11,7 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { CategorySource, InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { isUserLockedCategorySource } from "@/lib/category-authority";
+import { lookupScopedValue } from "@/lib/gmail/account-types";
 import { applyUserRulesPre } from "@/lib/inbox-user-rules/apply";
 import { logSenderRuleDebug, resolveSenderIdentity } from "@/lib/sender-identity";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
@@ -21,7 +22,9 @@ export type CategoryResolutionContext = {
 };
 
 export type CategoryResolutionInput = {
-  row: Pick<GmailInboxRow, "id" | "sender" | "subject" | "snippet">;
+  row: Pick<GmailInboxRow, "id" | "sender" | "subject" | "snippet"> & {
+    accountId?: string;
+  };
   /** Category produced by AI/heuristics before final resolution. */
   aiCategory?: InboxAiCategory | null;
   aiSource?: CategorySource;
@@ -50,11 +53,17 @@ export type CategoryResolutionAudit = {
   finalSource: CategorySource;
 };
 
+/**
+ * Gmail message ids are only unique within one mailbox, so override maps are
+ * keyed by `accountId:emailId` when the account is known. Raw emailId keys
+ * remain supported as a legacy fallback for pre-multi-account data.
+ */
 export function getManualOverride(
   emailId: string,
   emailOverrides: Record<string, InboxAiCategory>,
+  accountId?: string,
 ): InboxAiCategory | null {
-  return emailOverrides[emailId] ?? null;
+  return lookupScopedValue(emailOverrides, emailId, accountId) ?? null;
 }
 
 export function getSenderLearnedCategory(
@@ -88,17 +97,19 @@ export function getSenderLearnedCategory(
 
 /** True when AI categorization must not run for this email. */
 export function mustSkipAiCategorization(
-  row: Pick<GmailInboxRow, "id" | "sender" | "subject" | "snippet">,
+  row: Pick<GmailInboxRow, "id" | "sender" | "subject" | "snippet"> & {
+    accountId?: string;
+  },
   context: CategoryResolutionContext,
 ): boolean {
-  if (getManualOverride(row.id, context.emailOverrides)) return true;
+  if (getManualOverride(row.id, context.emailOverrides, row.accountId)) return true;
   if (getSenderLearnedCategory(row, context.senderRules)) return true;
   return false;
 }
 
 export function resolveFinalCategory(input: CategoryResolutionInput): CategoryResolutionResult {
   const { row, context } = input;
-  const manualOverride = getManualOverride(row.id, context.emailOverrides);
+  const manualOverride = getManualOverride(row.id, context.emailOverrides, row.accountId);
   const senderLearned = getSenderLearnedCategory(row, context.senderRules);
   const aiCategory = input.aiCategory ?? null;
   const persistedCategory =
@@ -172,6 +183,7 @@ export function logCategoryResolution(audit: CategoryResolutionAudit): void {
 
 export type InboxMessageWithCategory = {
   id: string;
+  accountId?: string;
   category: InboxAiCategory;
   categorySource?: CategorySource;
   sender: string;

@@ -20,6 +20,9 @@ type InboxClutterSectionProps = {
   readStateMap?: ReadStateMap;
   defaultCollapsed?: boolean;
   inboxReturnCapture?: InboxReturnCapture;
+  /** Opens the dedicated Promotions category tab. */
+  onOpenPromotionsTab?: () => void;
+  showAccountBadges?: boolean;
 };
 
 function ClutterBatchGroup({
@@ -28,12 +31,14 @@ function ClutterBatchGroup({
   onCategoryChange,
   readStateMap,
   inboxReturnCapture,
+  showAccountBadges,
 }: {
   batch: ClutterBatch;
   locale: "en" | "it";
   onCategoryChange: InboxClutterSectionProps["onCategoryChange"];
   readStateMap?: ReadStateMap;
   inboxReturnCapture?: InboxReturnCapture;
+  showAccountBadges?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -61,6 +66,7 @@ function ClutterBatchGroup({
               onCategoryChange={onCategoryChange}
               readStateMap={readStateMap}
               inboxReturnCapture={inboxReturnCapture}
+              showAccountBadge={showAccountBadges}
             />
           ))}
         </div>
@@ -76,6 +82,8 @@ export function InboxClutterSection({
   readStateMap,
   defaultCollapsed = true,
   inboxReturnCapture,
+  onOpenPromotionsTab,
+  showAccountBadges = false,
 }: InboxClutterSectionProps) {
   const [sectionOpen, setSectionOpen] = useState(!defaultCollapsed);
 
@@ -117,6 +125,20 @@ export function InboxClutterSection({
           </p>
           <p className="mt-0.5 text-xs text-gray-500">{summary}</p>
           <p className="mt-1 text-xs text-gray-400">{reassurance}</p>
+          {onOpenPromotionsTab ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenPromotionsTab();
+              }}
+              className="mt-2 text-xs font-medium text-accent transition hover:text-accent/80"
+            >
+              {locale === "it"
+                ? "Apri tutte in Promozioni →"
+                : "Open all in Promotions →"}
+            </button>
+          ) : null}
         </div>
         <span className="text-xs text-gray-400">{sectionOpen ? "Hide" : "Show"}</span>
       </button>
@@ -131,6 +153,7 @@ export function InboxClutterSection({
               onCategoryChange={onCategoryChange}
               readStateMap={readStateMap}
               inboxReturnCapture={inboxReturnCapture}
+              showAccountBadges={showAccountBadges}
             />
           ))}
         </div>

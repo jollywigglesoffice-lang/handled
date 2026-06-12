@@ -31,7 +31,8 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const { auth } = authResult;
-    const googleAuth = await requireGoogleProviderToken(auth);
+    const accountId = new URL(request.url).searchParams.get("accountId");
+    const googleAuth = await requireGoogleProviderToken(auth, { accountId });
     if (!googleAuth.ok) {
       return applyAuthCookies(googleAuth.response);
     }
@@ -45,8 +46,11 @@ export async function GET(request: Request, context: RouteContext) {
 
     let msg;
     try {
-      msg = await withGoogleAuthRetry(auth.user.id, accessToken, (token) =>
-        gmailGetMessageFull(token, id),
+      msg = await withGoogleAuthRetry(
+        auth.user.id,
+        accessToken,
+        (token) => gmailGetMessageFull(token, id),
+        { accountId },
       );
     } catch (gmailError) {
       console.error("EMAIL DETAIL LOAD ERROR:", gmailError);
@@ -76,6 +80,7 @@ export async function GET(request: Request, context: RouteContext) {
         msg,
         auth.user.id,
         workflowMode,
+        { accountId: accountId ?? undefined },
       );
       return applyAuthCookies(
         NextResponse.json({ found: true, email, enriched: true }),
@@ -88,6 +93,7 @@ export async function GET(request: Request, context: RouteContext) {
           id,
           auth.user.id,
           workflowMode,
+          { accountId: accountId ?? undefined },
         );
         return applyAuthCookies(
           NextResponse.json({

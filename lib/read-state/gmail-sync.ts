@@ -21,6 +21,7 @@ export async function syncReadStateToGmail(
   ids: string[],
   state: EmailReadState,
   attempt = 0,
+  options?: { accountId?: string },
 ): Promise<boolean> {
   if (typeof window === "undefined" || ids.length === 0) return true;
 
@@ -32,7 +33,9 @@ export async function syncReadStateToGmail(
         ...(await protectedApiHeaders()),
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ ids, state }),
+      // accountId routes the label change to the right mailbox — Gmail
+      // message ids are only unique within one account.
+      body: JSON.stringify({ ids, state, accountId: options?.accountId }),
     });
 
     if (res.ok) {
@@ -44,7 +47,7 @@ export async function syncReadStateToGmail(
     if (attempt < MAX_RETRIES) {
       const delay = BASE_RETRY_MS * 2 ** attempt;
       window.setTimeout(() => {
-        void syncReadStateToGmail(ids, state, attempt + 1);
+        void syncReadStateToGmail(ids, state, attempt + 1, options);
       }, delay);
       return false;
     }
@@ -60,17 +63,17 @@ export async function syncReadStateToGmail(
 }
 
 /** Mark read locally (optimistic) + sync to Gmail in the background. */
-export function markEmailsRead(ids: string[]): void {
+export function markEmailsRead(ids: string[], options?: { accountId?: string }): void {
   if (ids.length === 0) return;
   setReadStateForIds(ids, "read");
   trackEvent("email_marked_read", { count: ids.length });
-  void syncReadStateToGmail(ids, "read");
+  void syncReadStateToGmail(ids, "read", 0, options);
 }
 
 /** Mark unread locally (optimistic) + sync to Gmail in the background. */
-export function markEmailsUnread(ids: string[]): void {
+export function markEmailsUnread(ids: string[], options?: { accountId?: string }): void {
   if (ids.length === 0) return;
   setReadStateForIds(ids, "unread");
   trackEvent("email_marked_unread", { count: ids.length });
-  void syncReadStateToGmail(ids, "unread");
+  void syncReadStateToGmail(ids, "unread", 0, options);
 }

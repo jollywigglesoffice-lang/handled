@@ -56,6 +56,7 @@ export function InboxTrainingBanner({ messages, onCategoryChange }: InboxTrainin
         guessedCategory: sample!.category,
         chosenCategory: chosen,
         scope,
+        accountId: sample!.accountId,
       });
       setFeedback(result.message);
       bumpTraining();

@@ -52,6 +52,7 @@ export function buildCategoryUndoSnapshot(input: {
     affectedIds,
     previousMessages: messages.map((m) => ({
       id: m.id,
+      accountId: m.accountId,
       category: m.category,
       categorySource: m.categorySource,
     })),

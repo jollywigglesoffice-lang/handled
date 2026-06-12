@@ -63,10 +63,12 @@ export function recordSenderCategoryCorrection(input: {
   sender: string;
   guessedCategory: InboxAiCategory;
   chosenCategory: InboxAiCategory;
+  accountId?: string;
 }): SenderCorrectionRecord | null {
   if (input.guessedCategory === input.chosenCategory) return null;
 
-  const key = senderKey(input.sender);
+  const base = senderKey(input.sender);
+  const key = input.accountId ? `${input.accountId}::${base}` : base;
   const list = loadSenderCorrectionLearning();
   const existing = list.find((r) => r.senderKey === key);
   const categoryCounts = { ...(existing?.categoryCounts ?? {}) };

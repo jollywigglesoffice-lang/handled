@@ -34,16 +34,25 @@ export async function restoreSenderPreferencesToAccount(
 export async function persistCategoryUndo(snapshot: CategoryUndoSnapshot): Promise<void> {
   saveClientEmailOverrides(snapshot.previousEmailOverrides);
 
+  const accountById = new Map(
+    snapshot.previousMessages.map((m) => [m.id, m.accountId] as const),
+  );
+
   for (const emailId of snapshot.affectedIds) {
-    const priorOverride = snapshot.previousEmailOverrides.find((o) => o.emailId === emailId);
+    const accountId = accountById.get(emailId);
+    // Override records may be keyed by `accountId:emailId` or legacy raw id.
+    const priorOverride = snapshot.previousEmailOverrides.find(
+      (o) => o.emailId === emailId || o.emailId.endsWith(`:${emailId}`),
+    );
     if (priorOverride) {
       await persistEmailOverrideToAccount({
         emailId,
         overriddenCategory: priorOverride.overriddenCategory,
         originalCategory: priorOverride.originalCategory,
+        accountId,
       });
     } else {
-      await removeEmailOverrideFromAccount(emailId);
+      await removeEmailOverrideFromAccount(emailId, accountId);
     }
   }
 
