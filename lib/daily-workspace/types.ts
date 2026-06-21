@@ -12,7 +12,7 @@ export type WorkspaceItemKind =
   | "archive"
   | "scheduling";
 
-export type WorkspaceSectionId = "todays_focus" | "waiting_on" | "suggested_actions";
+export type WorkspaceSectionId = "todays_focus" | "awaiting_responses" | "suggested_actions";
 
 export type WorkspaceItem = {
   id: string;

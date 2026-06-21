@@ -5,24 +5,9 @@ import { CompletedCounter } from "@/app/landing/completed-counter";
 import { InboxZeroJourney } from "@/app/landing/inbox-zero-journey";
 import { SocialProof } from "@/app/landing/social-proof";
 import { TransformationSection } from "@/app/landing/transformation-section";
-
-const WORKFLOWS = [
-  {
-    id: "school",
-    title: "School Email",
-    steps: ["Worth your attention", "Done with this", "Saved for reference"],
-  },
-  {
-    id: "accountant",
-    title: "Accountant",
-    steps: ["Waiting on reply", "Waiting 7 days", "Response received"],
-  },
-  {
-    id: "travel",
-    title: "Travel Confirmation",
-    steps: ["Suggested action", "Save for reference", "One click", "Completed"],
-  },
-] as const;
+import { LanguageFooterToggle } from "@/app/components/language-footer-toggle";
+import { useUserPreferences } from "@/app/user-preferences-context";
+import { getLandingCopy } from "@/lib/landing-copy";
 
 const WORKFLOW_CARD =
   "block rounded-xl border border-gray-100 bg-white px-4 py-3 text-sm text-gray-600 transition-colors duration-200 hover:border-gray-200 hover:bg-gray-50/80";
@@ -33,6 +18,9 @@ const WORKFLOW_CARD_FINAL =
 const LOGIN_NEXT = "/login?next=/emails";
 
 export function LandingPage() {
+  const { uiLanguage } = useUserPreferences();
+  const t = getLandingCopy(uiLanguage);
+
   return (
     <div className="min-h-screen bg-white text-[#0F172A]">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 sm:px-8">
@@ -42,7 +30,7 @@ export function LandingPage() {
           className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-hover"
         >
           <GoogleIcon />
-          Continue with Google
+          {t.continueWithGoogle}
         </Link>
       </header>
 
@@ -50,18 +38,17 @@ export function LandingPage() {
         <section className="pt-2 sm:pt-3">
           <div className="max-w-2xl">
             <h1 className="text-4xl font-semibold leading-[1.1] tracking-tight sm:text-[2.75rem] sm:leading-[1.08]">
-              Email that remembers.
+              {t.heroTitle}
             </h1>
             <p className="mt-4 max-w-xl text-lg leading-relaxed text-gray-600 sm:text-xl sm:leading-relaxed">
-              The best email is the one you never have to think about again.
+              {t.heroSubtitle}
             </p>
             <p className="mt-3 max-w-lg text-lg font-medium leading-snug tracking-tight text-[#0F172A] sm:text-xl">
-              Stop organizing email.{" "}
-              <span className="text-[#9733ff]">Start finishing it.</span>
+              {t.heroTagline}{" "}
+              <span className="text-[#9733ff]">{t.heroTaglineAccent}</span>
             </p>
             <p className="mt-2 max-w-md text-base leading-relaxed text-gray-500">
-              Handled helps you finish email in minutes, not hours — with categories you control
-              and AI that learns what you actually do with each message.
+              {t.heroBody}
             </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-3 sm:mt-7">
@@ -70,50 +57,48 @@ export function LandingPage() {
                 className="inline-flex items-center gap-2.5 rounded-xl bg-accent px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-hover active:scale-[0.99]"
               >
                 <GoogleIcon />
-                Continue with Google
+                {t.continueWithGoogle}
               </Link>
               <a
                 href="#workflows"
                 className="btn-secondary px-6 py-3 text-base text-gray-700 transition-colors duration-200 hover:border-gray-300"
               >
-                See how it works
+                {t.seeHowItWorks}
               </a>
             </div>
           </div>
 
           <div className="mt-9 w-full sm:mt-10 lg:mt-12">
-            <InboxZeroJourney />
+            <InboxZeroJourney locale={uiLanguage} />
           </div>
 
           <div className="mt-8 sm:mt-9">
-            <SocialProof />
+            <SocialProof locale={uiLanguage} />
           </div>
 
-          <TransformationSection />
+          <TransformationSection locale={uiLanguage} />
         </section>
 
         <div className="mt-8 max-w-xs">
-          <CompletedCounter />
+          <CompletedCounter locale={uiLanguage} />
         </div>
 
         <section className="mt-10 border-t border-gray-100 pt-8 sm:mt-11">
           <blockquote className="max-w-lg">
-            <p className="text-lg leading-relaxed text-gray-600">
-              Most email tools organize messages.
-            </p>
+            <p className="text-lg leading-relaxed text-gray-600">{t.quoteLine1}</p>
             <p className="mt-1.5 text-lg font-medium leading-relaxed text-[#0F172A]">
-              Handled learns what you do with them.
+              {t.quoteLine2}
             </p>
           </blockquote>
         </section>
 
         <section id="workflows" className="mt-10 scroll-mt-8 sm:mt-11">
           <h2 className="text-xs font-medium uppercase tracking-widest text-gray-400">
-            How it works
+            {t.howItWorks}
           </h2>
 
           <div className="mt-6 grid gap-8 sm:grid-cols-3 sm:gap-7">
-            {WORKFLOWS.map((flow) => (
+            {t.workflows.map((flow) => (
               <article
                 key={flow.id}
                 className="group transition-colors duration-200 hover:opacity-95"
@@ -150,16 +135,18 @@ export function LandingPage() {
         </section>
 
         <section className="mt-12 border-t border-gray-100 pt-10 text-center sm:mt-14">
-          <p className="text-sm text-gray-500">Finish email. Don&apos;t manage it.</p>
+          <p className="text-sm text-gray-500">{t.footerTagline}</p>
           <Link
             href={LOGIN_NEXT}
             className="mt-5 inline-flex items-center gap-2.5 rounded-xl bg-accent px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-hover active:scale-[0.99]"
           >
             <GoogleIcon />
-            Continue with Google
+            {t.continueWithGoogle}
           </Link>
         </section>
       </main>
+
+      <LanguageFooterToggle className="pb-10" />
     </div>
   );
 }

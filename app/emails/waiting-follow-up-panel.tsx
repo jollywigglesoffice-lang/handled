@@ -152,7 +152,7 @@ export function WaitingFollowUpPanel({
             <Link
               href={`/emails/${encodeURIComponent(record.emailId)}`}
               onClick={() =>
-                captureInboxReturnFromOpen({ view: "waiting", categoryTab: "all" }, record.emailId)
+                captureInboxReturnFromOpen({ view: "inbox", categoryTab: "all" }, record.emailId)
               }
               className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-900 hover:bg-violet-50"
             >

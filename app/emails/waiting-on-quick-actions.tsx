@@ -185,7 +185,7 @@ export function WaitingOnQuickActions({ record, note, locale }: WaitingOnQuickAc
               onClick={() => {
                 markWaitingFollowedUp(record.emailId);
                 captureInboxReturnFromOpen(
-                  { view: "waiting", categoryTab: "all" },
+                  { view: "inbox", categoryTab: "all" },
                   record.emailId,
                 );
               }}

@@ -1,5 +1,6 @@
-import { CompletedView } from "@/app/emails/completed-view";
+import { redirect } from "next/navigation";
 
+/** Completed history is internal workflow state — no dedicated inbox tab. */
 export default function CompletedEmailsPage() {
-  return <CompletedView />;
+  redirect("/emails");
 }

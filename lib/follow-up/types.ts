@@ -74,7 +74,7 @@ export type FollowUpInboxItem = FollowUpAnalysis & {
 export type FollowUpSectionKey =
   | "at_risk"
   | "follow_ups"
-  | "waiting_on"
+  | "awaiting_response"
   | "unresolved"
   | "pending";
 
@@ -91,7 +91,7 @@ export function sectionKeyForItem(item: {
     case "pending_scheduling":
       return "pending";
     case "waiting_for_response":
-      return "waiting_on";
+      return "awaiting_response";
     case "follow_up_recommended":
       return "follow_ups";
     default:

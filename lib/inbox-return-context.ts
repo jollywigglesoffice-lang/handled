@@ -1,7 +1,7 @@
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategoryTitle, type InboxCategoryCatalog } from "@/lib/inbox-category-catalog";
 
-export type InboxReturnView = "inbox" | "completed" | "waiting";
+export type InboxReturnView = "inbox";
 
 export type InboxReturnContext = {
   view: InboxReturnView;
@@ -9,16 +9,12 @@ export type InboxReturnContext = {
   categoryTab: string;
   scrollY: number;
   anchorEmailId: string;
-  completedFilter?: string;
 };
 
 const RETURN_KEY = "handled_inbox_return_v1";
 const SCROLL_RESTORE_KEY = "handled_inbox_scroll_restore_v1";
 
-export type InboxReturnCapture = Pick<
-  InboxReturnContext,
-  "view" | "categoryTab" | "completedFilter"
->;
+export type InboxReturnCapture = Pick<InboxReturnContext, "view" | "categoryTab">;
 
 export function captureInboxReturnFromOpen(
   capture: InboxReturnCapture,
@@ -27,7 +23,6 @@ export function captureInboxReturnFromOpen(
   saveInboxReturnContext({
     view: capture.view ?? "inbox",
     categoryTab: capture.categoryTab,
-    completedFilter: capture.completedFilter,
     scrollY: typeof window !== "undefined" ? window.scrollY : 0,
     anchorEmailId: emailId,
   });
@@ -79,9 +74,7 @@ export function consumeInboxScrollRestore(): InboxReturnContext | null {
   }
 }
 
-export function inboxReturnPath(ctx: InboxReturnContext | null): string {
-  if (ctx?.view === "completed") return "/emails/completed";
-  if (ctx?.view === "waiting") return "/emails/waiting";
+export function inboxReturnPath(_ctx: InboxReturnContext | null): string {
   return "/emails";
 }
 
@@ -92,8 +85,6 @@ export function inboxReturnDestinationLabel(
   catalog: InboxCategoryCatalog,
 ): string {
   if (!ctx) return locale === "it" ? "Inbox" : "Inbox";
-  if (ctx.view === "completed") return locale === "it" ? "Completate" : "Completed";
-  if (ctx.view === "waiting") return locale === "it" ? "In attesa" : "Waiting On";
   if (ctx.categoryTab === "all") {
     return inboxCategoryTitle(emailCategory, locale, catalog);
   }

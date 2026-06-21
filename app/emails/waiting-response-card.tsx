@@ -89,7 +89,7 @@ export function WaitingResponseCard({
               href={`/emails/${encodeURIComponent(replyId)}`}
               onClick={() => {
                 trackResponseOpened(record, "waiting_view");
-                captureInboxReturnFromOpen({ view: "waiting", categoryTab: "all" }, replyId);
+                captureInboxReturnFromOpen({ view: "inbox", categoryTab: "all" }, replyId);
               }}
               className="rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50"
             >
@@ -99,7 +99,7 @@ export function WaitingResponseCard({
               href={`/emails/${encodeURIComponent(replyId)}`}
               onClick={() => {
                 trackResponseOpened(record, "waiting_view_conversation");
-                captureInboxReturnFromOpen({ view: "waiting", categoryTab: "all" }, replyId);
+                captureInboxReturnFromOpen({ view: "inbox", categoryTab: "all" }, replyId);
               }}
               className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
             >

@@ -13,13 +13,11 @@ type WaitingOnInboxSectionProps = {
 const COPY = {
   en: {
     title: "Waiting on",
-    viewAll: "View all",
     empty: "Nothing you're waiting on",
     hint: "Use Handled → I'm waiting on someone",
   },
   it: {
     title: "In attesa",
-    viewAll: "Vedi tutto",
     empty: "Niente in attesa",
     hint: "Usa Gestita → Aspetto qualcuno",
   },
@@ -53,14 +51,6 @@ export function WaitingOnInboxSection({
             </p>
           )}
         </div>
-        {records.length > 0 ? (
-          <Link
-            href="/emails/waiting"
-            className="text-xs font-medium text-indigo-700 underline-offset-2 hover:underline"
-          >
-            {t.viewAll}
-          </Link>
-        ) : null}
       </div>
 
       {preview.length > 0 ? (

@@ -12,7 +12,6 @@ type CategoryTabsProps = {
   counts: Record<string, number>;
   total: number;
   locale: InboxModeLocale;
-  completedCount: number;
   onChange: (tab: CategoryTab) => void;
 };
 
@@ -21,7 +20,6 @@ export function CategoryTabs({
   counts,
   total,
   locale,
-  completedCount,
   onChange,
 }: CategoryTabsProps) {
   const { catalog } = useInboxCategories();

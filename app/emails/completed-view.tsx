@@ -73,11 +73,7 @@ export function CompletedView() {
 
   useEffect(() => {
     const restore = consumeInboxScrollRestore();
-    if (!restore || restore.view !== "completed") return;
-
-    if (restore.completedFilter) {
-      setFilter(restore.completedFilter as CompletionActionFilter);
-    }
+    if (!restore) return;
 
     const timer = window.setTimeout(() => {
       scrollToInboxEmail(restore.anchorEmailId, restore.scrollY);
@@ -148,7 +144,6 @@ export function CompletedView() {
                   record={record}
                   locale={locale}
                   catalog={inboxCatalog}
-                  completedFilter={filter}
                 />
               ))}
             </div>

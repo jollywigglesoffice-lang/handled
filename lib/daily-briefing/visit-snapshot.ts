@@ -5,12 +5,9 @@ const STORAGE_KEY = "handled_inbox_visit_snapshot_v1";
 
 export type InboxVisitSnapshot = {
   visitedAt: number;
-  counts: {
-    worth_your_attention: number;
-    waiting_on: number;
-    fyi: number;
-    promotion: number;
-    waitingOn: number;
+  counts: Record<InboxAiCategory, number> & {
+    /** Internal workflow count — not an inbox category. */
+    activeWaiting: number;
   };
   /** emailId → internalDateMs at last visit */
   emailFingerprints: Record<string, number>;
@@ -39,11 +36,8 @@ export function buildVisitSnapshot(
   return {
     visitedAt: now,
     counts: {
-      worth_your_attention: counts.worth_your_attention ?? 0,
-      waiting_on: waitingOnCount,
-      fyi: counts.good_to_know ?? 0,
-      promotion: counts.promotions ?? 0,
-      waitingOn: waitingOnCount,
+      ...counts,
+      activeWaiting: waitingOnCount,
     },
     emailFingerprints,
   };

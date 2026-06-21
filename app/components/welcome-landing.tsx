@@ -1,24 +1,30 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { LanguageFooterToggle } from "@/app/components/language-footer-toggle";
+import { useUiCopy } from "@/app/use-ui-copy";
 
 type WelcomeLandingProps = {
   children: ReactNode;
 };
 
 export function WelcomeLanding({ children }: WelcomeLandingProps) {
+  const ui = useUiCopy();
+
   return (
     <div className="flex min-h-screen flex-col bg-white text-[#0F172A]">
       <header className="mx-auto flex w-full max-w-lg items-center justify-between px-6 py-5">
         <span className="text-sm font-semibold tracking-tight">Handled</span>
       </header>
 
-      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-6 pb-16">
+      <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-6 pb-8">
         <p className="text-lg leading-relaxed text-gray-600 sm:text-xl">
-          Handled helps you finish email in minutes, not hours.
+          {ui.auth.welcomeTagline}
         </p>
         <div className="mt-10">{children}</div>
       </main>
+
+      <LanguageFooterToggle className="pb-8" />
     </div>
   );
 }
@@ -26,12 +32,15 @@ export function WelcomeLanding({ children }: WelcomeLandingProps) {
 export function GoogleSignInButton({
   onClick,
   loading,
-  label = "Continue with Google",
+  label,
 }: {
   onClick: () => void;
   loading?: boolean;
   label?: string;
 }) {
+  const ui = useUiCopy();
+  const buttonLabel = label ?? ui.auth.continueWithGoogle;
+
   return (
     <button
       type="button"
@@ -40,7 +49,7 @@ export function GoogleSignInButton({
       className="inline-flex w-full items-center justify-center gap-2.5 rounded-xl bg-accent px-5 py-3.5 text-base font-semibold text-white shadow-sm transition hover:bg-accent-hover active:scale-[0.99] disabled:opacity-60"
     >
       <GoogleIcon />
-      {loading ? "Connecting…" : label}
+      {loading ? ui.auth.connecting : buttonLabel}
     </button>
   );
 }

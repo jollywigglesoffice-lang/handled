@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { LandingLocale } from "@/lib/landing-copy";
+import { getLandingCopy } from "@/lib/landing-copy";
 
 type JourneyPhase = "inbox_full" | "processing" | "emptying" | "inbox_zero";
 
@@ -23,42 +25,43 @@ const INITIAL_COUNTS = {
   attention: 12,
   good_to_know: 14,
   promotions: 22,
-  waiting_on: 8,
+  newsletters: 8,
 };
 
-const FINAL_COUNTS = {
-  inbox: 0,
-  waiting_on: 3,
-  done: 41,
+const FINAL_WORKFLOW = {
+  handled: 41,
+  activeWaiting: 3,
 };
 
 const PROCESSING_EMAILS = [
   {
     id: "amazon",
     label: "Amazon Order",
-    steps: ["Saved for reference", "Completed"],
-    outcome: "completed" as const,
+    steps: ["Saved for reference", "Handled"],
+    outcome: "handled" as const,
   },
   {
     id: "accountant",
     label: "Accountant",
-    steps: ["Waiting on reply", "Waiting On"],
+    steps: ["Waiting on reply", "Waiting on someone"],
     outcome: "waiting" as const,
   },
   {
     id: "school",
     label: "School Email",
-    steps: ["Replied", "Completed"],
-    outcome: "completed" as const,
+    steps: ["Replied", "Handled"],
+    outcome: "handled" as const,
   },
 ];
 
-const CATEGORIES = [
-  { key: "attention", label: "Worth your attention", color: "text-violet-700" },
-  { key: "good_to_know", label: "Good to know", color: "text-slate-600" },
-  { key: "promotions", label: "Promotions", color: "text-amber-700" },
-  { key: "waiting_on", label: "Waiting on", color: "text-indigo-700" },
-] as const;
+const CATEGORY_COLORS: Record<string, string> = {
+  attention: "text-violet-700",
+  good_to_know: "text-slate-600",
+  promotions: "text-amber-700",
+  newsletters: "text-indigo-700",
+};
+
+type CategoryKey = "attention" | "good_to_know" | "promotions" | "newsletters";
 
 function phaseAtElapsed(ms: number): JourneyPhase {
   const t = ms % LOOP_MS;
@@ -105,13 +108,22 @@ function emptyingCounts(ms: number) {
     attention: Math.round(INITIAL_COUNTS.attention * (1 - ease)),
     good_to_know: Math.round(INITIAL_COUNTS.good_to_know * (1 - ease)),
     promotions: Math.round(INITIAL_COUNTS.promotions * (1 - ease)),
-    waiting_on: Math.round(INITIAL_COUNTS.waiting_on * (1 - ease)),
-    done: Math.round(FINAL_COUNTS.done * ease * 0.7),
-    waiting_on_final: Math.round(FINAL_COUNTS.waiting_on * ease),
+    newsletters: Math.round(INITIAL_COUNTS.newsletters * (1 - ease)),
+    handled: Math.round(FINAL_WORKFLOW.handled * ease * 0.7),
+    activeWaiting: Math.round(FINAL_WORKFLOW.activeWaiting * ease),
   };
 }
 
-export function InboxZeroJourney() {
+export function InboxZeroJourney({ locale }: { locale: LandingLocale }) {
+  const journey = useMemo(() => getLandingCopy(locale).journey, [locale]);
+  const categories = useMemo(
+    () =>
+      journey.categories.map((cat) => ({
+        ...cat,
+        color: CATEGORY_COLORS[cat.key] ?? "text-slate-600",
+      })),
+    [journey.categories],
+  );
   const [elapsed, setElapsed] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -140,7 +152,7 @@ export function InboxZeroJourney() {
   const procStep = processingStep(elapsed);
   const emptying = emptyingCounts(elapsed);
 
-  const counts =
+  const counts: Record<CategoryKey, number> =
     phase === "inbox_full"
       ? INITIAL_COUNTS
       : phase === "emptying"
@@ -148,15 +160,15 @@ export function InboxZeroJourney() {
             attention: emptying.attention,
             good_to_know: emptying.good_to_know,
             promotions: emptying.promotions,
-            waiting_on: emptying.waiting_on_final,
+            newsletters: emptying.newsletters,
           }
         : phase === "inbox_zero"
-          ? { attention: 0, good_to_know: 0, promotions: 0, waiting_on: 0 }
+          ? { attention: 0, good_to_know: 0, promotions: 0, newsletters: 0 }
           : {
               attention: Math.max(0, INITIAL_COUNTS.attention - procIdx * 3),
               good_to_know: Math.max(0, INITIAL_COUNTS.good_to_know - procIdx * 4),
               promotions: Math.max(0, INITIAL_COUNTS.promotions - procIdx * 5),
-              waiting_on: Math.max(0, INITIAL_COUNTS.waiting_on - procIdx * 2),
+              newsletters: Math.max(0, INITIAL_COUNTS.newsletters - procIdx * 2),
             };
 
   const isInboxZero = phase === "inbox_zero";
@@ -172,7 +184,7 @@ export function InboxZeroJourney() {
     >
       <div className="border-b border-gray-100 px-6 py-4 sm:px-7 sm:py-5">
         <p className="text-xs font-medium uppercase tracking-widest text-gray-400">Handled</p>
-        <p className="mt-0.5 text-base font-semibold text-[#0F172A] sm:text-lg">Today</p>
+        <p className="mt-0.5 text-base font-semibold text-[#0F172A] sm:text-lg">{journey.today}</p>
       </div>
 
       <div className="space-y-5 p-6 transition-opacity duration-1000 sm:space-y-6 sm:p-8">
@@ -180,11 +192,12 @@ export function InboxZeroJourney() {
           <InboxZeroPayoff
             elapsedInPhase={inboxZeroElapsed(elapsed)}
             reducedMotion={reducedMotion}
+            journey={journey}
           />
         ) : (
           <>
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
-              {CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                 <div
                   key={cat.key}
                   className="rounded-xl border border-gray-100 bg-white px-3 py-3 transition-all duration-700 sm:px-4 sm:py-3.5"
@@ -193,7 +206,7 @@ export function InboxZeroJourney() {
                     {cat.label}
                   </p>
                   <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-[#0F172A] transition-all duration-700 sm:text-3xl">
-                    {counts[cat.key]}
+                    {counts[cat.key as CategoryKey]}
                   </p>
                 </div>
               ))}
@@ -208,8 +221,8 @@ export function InboxZeroJourney() {
                     [email.label, null],
                     [email.steps[0], email.label],
                     [
-                      email.steps[1] ?? "Completed",
-                      email.outcome === "waiting" ? "Waiting On" : "Completed",
+                      email.steps[1] ?? journey.handled,
+                      email.outcome === "waiting" ? journey.waitingOnSomeone : journey.handled,
                     ],
                   ];
                   const [main, sub] = lines[procStep] ?? lines[0];
@@ -258,23 +271,21 @@ export function InboxZeroJourney() {
               </div>
             ) : phase === "emptying" ? (
               <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-white px-4 py-3 text-sm text-gray-500 sm:px-5 sm:py-3.5">
-                <span>Clearing inbox…</span>
+                <span>{journey.clearingInbox}</span>
                 <span className="tabular-nums">
-                  {emptying.done} completed · {emptying.waiting_on_final} waiting
+                  {journey.clearingStats(emptying.handled, emptying.activeWaiting)}
                 </span>
               </div>
             ) : (
               <div className="space-y-2">
-                {["Stripe — Invoice due Friday", "Parent council — Field trip form"].map(
-                  (preview) => (
+                {journey.previewEmails.map((preview) => (
                     <div
                       key={preview}
                       className="rounded-xl border border-gray-100 bg-white px-4 py-3 sm:px-5 sm:py-3.5"
                     >
                       <p className="truncate text-sm text-gray-600">{preview}</p>
                     </div>
-                  ),
-                )}
+                ))}
               </div>
             )}
           </>
@@ -287,9 +298,11 @@ export function InboxZeroJourney() {
 function InboxZeroPayoff({
   elapsedInPhase,
   reducedMotion,
+  journey,
 }: {
   elapsedInPhase: number;
   reducedMotion: boolean;
+  journey: ReturnType<typeof getLandingCopy>["journey"];
 }) {
   const stepIndex = reducedMotion ? CLUTTER_LEVELS.length : clutterStepIndex(elapsedInPhase);
 
@@ -300,31 +313,37 @@ function InboxZeroPayoff({
           ✓
         </span>
         <span className="text-lg font-semibold tracking-tight text-[#0F172A] sm:text-xl">
-          Inbox Zero
+          {journey.inboxZero}
         </span>
       </div>
 
-      <MentalClutterDrain stepIndex={stepIndex} />
+      <MentalClutterDrain stepIndex={stepIndex} label={journey.mentalClutter} />
 
       <ul className="mt-6 w-full max-w-xs space-y-2.5 text-center sm:max-w-sm sm:space-y-3">
-        <PayoffLine value={FINAL_COUNTS.done} label="completed" />
-        <PayoffLine value={FINAL_COUNTS.waiting_on} label="waiting on" />
+        <PayoffLine value={FINAL_WORKFLOW.handled} label={journey.handled} />
+        <PayoffLine value={FINAL_WORKFLOW.activeWaiting} label={journey.waitingOnSomeone} />
         {stepIndex >= CLUTTER_LEVELS.length ? (
-          <PayoffLine value={0} label="mental clutter" highlight />
+          <PayoffLine value={0} label={journey.mentalClutter} highlight />
         ) : null}
       </ul>
     </div>
   );
 }
 
-function MentalClutterDrain({ stepIndex }: { stepIndex: number }) {
+function MentalClutterDrain({
+  stepIndex,
+  label,
+}: {
+  stepIndex: number;
+  label: string;
+}) {
   const showZero = stepIndex >= CLUTTER_LEVELS.length;
   const visibleCount = showZero ? CLUTTER_LEVELS.length : stepIndex + 1;
 
   return (
     <div className="mt-5 w-full max-w-[10.5rem] sm:max-w-[11rem]" aria-hidden>
       <p className="text-center text-xs font-medium tracking-wide text-gray-400">
-        Mental clutter
+        {label}
       </p>
       <div className="mt-2.5 space-y-1.5 font-mono text-[10px] leading-none sm:text-[11px]">
         {CLUTTER_LEVELS.slice(0, visibleCount).map((level, i) => {

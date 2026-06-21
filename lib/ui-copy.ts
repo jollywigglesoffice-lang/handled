@@ -225,6 +225,39 @@ type UiCopy = {
     openEmail: string;
     urgencyLabel: string;
   };
+  auth: {
+    signIn: string;
+    signOut: string;
+    continueWithGoogle: string;
+    connecting: string;
+    redirecting: string;
+    welcomeTagline: string;
+    signInTitle: string;
+    signUpTitle: string;
+    betaTitle: string;
+    betaSubtitle: string;
+    fullSubtitle: string;
+    safetyNote: string;
+    orDivider: string;
+    emailPlaceholder: string;
+    passwordPlaceholder: string;
+    showPassword: string;
+    hidePassword: string;
+    pleaseWait: string;
+    signInButton: string;
+    createAccountButton: string;
+    needAccount: string;
+    haveAccount: string;
+    enterEmailPassword: string;
+    oauthFailed: string;
+    oauthIncomplete: string;
+    authConnectFailed: string;
+    signupSuccess: string;
+    confirmedTitle: string;
+    confirmedBody: string;
+    confirmedHint: string;
+    confirmedCta: string;
+  };
   home: {
     appLanguageLabel: string;
     appLanguageEnglish: string;
@@ -485,6 +518,42 @@ const en: UiCopy = {
     title: "Preferences",
     safetyNote: "The app never sends emails without explicit user approval.",
     modesTitle: "Modes",
+  },
+  auth: {
+    signIn: "Sign in",
+    signOut: "Log out",
+    continueWithGoogle: "Continue with Google",
+    connecting: "Connecting…",
+    redirecting: "Redirecting…",
+    welcomeTagline: "Handled helps you finish email in minutes, not hours.",
+    signInTitle: "Sign in to continue",
+    signUpTitle: "Create your account",
+    betaTitle: "Get through email faster",
+    betaSubtitle: "Sign in with Google and your inbox loads immediately.",
+    fullSubtitle: "Save your replies, preferences, usage, and Pro access across devices.",
+    safetyNote:
+      "🔒 Handled helps draft replies, but never sends emails without your approval.",
+    orDivider: "or",
+    emailPlaceholder: "Email",
+    passwordPlaceholder: "Password",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
+    pleaseWait: "Please wait...",
+    signInButton: "Sign in",
+    createAccountButton: "Create account",
+    needAccount: "Need an account? Create one",
+    haveAccount: "Already have an account? Sign in",
+    enterEmailPassword: "Enter your email and password.",
+    oauthFailed: "Could not start Google sign-in. Please try again.",
+    oauthIncomplete: "Google sign-in didn’t complete. Please try again.",
+    authConnectFailed: "Could not connect to authentication. Please refresh and try again.",
+    signupSuccess:
+      "Account created! Please check your email to confirm your account. After confirming, come back here and sign in.",
+    confirmedTitle: "Email confirmed",
+    confirmedBody: "Your account is ready. Please return to Handled and sign in to continue.",
+    confirmedHint:
+      "Handled helps you write better replies faster while keeping you in control.",
+    confirmedCta: "Go back to Handled",
   },
   home: {
     appLanguageLabel: "App Language",
@@ -759,6 +828,45 @@ const it: UiCopy = {
     safetyNote:
       "L'app non invia mai email senza approvazione esplicita dell'utente.",
     modesTitle: "Modalita",
+  },
+  auth: {
+    signIn: "Accedi",
+    signOut: "Esci",
+    continueWithGoogle: "Continua con Google",
+    connecting: "Connessione…",
+    redirecting: "Reindirizzamento…",
+    welcomeTagline: "Handled ti aiuta a finire le email in minuti, non ore.",
+    signInTitle: "Accedi per continuare",
+    signUpTitle: "Crea il tuo account",
+    betaTitle: "Finisci le email più in fretta",
+    betaSubtitle: "Accedi con Google e la inbox si carica subito.",
+    fullSubtitle:
+      "Salva risposte, preferenze, utilizzo e accesso Pro su tutti i dispositivi.",
+    safetyNote:
+      "🔒 Handled prepara bozze, ma non invia email senza la tua approvazione.",
+    orDivider: "oppure",
+    emailPlaceholder: "Email",
+    passwordPlaceholder: "Password",
+    showPassword: "Mostra password",
+    hidePassword: "Nascondi password",
+    pleaseWait: "Attendi...",
+    signInButton: "Accedi",
+    createAccountButton: "Crea account",
+    needAccount: "Non hai un account? Creane uno",
+    haveAccount: "Hai già un account? Accedi",
+    enterEmailPassword: "Inserisci email e password.",
+    oauthFailed: "Impossibile avviare l'accesso con Google. Riprova.",
+    oauthIncomplete: "Accesso Google non completato. Riprova.",
+    authConnectFailed:
+      "Impossibile connettersi all'autenticazione. Aggiorna la pagina e riprova.",
+    signupSuccess:
+      "Account creato! Controlla la email per confermare. Poi torna qui e accedi.",
+    confirmedTitle: "Email confermata",
+    confirmedBody:
+      "Il tuo account è pronto. Torna su Handled e accedi per continuare.",
+    confirmedHint:
+      "Handled ti aiuta a scrivere risposte migliori più in fretta, sempre sotto il tuo controllo.",
+    confirmedCta: "Torna su Handled",
   },
   home: {
     appLanguageLabel: "Lingua app",

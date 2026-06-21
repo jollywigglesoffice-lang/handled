@@ -31,11 +31,11 @@ export type InboxBriefingCardModel = {
 const BRIEFING_CATEGORIES: Array<{
   id: string;
   category?: InboxAiCategory;
-  waitingOn?: boolean;
+  activeWaiting?: boolean;
   responseReceived?: boolean;
 }> = [
   { id: "worth_your_attention", category: "worth_your_attention" },
-  { id: "waiting_on", waitingOn: true },
+  { id: "active_waiting", activeWaiting: true },
   { id: "response_received", responseReceived: true },
   { id: "good_to_know", category: "good_to_know" },
   { id: "promotions", category: "promotions" },
@@ -65,7 +65,7 @@ function lineLabel(id: string, count: number, locale: "en" | "it"): string {
         return n === 1
           ? "1 email richiede attenzione"
           : `${n} email richiedono attenzione`;
-      case "waiting_on":
+      case "active_waiting":
         return n === 1 ? "1 email in attesa" : `${n} email in attesa`;
       case "response_received":
         return n === 1 ? "1 risposta ricevuta" : `${n} risposte ricevute`;
@@ -81,8 +81,8 @@ function lineLabel(id: string, count: number, locale: "en" | "it"): string {
   switch (id) {
     case "worth_your_attention":
       return n === 1 ? "1 email needs attention" : `${n} emails need attention`;
-    case "waiting_on":
-      return n === 1 ? "1 waiting on" : `${n} waiting on`;
+    case "active_waiting":
+      return n === 1 ? "1 waiting on someone" : `${n} waiting on someone`;
     case "response_received":
       return n === 1 ? "1 response received" : `${n} responses received`;
     case "good_to_know":
@@ -121,7 +121,7 @@ export function buildInboxBriefingCard(input: {
 
   for (const row of BRIEFING_CATEGORIES) {
     let count = 0;
-    if (row.waitingOn) {
+    if (row.activeWaiting) {
       count = waitingOnCount;
     } else if (row.responseReceived) {
       count = responseReceivedCount;
@@ -137,14 +137,7 @@ export function buildInboxBriefingCard(input: {
     });
   }
 
-  const effortCounts: Record<string, number> = {
-    worth_your_attention: counts.worth_your_attention ?? 0,
-    waiting_on: waitingOnCount,
-    fyi: counts.good_to_know ?? 0,
-    promotion: counts.promotions ?? 0,
-    newsletter: counts.newsletters ?? 0,
-  };
-  const effortSeconds = estimateClearSeconds(effortCounts);
+  const effortSeconds = estimateClearSeconds(counts);
 
   return {
     schedule: { kind: "on_open" },

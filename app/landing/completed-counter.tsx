@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { LandingLocale } from "@/lib/landing-copy";
+import { getLandingCopy } from "@/lib/landing-copy";
 
 const BASE_COUNT = 12_847;
 const TICK_MS = 2_800;
 
-export function CompletedCounter() {
+type CompletedCounterProps = {
+  locale: LandingLocale;
+};
+
+export function CompletedCounter({ locale }: CompletedCounterProps) {
+  const label = getLandingCopy(locale).completedCounterLabel;
   const [count, setCount] = useState(BASE_COUNT);
   const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -24,11 +31,9 @@ export function CompletedCounter() {
 
   return (
     <section className="rounded-xl border border-gray-100 bg-[#FAFBFC] px-5 py-4">
-      <p className="text-xs font-medium uppercase tracking-widest text-gray-400">
-        Emails completed with Handled
-      </p>
+      <p className="text-xs font-medium uppercase tracking-widest text-gray-400">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-[#0F172A]">
-        {count.toLocaleString()}
+        {count.toLocaleString(locale === "it" ? "it-IT" : "en-US")}
       </p>
     </section>
   );

@@ -1,29 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const LINES = [
-  "Users are reaching Inbox Zero faster.",
-  "Most users finish email in one sitting.",
-  "The average completed email never needs to be seen again.",
-] as const;
+import type { LandingLocale } from "@/lib/landing-copy";
+import { getLandingCopy } from "@/lib/landing-copy";
 
 const ROTATE_MS = 4_500;
 
-export function SocialProof() {
+type SocialProofProps = {
+  locale: LandingLocale;
+};
+
+export function SocialProof({ locale }: SocialProofProps) {
+  const lines = getLandingCopy(locale).socialProof;
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [locale]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       setVisible(false);
       window.setTimeout(() => {
-        setIndex((i) => (i + 1) % LINES.length);
+        setIndex((i) => (i + 1) % lines.length);
         setVisible(true);
       }, 320);
     }, ROTATE_MS);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [lines.length]);
 
   return (
     <section className="border-t border-gray-100 pt-8">
@@ -33,7 +38,7 @@ export function SocialProof() {
         }`}
         aria-live="polite"
       >
-        {LINES[index]}
+        {lines[index]}
       </p>
     </section>
   );

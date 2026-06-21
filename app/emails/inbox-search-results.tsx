@@ -36,14 +36,14 @@ const COPY = {
     searching: calmSearchLoadingMessage("en"),
     empty: calmEmptyMessage("en", 0),
     emptyHint: "Try different words or clear filters.",
-    completedSection: "Completed matches",
+    completedSection: "Handled history",
     searchUnavailable: calmEmptyMessage("en", 0),
   },
   it: {
     searching: calmSearchLoadingMessage("it"),
     empty: calmEmptyMessage("it", 0),
     emptyHint: "Prova altre parole o rimuovi i filtri.",
-    completedSection: "Completate corrispondenti",
+    completedSection: "Cronologia gestite",
     searchUnavailable: calmEmptyMessage("it", 0),
   },
 } as const;

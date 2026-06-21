@@ -3,10 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useEmailCompletions } from "@/app/email-completions-context";
-import { readHandledLogStats } from "@/lib/autopilot/log-storage";
 import { isBetaMode } from "@/lib/beta-mode";
-import { isActiveWaiting } from "@/lib/waiting-on/helpers";
+import { readHandledLogStats } from "@/lib/autopilot/log-storage";
 
 const LOG_EVENT = "handled-autopilot-log-changed";
 
@@ -23,16 +21,11 @@ export function InboxViewNav({ locale }: InboxViewNavProps) {
 
 function BetaInboxViewNav({ locale }: InboxViewNavProps) {
   const pathname = usePathname();
-  const { completions, activeWaitingRecords } = useEmailCompletions();
-  const isCompleted = pathname === "/emails/completed";
-  const isWaiting = pathname === "/emails/waiting";
-  const isInbox = !isCompleted && !isWaiting;
-  const completedCount = Object.values(completions).filter((r) => !isActiveWaiting(r)).length;
-  const waitingCount = activeWaitingRecords.length;
+  const isInbox =
+    pathname === "/emails" ||
+    (pathname.startsWith("/emails/") && pathname !== "/emails/handled-log");
 
   const inboxLabel = locale === "it" ? "Inbox" : "Inbox";
-  const completedLabel = locale === "it" ? "Completate" : "Completed";
-  const waitingLabel = locale === "it" ? "In attesa" : "Waiting On";
 
   return (
     <nav
@@ -42,25 +35,12 @@ function BetaInboxViewNav({ locale }: InboxViewNavProps) {
       <NavPill href="/emails" active={isInbox}>
         {inboxLabel}
       </NavPill>
-      <NavPill href="/emails/waiting" active={isWaiting}>
-        {waitingLabel}
-        {waitingCount > 0 ? (
-          <CountBadge active={isWaiting}>{waitingCount}</CountBadge>
-        ) : null}
-      </NavPill>
-      <NavPill href="/emails/completed" active={isCompleted}>
-        {completedLabel}
-        {completedCount > 0 ? (
-          <CountBadge active={isCompleted}>{completedCount}</CountBadge>
-        ) : null}
-      </NavPill>
     </nav>
   );
 }
 
 function FullInboxViewNav({ locale }: InboxViewNavProps) {
   const pathname = usePathname();
-  const { completions, activeWaitingRecords } = useEmailCompletions();
   const [logProcessed, setLogProcessed] = useState(0);
 
   useEffect(() => {
@@ -70,16 +50,12 @@ function FullInboxViewNav({ locale }: InboxViewNavProps) {
     return () => window.removeEventListener(LOG_EVENT, sync);
   }, []);
 
-  const isCompleted = pathname === "/emails/completed";
-  const isWaiting = pathname === "/emails/waiting";
   const isLog = pathname === "/emails/handled-log";
-  const isInbox = !isCompleted && !isWaiting && !isLog;
-  const completedCount = Object.values(completions).filter((r) => !isActiveWaiting(r)).length;
-  const waitingCount = activeWaitingRecords.length;
+  const isInbox =
+    pathname === "/emails" ||
+    (pathname.startsWith("/emails/") && !isLog);
 
   const inboxLabel = locale === "it" ? "Inbox" : "Inbox";
-  const completedLabel = locale === "it" ? "Completate" : "Completed";
-  const waitingLabel = locale === "it" ? "In attesa" : "Waiting On";
   const logLabel = locale === "it" ? "Registro" : "Handled Log";
 
   return (
@@ -94,18 +70,6 @@ function FullInboxViewNav({ locale }: InboxViewNavProps) {
         {logLabel}
         {logProcessed > 0 ? (
           <CountBadge active={isLog}>{logProcessed}</CountBadge>
-        ) : null}
-      </NavPill>
-      <NavPill href="/emails/waiting" active={isWaiting}>
-        {waitingLabel}
-        {waitingCount > 0 ? (
-          <CountBadge active={isWaiting}>{waitingCount}</CountBadge>
-        ) : null}
-      </NavPill>
-      <NavPill href="/emails/completed" active={isCompleted}>
-        {completedLabel}
-        {completedCount > 0 ? (
-          <CountBadge active={isCompleted}>{completedCount}</CountBadge>
         ) : null}
       </NavPill>
     </nav>

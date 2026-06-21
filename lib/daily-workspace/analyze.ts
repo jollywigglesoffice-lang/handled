@@ -12,7 +12,7 @@ import type {
 
 const LIMITS: Record<WorkspaceSectionId, number> = {
   todays_focus: 5,
-  waiting_on: 5,
+  awaiting_responses: 5,
   suggested_actions: 4,
 };
 
@@ -25,7 +25,7 @@ function sectionMeta(
       title: "Today's Focus",
       calmNote: "Meaningful actions only — you stay in control.",
     },
-    waiting_on: {
+    awaiting_responses: {
       title: "Waiting On",
       calmNote: "No need to chase — Handled keeps these visible.",
     },
@@ -39,7 +39,7 @@ function sectionMeta(
       title: "Focus di oggi",
       calmNote: "Solo azioni che contano — tu decidi sempre.",
     },
-    waiting_on: {
+    awaiting_responses: {
       title: "In attesa",
       calmNote: "Nessuna pressione — Handled tiene traccia per te.",
     },
@@ -61,7 +61,7 @@ export function analyzeDailyWorkspace(
 
   const sectionIds: WorkspaceSectionId[] = [
     "todays_focus",
-    "waiting_on",
+    "awaiting_responses",
     "suggested_actions",
   ];
 
@@ -80,7 +80,7 @@ export function analyzeDailyWorkspace(
 
   const stats: DailyWorkspaceStats = {
     focusCount: sections.find((s) => s.id === "todays_focus")?.items.length ?? 0,
-    waitingCount: sections.find((s) => s.id === "waiting_on")?.items.length ?? 0,
+    waitingCount: sections.find((s) => s.id === "awaiting_responses")?.items.length ?? 0,
     suggestedCount:
       sections.find((s) => s.id === "suggested_actions")?.items.length ?? 0,
     ignorableCount: input.messages.filter(

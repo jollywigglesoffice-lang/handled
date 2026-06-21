@@ -77,7 +77,7 @@ export function WaitingOnCard({
           }
           onClick={() => {
             captureInboxReturnFromOpen(
-              { view: "waiting", categoryTab: "all" },
+              { view: "inbox", categoryTab: "all" },
               record.emailId,
             );
           }}

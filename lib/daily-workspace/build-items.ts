@@ -128,7 +128,7 @@ export function buildWorkspaceItemsForMessage(
       items.push(
         item(
           m,
-          "waiting_on",
+          "awaiting_responses",
           kind === "reply" ? "follow_up" : kind,
           priorityScore,
           locale,

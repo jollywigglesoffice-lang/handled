@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { isBetaMode } from "@/lib/beta-mode";
 import { GoogleSignInButton, WelcomeLanding } from "@/app/components/welcome-landing";
+import { LanguageFooterToggle } from "@/app/components/language-footer-toggle";
+import { useUiCopy } from "@/app/use-ui-copy";
 import { startGoogleOAuth } from "@/lib/auth/start-google-oauth";
 
 export default function LoginPage() {
+  const ui = useUiCopy();
   const router = useRouter();
   const next =
     typeof window !== "undefined"
@@ -47,9 +50,9 @@ export default function LoginPage() {
         router.replace("/emails");
         return;
       }
-      setAuthError("Google sign-in didn’t complete. Please try again.");
+      setAuthError(ui.auth.oauthIncomplete);
     })();
-  }, [router]);
+  }, [router, ui.auth.oauthIncomplete]);
 
   async function handleGoogleSignIn() {
     setAuthError("");
@@ -58,10 +61,10 @@ export default function LoginPage() {
 
     try {
       const { error } = await startGoogleOAuth(next);
-      if (error) setAuthError(error);
+      if (error) setAuthError(ui.auth.oauthFailed);
     } catch (error) {
       console.error("Google OAuth failed", error);
-      setAuthError("Could not start Google sign-in. Please try again.");
+      setAuthError(ui.auth.oauthFailed);
     } finally {
       setOauthLoading(false);
     }
@@ -85,7 +88,7 @@ export default function LoginPage() {
     setAuthNotice("");
 
     if (!authEmail || !authPassword) {
-      setAuthError("Enter your email and password.");
+      setAuthError(ui.auth.enterEmailPassword);
       return;
     }
 
@@ -129,9 +132,7 @@ export default function LoginPage() {
         }
 
         setAuthPassword("");
-        setAuthNotice(
-          "Account created! Please check your email to confirm your account. After confirming, come back here and sign in."
-        );
+        setAuthNotice(ui.auth.signupSuccess);
         return;
       }
 
@@ -144,7 +145,7 @@ export default function LoginPage() {
         console.error("login error", result.error);
 
         if (result.error.message.includes("Failed to fetch")) {
-          setAuthError("Could not connect to authentication. Please refresh and try again.");
+          setAuthError(ui.auth.authConnectFailed);
         } else {
           setAuthError(result.error.message);
         }
@@ -171,14 +172,15 @@ export default function LoginPage() {
       window.location.href = next;
     } catch (error) {
       console.error("auth failed", error);
-      setAuthError("Could not connect to authentication. Please refresh and try again.");
+      setAuthError(ui.auth.authConnectFailed);
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] flex items-center justify-center px-4">
+    <main className="flex min-h-screen flex-col bg-[#F8FAFC]">
+      <div className="flex flex-1 items-center justify-center px-4">
       <section className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">
@@ -186,21 +188,19 @@ export default function LoginPage() {
           </p>
           <h1 className="mt-1 text-2xl font-semibold text-gray-900">
             {isBetaMode()
-              ? "Get through email faster"
+              ? ui.auth.betaTitle
               : authMode === "login"
-                ? "Sign in to continue"
-                : "Create your account"}
+                ? ui.auth.signInTitle
+                : ui.auth.signUpTitle}
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-gray-500">
-            {isBetaMode()
-              ? "Sign in with Google and your inbox loads immediately."
-              : "Save your replies, preferences, usage, and Pro access across devices."}
+            {isBetaMode() ? ui.auth.betaSubtitle : ui.auth.fullSubtitle}
           </p>
         </div>
 
         {!isBetaMode() ? (
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800">
-          🔒 Handled helps draft replies, but never sends emails without your approval.
+          {ui.auth.safetyNote}
         </div>
         ) : null}
 
@@ -242,7 +242,7 @@ export default function LoginPage() {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
               />
             </svg>
-            {oauthLoading ? "Redirecting…" : "Continue with Google"}
+            {oauthLoading ? ui.auth.redirecting : ui.auth.continueWithGoogle}
           </button>
 
           {!isBetaMode() ? (
@@ -251,7 +251,7 @@ export default function LoginPage() {
               <div className="w-full border-t border-gray-200" />
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="bg-white px-2 font-medium text-gray-400">or</span>
+              <span className="bg-white px-2 font-medium text-gray-400">{ui.auth.orDivider}</span>
             </div>
           </div>
           ) : null}
@@ -263,7 +263,7 @@ export default function LoginPage() {
             type="email"
             value={authEmail}
             onChange={(e) => setAuthEmail(e.target.value)}
-            placeholder="Email"
+            placeholder={ui.auth.emailPlaceholder}
             className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
           />
 
@@ -272,13 +272,13 @@ export default function LoginPage() {
               type={showPassword ? "text" : "password"}
               value={authPassword}
               onChange={(e) => setAuthPassword(e.target.value)}
-              placeholder="Password"
+              placeholder={ui.auth.passwordPlaceholder}
               className="w-full rounded-xl border border-gray-200 px-3 py-2 pr-11 text-sm"
             />
             <button
               type="button"
               onClick={() => setShowPassword((prev) => !prev)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-label={showPassword ? ui.auth.hidePassword : ui.auth.showPassword}
               className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-gray-400 transition hover:text-gray-600"
             >
               {showPassword ? (
@@ -323,10 +323,10 @@ export default function LoginPage() {
             className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:opacity-60"
           >
             {isSubmitting
-              ? "Please wait..."
+              ? ui.auth.pleaseWait
               : authMode === "login"
-              ? "Sign in"
-              : "Create account"}
+              ? ui.auth.signInButton
+              : ui.auth.createAccountButton}
           </button>
 
           <button
@@ -340,12 +340,14 @@ export default function LoginPage() {
             className="w-full text-xs font-medium text-gray-400 hover:text-gray-600 disabled:opacity-60"
           >
             {authMode === "login"
-              ? "Need an account? Create one"
-              : "Already have an account? Sign in"}
+              ? ui.auth.needAccount
+              : ui.auth.haveAccount}
           </button>
         </div>
         ) : null}
       </section>
+      </div>
+      <LanguageFooterToggle className="pb-8" />
     </main>
   );
 }

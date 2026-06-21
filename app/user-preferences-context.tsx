@@ -22,7 +22,11 @@ export type AppUiLanguage = "en" | "it";
 const USER_NAME_STORAGE_KEY = "handled:user-name";
 const TONE_STORAGE_KEY = "handled:reply-tone";
 const REPLY_LANGUAGE_STORAGE_KEY = "handled:reply-language";
-const UI_LANGUAGE_STORAGE_KEY = "handled:ui-language";
+import {
+  detectBrowserUiLanguage,
+  persistUiLanguage,
+  readStoredUiLanguage,
+} from "@/lib/ui-language";
 
 const replyTones: ReplyTone[] = ["casual", "professional", "friendly"];
 const replyLanguages: ReplyLanguage[] = [
@@ -32,7 +36,6 @@ const replyLanguages: ReplyLanguage[] = [
   "french",
   "german",
 ];
-const appUiLanguages: AppUiLanguage[] = ["en", "it"];
 
 function readStoredValue(storageKey: string) {
   if (typeof window === "undefined") {
@@ -103,11 +106,10 @@ export function UserPreferencesProvider({
       ? (stored as ReplyLanguage)
       : "english";
   });
-  const [uiLanguage, setUiLanguage] = useState<AppUiLanguage>(() => {
-    const stored = readStoredValue(UI_LANGUAGE_STORAGE_KEY);
-    return stored && appUiLanguages.includes(stored as AppUiLanguage)
-      ? (stored as AppUiLanguage)
-      : "en";
+  const [uiLanguage, setUiLanguageState] = useState<AppUiLanguage>(() => {
+    const stored = readStoredUiLanguage();
+    if (stored) return stored;
+    return detectBrowserUiLanguage();
   });
 
   useEffect(() => {
@@ -196,8 +198,8 @@ export function UserPreferencesProvider({
         writeStoredValue(REPLY_LANGUAGE_STORAGE_KEY, language);
       },
       setUiLanguage: (language: AppUiLanguage) => {
-        setUiLanguage(language);
-        writeStoredValue(UI_LANGUAGE_STORAGE_KEY, language);
+        setUiLanguageState(language);
+        persistUiLanguage(language);
       },
     }),
     [identity, patchIdentity, replyLanguage, saveIdentityToServer, tone, uiLanguage, userName],

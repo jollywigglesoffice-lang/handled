@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { GoogleSignInButton, WelcomeLanding } from "@/app/components/welcome-landing";
+import { useUiCopy } from "@/app/use-ui-copy";
 import { startGoogleOAuth } from "@/lib/auth/start-google-oauth";
 
 export function BetaLandingPage() {
+  const ui = useUiCopy();
   const [oauthLoading, setOauthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
 
@@ -13,9 +15,9 @@ export function BetaLandingPage() {
     setOauthLoading(true);
     try {
       const { error } = await startGoogleOAuth("/emails");
-      if (error) setAuthError(error);
+      if (error) setAuthError(ui.auth.oauthFailed);
     } catch {
-      setAuthError("Could not start Google sign-in. Please try again.");
+      setAuthError(ui.auth.oauthFailed);
     } finally {
       setOauthLoading(false);
     }

@@ -18,7 +18,7 @@ type DailyWorkspacePanelProps = {
 
 const SECTION_ACCENT: Record<string, string> = {
   todays_focus: "border-l-accent",
-  waiting_on: "border-l-slate-400",
+  awaiting_responses: "border-l-slate-400",
   suggested_actions: "border-l-teal-400",
 };
 

@@ -18,12 +18,10 @@ export function CompletedEmailRow({
   record,
   locale,
   catalog,
-  completedFilter,
 }: {
   record: EmailCompletionRecord;
   locale: "en" | "it";
   catalog: InboxCategoryCatalog;
-  completedFilter?: string;
 }) {
   return (
     <Link
@@ -34,14 +32,7 @@ export function CompletedEmailRow({
       }
       className="flex flex-col gap-1 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 shadow-sm transition hover:border-accent/30 hover:shadow-md"
       onClick={() => {
-        captureInboxReturnFromOpen(
-          {
-            view: "completed",
-            categoryTab: "all",
-            completedFilter,
-          },
-          record.emailId,
-        );
+        captureInboxReturnFromOpen({ view: "inbox", categoryTab: "all" }, record.emailId);
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">

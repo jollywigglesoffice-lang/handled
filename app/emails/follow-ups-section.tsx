@@ -28,7 +28,7 @@ type FollowUpsSectionProps = {
 const TAB_ORDER: FollowUpSectionKey[] = [
   "at_risk",
   "follow_ups",
-  "waiting_on",
+  "awaiting_response",
   "pending",
   "unresolved",
 ];
@@ -42,7 +42,7 @@ export function FollowUpsSection({ messages, locale, visible = true }: FollowUps
   const tabLabels: Record<FollowUpSectionKey, string> = {
     at_risk: ui.followUp.atRiskTab,
     follow_ups: ui.followUp.followUpsTab,
-    waiting_on: ui.followUp.waitingOnTab,
+    awaiting_response: ui.followUp.waitingOnTab,
     unresolved: ui.followUp.unresolvedTab,
     pending: ui.followUp.pendingTab,
   };
@@ -94,7 +94,7 @@ export function FollowUpsSection({ messages, locale, visible = true }: FollowUps
     const map: Record<FollowUpSectionKey, FollowUpInboxItem[]> = {
       at_risk: [],
       follow_ups: [],
-      waiting_on: [],
+      awaiting_response: [],
       unresolved: [],
       pending: [],
     };

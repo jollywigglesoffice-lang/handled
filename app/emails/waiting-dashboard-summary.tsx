@@ -32,7 +32,7 @@ const COPY = {
 export function WaitingDashboardSummary({
   summary,
   locale,
-  linkToWaiting = true,
+  linkToWaiting = false,
   compact = false,
 }: WaitingDashboardSummaryProps) {
   if (summary.total === 0) return null;

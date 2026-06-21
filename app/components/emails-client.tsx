@@ -164,7 +164,6 @@ import {
   READ_STATE_EVENT,
   type ReadStateMap,
 } from "@/lib/read-state/client-storage";
-import { isActiveWaiting } from "@/lib/waiting-on/helpers";
 import { useWaitingOnMetadata } from "@/app/waiting-on-metadata-context";
 import { applyDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
 import type { GmailTruthStats } from "@/lib/inbox-truth/types";
@@ -177,6 +176,7 @@ import {
 } from "@/lib/dismissed/client-storage";
 import { trackEvent } from "@/lib/analytics";
 import { InboxLoadingState } from "@/app/emails/inbox-loading-state";
+import { LanguageFooterToggle } from "@/app/components/language-footer-toggle";
 import { GuidedOnboardingFlow } from "@/app/onboarding/guided-onboarding-flow";
 import {
   FIRST_ONBOARDING_COMPLETE_EVENT,
@@ -496,7 +496,7 @@ export function EmailsClient() {
     [catalog],
   );
   const { notifyCompleted } = useCompletionWorkflow();
-  const { uiLanguage, setUiLanguage } = useUserPreferences();
+  const { uiLanguage } = useUserPreferences();
   const loadingMicroMessages = useMemo(
     () => loadingRhythmMessages(uiLanguage === "it" ? "it" : "en"),
     [uiLanguage],
@@ -1342,11 +1342,6 @@ export function EmailsClient() {
   );
 
   const { summary: waitingSummary } = useWaitingOnMetadata();
-
-  const completedCount = useMemo(
-    () => Object.values(completions).filter((r) => !isActiveWaiting(r)).length,
-    [completions],
-  );
 
   const betaMode = isBetaMode();
   const [betaAiFilter, setBetaAiFilter] = useState<BetaAiFilter>("all");
@@ -2379,18 +2374,6 @@ export function EmailsClient() {
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label htmlFor="app-language" className="sr-only">
-              {ui.home.appLanguageLabel}
-            </label>
-            <select
-              id="app-language"
-              value={uiLanguage}
-              onChange={(event) => setUiLanguage(event.target.value as "en" | "it")}
-              className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-accent"
-            >
-              <option value="en">{ui.home.appLanguageEnglish}</option>
-              <option value="it">{ui.home.appLanguageItalian}</option>
-            </select>
             {signedIn ? (
               <AttachInboxButton locale={inboxLocale} variant="header" />
             ) : null}
@@ -2578,7 +2561,6 @@ export function EmailsClient() {
                   counts={gmailBuckets.counts}
                   total={gmailBuckets.totalAccessible}
                   locale={inboxLocale}
-                  completedCount={completedCount}
                   onChange={handleCategoryTabChange}
                 />
               </div>
@@ -2811,6 +2793,8 @@ export function EmailsClient() {
           onClose={() => setZeroSession(null)}
         />
       ) : null}
+
+      <LanguageFooterToggle className="mt-12 pb-6" />
     </main>
   );
 }
