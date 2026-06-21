@@ -53,15 +53,21 @@ const COPY = {
       checkingConnection: "Checking your Gmail connection…",
     },
     preferences: {
-      title: "Tell Handled who matters",
-      importantHint: "Tap 3 senders you never want to miss",
-      promoHint: "Optional: tap up to 3 senders to de-prioritize",
-      importantCount: (n: number) => `${n}/3 important`,
-      promoCount: (n: number) => `${n}/3 optional`,
+      title: "Tell Handled what matters to you",
+      subtitle: "Optional — pick anyone you never want to miss, or skip and teach Handled later.",
+      importantHint: "Tap senders that matter (optional)",
+      promoHint: "Optional: senders to de-prioritize",
+      importantCount: (n: number) =>
+        n === 0 ? "No one selected yet" : `${n} selected`,
+      promoCount: (n: number) =>
+        n === 0 ? "None de-prioritized" : `${n} de-prioritized`,
       continue: "Continue",
+      skip: "Skip for now",
+      noneOfThese: "None of these matter",
+      showDifferent: "Show me different suggestions",
       waitingForMail: "Pulling senders from your inbox…",
-      needMore: "Select 3 important senders to continue",
       emptyInboxSkip: "Your inbox is empty — skip for now and add senders later.",
+      clusterShowing: (label: string) => `Showing: ${label}`,
     },
     firstAction: {
       title: "Handle your first email",
@@ -99,15 +105,21 @@ const COPY = {
       checkingConnection: "Verifica connessione Gmail…",
     },
     preferences: {
-      title: "Chi conta per te",
-      importantHint: "Tocca 3 mittenti da non perdere",
-      promoHint: "Opzionale: fino a 3 mittenti da deprioritizzare",
-      importantCount: (n: number) => `${n}/3 importanti`,
-      promoCount: (n: number) => `${n}/3 opzionali`,
+      title: "Dì a Handled cosa conta per te",
+      subtitle: "Facoltativo — scegli chi non vuoi perdere, oppure salta e insegna dopo.",
+      importantHint: "Tocca i mittenti che contano (facoltativo)",
+      promoHint: "Facoltativo: mittenti da deprioritizzare",
+      importantCount: (n: number) =>
+        n === 0 ? "Nessuno selezionato" : `${n} selezionati`,
+      promoCount: (n: number) =>
+        n === 0 ? "Nessuno deprioritizzato" : `${n} deprioritizzati`,
       continue: "Continua",
+      skip: "Salta per ora",
+      noneOfThese: "Nessuno di questi conta",
+      showDifferent: "Mostrami altri suggerimenti",
       waitingForMail: "Recupero mittenti dalla inbox…",
-      needMore: "Seleziona 3 mittenti importanti",
       emptyInboxSkip: "Inbox vuota — salta per ora e aggiungi mittenti dopo.",
+      clusterShowing: (label: string) => `In evidenza: ${label}`,
     },
     firstAction: {
       title: "Gestisci la prima email",
@@ -170,23 +182,19 @@ export function GuidedOnboardingFlow({
   const [oauthLoading, setOauthLoading] = useState(false);
   const [importantSenders, setImportantSenders] = useState<Set<string>>(() => new Set());
   const [promoSenders, setPromoSenders] = useState<Set<string>>(() => new Set());
+  const [senderRefreshIndex, setSenderRefreshIndex] = useState(0);
   const [actionEmail, setActionEmail] = useState<GmailCardMessage | null>(null);
   const [personalizeCategory, setPersonalizeCategory] = useState<InboxAiCategory | null>(null);
 
   const senderCandidates = useMemo(
-    () => buildOnboardingSenderCandidates(messages),
-    [messages],
+    () => buildOnboardingSenderCandidates(messages, { refreshIndex: senderRefreshIndex }),
+    [messages, senderRefreshIndex],
   );
 
   const inboxSettled =
     inboxMode === "gmail" || inboxMode === "gmail_empty" || inboxMode === "gmail_error";
   const emptyInbox = inboxMode === "gmail_empty";
-  const requiredImportant = emptyInbox
-    ? 0
-    : Math.min(3, senderCandidates.importantCandidates.length || 3);
   const preferencesReady = inboxSettled && (messages.length > 0 || emptyInbox);
-  const preferencesComplete =
-    emptyInbox || importantSenders.size >= requiredImportant;
 
   const pickActionEmail = useCallback(() => {
     const queue = buildFirstTimeOnboardingQueue(messages, isCompleted);
@@ -222,6 +230,8 @@ export function GuidedOnboardingFlow({
     trackEvent("guided_onboarding_preferences_saved", {
       important: importantSenders.size,
       promotional: promoSenders.size,
+      skipped: false,
+      none_of_these: false,
     });
   }, [importantSenders, promoSenders, persistSenderPrefs, locale]);
 
@@ -268,12 +278,53 @@ export function GuidedOnboardingFlow({
     });
   }, [importantSenders]);
 
+  const advanceFromPreferences = useCallback(
+    (opts?: { skipped?: boolean; noneOfThese?: boolean }) => {
+      if (opts?.skipped || opts?.noneOfThese) {
+        if (opts.noneOfThese) {
+          trackEvent("guided_onboarding_no_senders_matter");
+        }
+        if (opts.skipped) {
+          trackEvent("guided_onboarding_preferences_skipped");
+        }
+        trackEvent("guided_onboarding_preferences_saved", {
+          important: 0,
+          promotional: 0,
+          skipped: Boolean(opts.skipped),
+          none_of_these: Boolean(opts.noneOfThese),
+        });
+      } else {
+        savePreferenceStep();
+      }
+      const email = pickActionEmail();
+      setActionEmail(email);
+      goToStep(email ? "first_action" : "release");
+    },
+    [savePreferenceStep, pickActionEmail, goToStep],
+  );
+
   const handlePreferencesContinue = useCallback(() => {
-    savePreferenceStep();
-    const email = pickActionEmail();
-    setActionEmail(email);
-    goToStep(email ? "first_action" : "release");
-  }, [savePreferenceStep, pickActionEmail, goToStep]);
+    advanceFromPreferences();
+  }, [advanceFromPreferences]);
+
+  const handleSkipPreferences = useCallback(() => {
+    setImportantSenders(new Set());
+    setPromoSenders(new Set());
+    advanceFromPreferences({ skipped: true });
+  }, [advanceFromPreferences]);
+
+  const handleNoneOfTheseMatter = useCallback(() => {
+    setImportantSenders(new Set());
+    setPromoSenders(new Set());
+    advanceFromPreferences({ noneOfThese: true });
+  }, [advanceFromPreferences]);
+
+  const handleRefreshSenders = useCallback(() => {
+    setSenderRefreshIndex((n) => n + 1);
+    trackEvent("guided_onboarding_sender_refresh", {
+      refresh_index: senderRefreshIndex + 1,
+    });
+  }, [senderRefreshIndex]);
 
   const handleFirstActionDone = useCallback(() => {
     if (actionEmail) {
@@ -332,8 +383,7 @@ export function GuidedOnboardingFlow({
           locale={locale}
           messagesReady={preferencesReady}
           emptyInbox={emptyInbox}
-          requiredImportant={requiredImportant}
-          preferencesComplete={preferencesComplete}
+          clusterLabel={senderCandidates.clusterLabel[locale]}
           importantCandidates={senderCandidates.importantCandidates}
           promotionalCandidates={senderCandidates.promotionalCandidates}
           importantSenders={importantSenders}
@@ -341,6 +391,9 @@ export function GuidedOnboardingFlow({
           onToggleImportant={toggleImportant}
           onTogglePromo={togglePromo}
           onContinue={handlePreferencesContinue}
+          onSkip={handleSkipPreferences}
+          onNoneOfThese={handleNoneOfTheseMatter}
+          onRefresh={handleRefreshSenders}
         />
       ) : null}
 
@@ -451,8 +504,7 @@ function PreferencesStep({
   locale,
   messagesReady,
   emptyInbox,
-  requiredImportant,
-  preferencesComplete,
+  clusterLabel,
   importantCandidates,
   promotionalCandidates,
   importantSenders,
@@ -460,13 +512,15 @@ function PreferencesStep({
   onToggleImportant,
   onTogglePromo,
   onContinue,
+  onSkip,
+  onNoneOfThese,
+  onRefresh,
 }: {
   t: (typeof COPY)["en" | "it"]["preferences"];
   locale: "en" | "it";
   messagesReady: boolean;
   emptyInbox: boolean;
-  requiredImportant: number;
-  preferencesComplete: boolean;
+  clusterLabel: string;
   importantCandidates: SenderCandidate[];
   promotionalCandidates: SenderCandidate[];
   importantSenders: Set<string>;
@@ -474,59 +528,85 @@ function PreferencesStep({
   onToggleImportant: (sender: string) => void;
   onTogglePromo: (sender: string) => void;
   onContinue: () => void;
+  onSkip: () => void;
+  onNoneOfThese: () => void;
+  onRefresh: () => void;
 }) {
-  const canContinue = preferencesComplete;
-
   return (
-    <section className="space-y-6">
+    <section className="space-y-4">
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
         <h3 className="text-lg font-medium text-gray-900">{t.title}</h3>
+        <p className="mt-2 text-sm leading-relaxed text-gray-500">{t.subtitle}</p>
+
         {emptyInbox ? (
-          <p className="mt-2 text-sm text-gray-500">{t.emptyInboxSkip}</p>
+          <p className="mt-3 text-sm text-gray-500">{t.emptyInboxSkip}</p>
+        ) : !messagesReady ? (
+          <p className="mt-4 text-sm text-gray-400">{t.waitingForMail}</p>
         ) : (
           <>
-            <p className="mt-1 text-sm text-gray-500">{t.importantHint}</p>
-            <p className="mt-2 text-xs font-medium text-accent">
-              {t.importantCount(importantSenders.size)}
-              {requiredImportant < 3 ? ` · ${requiredImportant} available` : ""}
+            <p className="mt-3 text-xs font-medium text-gray-400">
+              {t.clusterShowing(clusterLabel)}
             </p>
+            <p className="mt-2 text-sm text-gray-500">{t.importantHint}</p>
+            <p className="mt-1 text-xs font-medium text-accent">
+              {t.importantCount(importantSenders.size)}
+            </p>
+            <SenderChipList
+              candidates={importantCandidates}
+              selected={importantSenders}
+              onToggle={onToggleImportant}
+            />
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+              >
+                {t.showDifferent}
+              </button>
+              <button
+                type="button"
+                onClick={onNoneOfThese}
+                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+              >
+                {t.noneOfThese}
+              </button>
+            </div>
           </>
-        )}
-
-        {!messagesReady ? (
-          <p className="mt-4 text-sm text-gray-400">{t.waitingForMail}</p>
-        ) : emptyInbox ? null : (
-          <SenderChipList
-            candidates={importantCandidates}
-            selected={importantSenders}
-            onToggle={onToggleImportant}
-          />
         )}
       </div>
 
-      {!emptyInbox ? (
+      {!emptyInbox && messagesReady ? (
         <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
           <p className="text-sm text-gray-500">{t.promoHint}</p>
           <p className="mt-2 text-xs font-medium text-gray-400">{t.promoCount(promoSenders.size)}</p>
-          {messagesReady ? (
-            <SenderChipList
-              candidates={promotionalCandidates}
-              selected={promoSenders}
-              onToggle={onTogglePromo}
-              muted
-            />
-          ) : null}
+          <SenderChipList
+            candidates={promotionalCandidates}
+            selected={promoSenders}
+            onToggle={onTogglePromo}
+            muted
+          />
         </div>
       ) : null}
 
-      <button
-        type="button"
-        onClick={onContinue}
-        disabled={!canContinue || !messagesReady}
-        className="btn-primary w-full disabled:opacity-50"
-      >
-        {canContinue ? t.continue : t.needMore}
-      </button>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={!messagesReady}
+          className="btn-primary flex-1 disabled:opacity-50"
+        >
+          {t.continue}
+        </button>
+        <button
+          type="button"
+          onClick={onSkip}
+          disabled={!messagesReady}
+          className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+        >
+          {t.skip}
+        </button>
+      </div>
     </section>
   );
 }
@@ -543,7 +623,11 @@ function SenderChipList({
   muted?: boolean;
 }) {
   if (candidates.length === 0) {
-    return <p className="mt-4 text-sm text-gray-400">No senders yet — continue when mail loads.</p>;
+    return (
+      <p className="mt-4 text-sm text-gray-400">
+        No senders in this group — try different suggestions or skip for now.
+      </p>
+    );
   }
 
   return (
