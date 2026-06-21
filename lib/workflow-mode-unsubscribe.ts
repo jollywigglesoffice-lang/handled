@@ -10,8 +10,8 @@ export function shouldShowUnsubscribeIntelligence(
 ): boolean {
   const profile = getWorkflowModeProfile(mode);
   const isClutter =
-    inboxCategory === "newsletter" ||
-    inboxCategory === "promotion" ||
+    inboxCategory === "newsletters" ||
+    inboxCategory === "promotions" ||
     analysis.isNewsletterLike;
 
   if (profile.unsubscribeAggressiveness === "high") {
@@ -30,6 +30,6 @@ export function shouldShowUnsubscribeInboxBadge(
 ): boolean {
   const profile = getWorkflowModeProfile(mode);
   if (!profile.showUnsubscribeOnInbox) return false;
-  if (category === "newsletter" || category === "promotion") return true;
+  if (category === "newsletters" || category === "promotions") return true;
   return hasSignal && profile.unsubscribeAggressiveness === "high";
 }

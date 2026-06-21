@@ -9,6 +9,8 @@ export type AnalyticsEvent =
   | "bulk_action_type"
   | "inbox_zero_started"
   | "inbox_zero_completed"
+  | "inbox_zero_mode_enabled"
+  | "inbox_zero_mode_exited"
   | "clear_promotions_used"
   | "quick_reply_queue_started"
   | "email_marked_read"
@@ -32,7 +34,17 @@ export type AnalyticsEvent =
   | "waiting_item_resolved"
   | "response_detected"
   | "response_received_opened"
-  | "followup_reminder_created";
+  | "followup_reminder_created"
+  | "inbox_schedule_approved"
+  | "autopilot_batch_processed"
+  | "first_onboarding_started"
+  | "first_onboarding_completed"
+  | "first_onboarding_go_inbox"
+  | "first_onboarding_stay_focus"
+  | "guided_onboarding_started"
+  | "guided_onboarding_step"
+  | "guided_onboarding_preferences_saved"
+  | "guided_onboarding_completed";
 
 type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;
 

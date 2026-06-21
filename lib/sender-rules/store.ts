@@ -99,7 +99,7 @@ async function loadFromTable(userId: string): Promise<SenderRule[] | null> {
       id: String(row.id),
       sender_email: String(row.sender_email ?? ""),
       sender_domain: String(row.sender_domain ?? ""),
-      target_category: normalizeInboxAiCategory(String(row.target_category ?? "needs_attention")),
+      target_category: normalizeInboxAiCategory(String(row.target_category ?? "worth_your_attention")),
       label: row.label != null ? String(row.label) : null,
       enabled: Boolean(row.enabled ?? true),
       created_at: String(row.created_at),

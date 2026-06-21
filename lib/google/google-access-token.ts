@@ -33,6 +33,7 @@ async function resolveAccountId(
 async function getTokensForAccount(
   userId: string,
   accountId: string | null,
+  options?: { strictAccount?: boolean },
 ): Promise<{
   refreshToken: string | null;
   accessToken: string | null;
@@ -45,6 +46,14 @@ async function getTokensForAccount(
     const stored = await getAccountStoredTokens(userId, accountId);
     if (stored) {
       return { ...stored, resolvedAccountId: accountId };
+    }
+    if (options?.strictAccount) {
+      return {
+        refreshToken: null,
+        accessToken: null,
+        expiresAt: null,
+        resolvedAccountId: null,
+      };
     }
   }
 
@@ -71,10 +80,11 @@ async function getTokensForAccount(
  */
 export async function getFreshGoogleAccessToken(
   userId: string,
-  options?: { forceRefresh?: boolean; accountId?: string | null },
+  options?: { forceRefresh?: boolean; accountId?: string | null; strictAccount?: boolean },
 ): Promise<string | null> {
   const accountId = await resolveAccountId(userId, options?.accountId);
-  const stored = await getTokensForAccount(userId, accountId);
+  const strictAccount = options?.strictAccount && Boolean(options?.accountId);
+  const stored = await getTokensForAccount(userId, accountId, { strictAccount });
   if (!stored.refreshToken && !stored.accessToken) return null;
 
   const now = Date.now();

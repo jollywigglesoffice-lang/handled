@@ -66,7 +66,7 @@ function resolveState(input: {
 }): ConversationState | null {
   const { hay, intentRequiresReply, replyRecommended, days, category } = input;
 
-  if (category === "promotion" || category === "newsletter") {
+  if (category === "promotions" || category === "newsletters") {
     return null;
   }
 

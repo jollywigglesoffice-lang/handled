@@ -104,13 +104,13 @@ export function detectPromotionalSignals(
   );
   const isBulkMarketing = score >= 40 || (BULK_SENDER.test(sender) && score >= 22);
 
-  let suggestedCategory: InboxAiCategory = "promotion";
+  let suggestedCategory: InboxAiCategory = "promotions";
   if (isNewsletterStyle && score >= 30) {
-    suggestedCategory = "newsletter";
+    suggestedCategory = "newsletters";
   } else if (score >= 50 && !isNewsletterStyle) {
-    suggestedCategory = "promotion";
+    suggestedCategory = "promotions";
   } else if (score >= 28) {
-    suggestedCategory = isNewsletterStyle ? "newsletter" : "promotion";
+    suggestedCategory = isNewsletterStyle ? "newsletters" : "promotions";
   }
 
   return {

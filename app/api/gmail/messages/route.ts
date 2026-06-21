@@ -22,8 +22,12 @@ import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 import { parseWorkflowModeHeader } from "@/lib/workflow-mode-effects";
 import { WORKFLOW_MODE_HEADER } from "@/lib/workflow-mode";
 import { enrichMessageWithActionIntelligence } from "@/lib/action-intelligence";
+import { analyzeActionIntelligence } from "@/lib/action-intelligence/analyze";
 import { enrichInboxWithTimelineIntelligence } from "@/lib/timeline-intelligence";
 import { enrichMessageWithCalendarAwareness } from "@/lib/calendar-awareness";
+import { classifyCalendarIntent } from "@/lib/calendar-awareness/classify-intent";
+import { classifyTimeImpact } from "@/lib/time-impact/classify";
+import { classifyAutopilot } from "@/lib/autopilot/classify";
 import { hasUnsubscribeSignal } from "@/lib/unsubscribe/detect";
 import {
   classifyGmailThrownError,
@@ -32,12 +36,14 @@ import {
 import {
   createInboxLoadId,
   elapsedMs,
+  logInboxApiError,
   logInboxLoadComplete,
   logInboxLoadFailed,
   logInboxLoadStart,
   mergeTimings,
 } from "@/lib/inbox-load/diagnostics";
 import { inboxLoadUserMessage } from "@/lib/inbox-load/user-messages";
+import { handledErrorFromInboxFailure } from "@/lib/handled-errors";
 import type {
   InboxLoadDiagnostics,
   InboxLoadFailureReason,
@@ -53,6 +59,7 @@ function inboxErrorResponse(
     failureStage: InboxLoadStage;
     message: string;
     diagnostics: InboxLoadDiagnostics;
+    accountId?: string | null;
     gmailStatus?: number | null;
     gmailReason?: string | null;
     retryAfterMs?: number | null;
@@ -67,6 +74,23 @@ function inboxErrorResponse(
     gmailReason: input.gmailReason ?? null,
   });
 
+  logInboxApiError({
+    endpoint: "/api/gmail/messages",
+    httpStatus: input.status,
+    accountId: input.accountId ?? null,
+    failureReason: input.failureReason,
+    failureStage: input.failureStage,
+    loadId: input.diagnostics.loadId,
+    errorBody: {
+      error: input.failureReason,
+      message: input.message,
+      gmailStatus: input.gmailStatus ?? null,
+      gmailReason: input.gmailReason ?? null,
+    },
+  });
+
+  const structured = handledErrorFromInboxFailure(input.failureReason);
+
   return applyAuthCookies(
     NextResponse.json(
       {
@@ -74,6 +98,13 @@ function inboxErrorResponse(
         failureReason: input.failureReason,
         failureStage: input.failureStage,
         message: input.message,
+        code: structured.code,
+        category: structured.category,
+        userMessage: structured.userMessage,
+        actionLabel: structured.actionLabel,
+        action: structured.action,
+        title: structured.title,
+        accountId: input.accountId ?? null,
         gmailStatus: input.gmailStatus ?? null,
         gmailReason: input.gmailReason ?? null,
         retryAfterMs: input.retryAfterMs ?? null,
@@ -119,11 +150,14 @@ export async function GET(request: Request) {
   timings = mergeTimings(timings, { authMs: elapsedMs(authStarted) });
 
   if (!authResult.ok) {
+    const status = authResult.response.status;
+    const failureReason = status >= 500 ? "server_unavailable" : "auth_error";
     return inboxErrorResponse(applyAuthCookies, {
-      status: authResult.response.status,
-      failureReason: "auth_failure",
+      status,
+      failureReason,
       failureStage: "auth",
-      message: inboxLoadUserMessage("auth_failure"),
+      message: inboxLoadUserMessage(failureReason),
+      accountId: accountFilterId,
       diagnostics: baseDiagnostics(),
     });
   }
@@ -136,12 +170,13 @@ export async function GET(request: Request) {
   timings = mergeTimings(timings, { googleTokenMs: elapsedMs(tokenStarted) });
 
   if (!googleAuth.ok) {
-    const isMissing = googleAuth.response.status === 403;
+    const failureReason = googleAuth.failureReason;
     return inboxErrorResponse(applyAuthCookies, {
       status: googleAuth.response.status,
-      failureReason: isMissing ? "oauth_missing" : "oauth_expired",
+      failureReason,
       failureStage: "google_token",
-      message: inboxLoadUserMessage(isMissing ? "oauth_missing" : "oauth_expired"),
+      message: inboxLoadUserMessage(failureReason),
+      accountId: accountFilterId,
       diagnostics: baseDiagnostics(),
     });
   }
@@ -160,9 +195,10 @@ export async function GET(request: Request) {
       );
       return inboxErrorResponse(applyAuthCookies, {
         status: 403,
-        failureReason: "oauth_missing",
+        failureReason: "missing_account",
         failureStage: "google_token",
-        message: inboxLoadUserMessage("oauth_missing"),
+        message: inboxLoadUserMessage("missing_account"),
+        accountId: accountFilterId,
         diagnostics: baseDiagnostics(),
       });
     }
@@ -187,6 +223,8 @@ export async function GET(request: Request) {
       : {
           emailOverrides: {},
           emailOverrideRecords: [],
+          memoryRules: [],
+          memorySnapshot: { senderMemory: [], categoryCorrections: [], categoryPatterns: [], actionMemory: [] },
           senderRules: [],
           keywordRules: [],
           allRules: [],
@@ -203,6 +241,7 @@ export async function GET(request: Request) {
     const categorizeStarted = Date.now();
     const categorized = await categorizeGmailInboxRows(rows, {
       emailOverrides: rulesCtx.emailOverrides,
+      memoryRules: rulesCtx.memoryRules,
       senderRules: rulesCtx.senderRules,
       userRules: rulesCtx.keywordRules,
       senderRelationships: rulesCtx.senderRelationships,
@@ -218,14 +257,41 @@ export async function GET(request: Request) {
 
     const messages = withTimeline.map((m) => {
       const withCalendar = enrichMessageWithCalendarAwareness(m);
+      const analysis = analyzeActionIntelligence({
+        row: m,
+        category: m.category,
+      });
       const enriched = enrichMessageWithActionIntelligence(withCalendar, {
         category: m.category,
+      });
+      const timeImpact = classifyTimeImpact({
+        row: m,
+        category: m.category,
+        needsCalendarContext: withCalendar.needsCalendarContext,
+        actionIntelligence: enriched.actionIntelligence,
+      });
+      const autopilot = classifyAutopilot({
+        row: m,
+        category: m.category,
+        categoryConfidence: m.categoryConfidence,
+        categorySource: m.categorySource,
+        actionConfidence: analysis.confidence,
+        actionState: analysis.actionState,
+        primaryLabel: analysis.primaryLabel,
+        timeImpactKind: timeImpact.kind,
       });
       return {
         ...enriched,
         timelineIntelligence: m.timelineIntelligence,
         relationship: m.relationship,
         hasUnsubscribeSignal: hasUnsubscribeSignal(m.snippet, m.listUnsubscribe),
+        timeImpact,
+        calendarIntentLevel: classifyCalendarIntent({
+          row: m,
+          needsCalendarContext: withCalendar.needsCalendarContext,
+          timeImpactKind: timeImpact.kind,
+        }),
+        autopilot,
       };
     });
     timings = mergeTimings(timings, { enrichmentMs: elapsedMs(enrichStarted) });
@@ -281,7 +347,7 @@ export async function GET(request: Request) {
     let gmailReason: string | null = null;
 
     const gmailClass = classifyGmailThrownError(e);
-    if (gmailClass.reason !== "gmail_api_failure" || /gmail/i.test(String(e))) {
+    if (gmailClass.reason !== "gmail_fetch_failed" || /gmail/i.test(String(e))) {
       failureReason = gmailClass.reason;
       gmailStatus = gmailClass.gmailStatus ?? null;
       gmailReason = gmailClass.gmailReason ?? null;

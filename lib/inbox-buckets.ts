@@ -13,6 +13,7 @@ import {
 } from "@/lib/workflow-mode-inbox";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import type { WorkflowMode } from "@/lib/workflow-mode";
+import { lookupScopedValue } from "@/lib/gmail/account-types";
 
 export type InboxBucketMessage = {
   id: string;
@@ -34,8 +35,7 @@ export type InboxBuckets<T extends InboxBucketMessage> = {
   counts: Record<string, number>;
   categoryOrder: InboxAiCategory[];
   needsAttentionEmails: T[];
-  quickReplyEmails: T[];
-  handledEmails: T[];
+  waitingOnEmails: T[];
   newsletterEmails: T[];
   promotionEmails: T[];
   todayAttentionCount: number;
@@ -62,8 +62,7 @@ function emptyBuckets<T extends InboxBucketMessage>(
     counts,
     categoryOrder: [],
     needsAttentionEmails: [],
-    quickReplyEmails: [],
-    handledEmails: [],
+    waitingOnEmails: [],
     newsletterEmails: [],
     promotionEmails: [],
     todayAttentionCount: 0,
@@ -109,8 +108,8 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
   }
 
   const clutterEmails = collapseClutter
-    ? (byCategoryAll.promotion ?? [])
-        .concat(byCategoryAll.newsletter ?? [])
+    ? (byCategoryAll.promotions ?? [])
+        .concat(byCategoryAll.newsletters ?? [])
         .map((m) => ({ ...m }))
     : [];
 
@@ -140,8 +139,7 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
 
   const categoryOrder = orderSource.filter((c) => (counts[c] ?? 0) > 0);
 
-  const needsAttentionEmails = byCategory.needs_attention ?? [];
-  const quickReplyEmails = byCategory.quick_reply ?? [];
+  const needsAttentionEmails = byCategory.worth_your_attention ?? [];
 
   return {
     catalog,
@@ -151,12 +149,11 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
     counts,
     categoryOrder,
     needsAttentionEmails,
-    quickReplyEmails,
-    handledEmails: byCategoryAll.handled ?? [],
-    newsletterEmails: byCategoryAll.newsletter ?? [],
-    promotionEmails: byCategoryAll.promotion ?? [],
+    waitingOnEmails: [],
+    newsletterEmails: byCategoryAll.newsletters ?? [],
+    promotionEmails: byCategoryAll.promotions ?? [],
     todayAttentionCount: needsAttentionEmails.length,
-    priorityCount: needsAttentionEmails.length + quickReplyEmails.length,
+    priorityCount: needsAttentionEmails.length,
     totalVisible: visible.length,
     totalAccessible: messages.length,
     clutterEmails,
@@ -166,13 +163,13 @@ export function buildInboxBuckets<T extends InboxBucketMessage>(
 }
 
 export function applyCategoryOverrides<
-  T extends InboxBucketMessage & { categorySource?: string },
+  T extends InboxBucketMessage & { categorySource?: string; accountId?: string },
 >(messages: T[], overrides: Record<string, InboxAiCategory>): T[] {
   if (Object.keys(overrides).length === 0) {
     return messages;
   }
   return messages.map((m) => {
-    const override = overrides[m.id];
+    const override = lookupScopedValue(overrides, m.id, m.accountId);
     if (m.categorySource === "manual_override" && !override) {
       return m;
     }

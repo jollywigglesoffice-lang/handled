@@ -19,9 +19,8 @@ export function scoreWorkspacePriority(
 ): number {
   let score = 30;
 
-  if (m.category === "needs_attention") score += 18;
-  if (m.category === "quick_reply") score += 10;
-  if (m.category === "handled" || m.category === "newsletter" || m.category === "promotion") {
+  if (m.category === "worth_your_attention") score += 18;
+  if (m.category === "good_to_know" || m.category === "newsletters" || m.category === "promotions") {
     score -= 25;
   }
 

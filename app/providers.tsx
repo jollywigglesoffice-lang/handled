@@ -8,6 +8,7 @@ import { WaitingOnMetadataProvider } from "./waiting-on-metadata-context";
 import { ReplyUsageProvider } from "./reply-usage-context";
 import { UserPreferencesProvider } from "./user-preferences-context";
 import { SyncToast } from "./components/sync-toast";
+import { HandledFeedbackLayer } from "./components/handled-feedback-layer";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -20,6 +21,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 <CompletionWorkflowProvider>
                   {children}
                   <SyncToast />
+                  <HandledFeedbackLayer />
                 </CompletionWorkflowProvider>
               </WaitingOnMetadataProvider>
             </EmailCompletionsProvider>

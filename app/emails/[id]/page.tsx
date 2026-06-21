@@ -83,14 +83,14 @@ export default async function EmailDetailPage({ params }: EmailDetailPageProps) 
 function normalizeMockCategory(
   email: ReturnType<typeof getEmailById>,
 ): InboxAiCategory {
-  if (!email) return "needs_attention";
+  if (!email) return "worth_your_attention";
   const s = email.section.toLowerCase();
-  if (s.includes("promotion")) return "promotion";
-  if (s.includes("newsletter")) return "newsletter";
-  if (s.includes("good to know") || s.includes("fyi") || s.includes("da sapere")) {
-    return "fyi";
+  if (s.includes("promotions")) return "promotions";
+  if (s.includes("newsletters")) return "newsletters";
+  if (s.includes("good to know") || s.includes("good_to_know") || s.includes("da sapere")) {
+    return "good_to_know";
   }
-  if (s.includes("handled")) return "handled";
-  if (s.includes("quick")) return "quick_reply";
-  return "needs_attention";
+  if (s.includes("good_to_know")) return "good_to_know";
+  if (s.includes("quick")) return "worth_your_attention";
+  return "worth_your_attention";
 }

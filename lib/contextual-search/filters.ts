@@ -46,7 +46,7 @@ export function inferFiltersForMessage(
     filters.push("invoices");
   }
 
-  if (m.category === "promotion") {
+  if (m.category === "promotions") {
     filters.push("promotions");
   }
 

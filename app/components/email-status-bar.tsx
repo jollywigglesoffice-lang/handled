@@ -1,18 +1,34 @@
 "use client";
 
-import { CompletionActionPicker } from "@/app/emails/completion-action-picker";
+import { DoneWithThisPicker } from "@/app/emails/done-with-this-picker";
+import { EmailIntentActions } from "@/app/emails/email-intent-actions";
 import { CompletionSuggestion } from "@/app/emails/completion-suggestion";
 import { useEmailStatusActions, type EmailStatusActionsInput } from "@/app/emails/use-email-status-actions";
 import { EmailLifecycleIndicator } from "@/app/components/email-lifecycle-indicator";
+import { handledActionCopy } from "@/lib/handled-action-copy";
 
 export type EmailStatusBarProps = EmailStatusActionsInput & {
   /** detail = prominent header on email page; integrated = use EmailCardActionRow instead */
   variant?: "detail" | "integrated";
+  categoryConfidence?: number;
+  actionable?: boolean;
+  actionState?: import("@/lib/action-intelligence").EmailActionState;
+  /** Show every completion action in the done picker (detail default). */
+  showAllCompletionActions?: boolean;
+  /** Gmail compose URL for forwarding */
+  forwardHref?: string;
+  onOpenChangeCategory?: () => void;
 };
 
 /** Standalone bar for email detail page header */
 export function EmailStatusBar({
   variant = "detail",
+  categoryConfidence,
+  actionable,
+  actionState,
+  showAllCompletionActions,
+  forwardHref,
+  onOpenChangeCategory,
   ...props
 }: EmailStatusBarProps) {
   if (variant === "integrated") return null;
@@ -33,6 +49,7 @@ export function EmailStatusBar({
     isActiveWaitingItem,
     handleResolveWaiting,
   } = useEmailStatusActions(props);
+  const actions = handledActionCopy(props.locale);
 
   return (
     <div className="space-y-2" data-testid="email-status-bar">
@@ -49,13 +66,34 @@ export function EmailStatusBar({
               <DetailLink onClick={handleMarkUnread} disabled={busy || lifecycle === "unread"}>
                 {t.markUnread}
               </DetailLink>
+              {onOpenChangeCategory ? (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <DetailLink onClick={onOpenChangeCategory} disabled={busy}>
+                    {t.changeCategory}
+                  </DetailLink>
+                </>
+              ) : null}
+              {forwardHref ? (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <a
+                    href={forwardHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-[#0F172A] transition hover:underline"
+                  >
+                    {actions.forward}
+                  </a>
+                </>
+              ) : null}
               <span className="text-gray-300">·</span>
               <DetailLink
                 emphasis
                 onClick={() => setShowDonePicker((v) => !v)}
                 disabled={busy}
               >
-                ✓ {t.doneWith}
+                {t.doneWith}
               </DetailLink>
             </>
           ) : isActiveWaitingItem ? (
@@ -63,6 +101,27 @@ export function EmailStatusBar({
               <span className="text-sm font-medium text-amber-800">
                 {completion?.actionLabel ?? t.doneWith}
               </span>
+              {onOpenChangeCategory ? (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <DetailLink onClick={onOpenChangeCategory} disabled={busy}>
+                    {t.changeCategory}
+                  </DetailLink>
+                </>
+              ) : null}
+              {forwardHref ? (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <a
+                    href={forwardHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-[#0F172A] transition hover:underline"
+                  >
+                    {actions.forward}
+                  </a>
+                </>
+              ) : null}
               <span className="text-gray-300">·</span>
               <DetailLink
                 emphasis
@@ -84,6 +143,27 @@ export function EmailStatusBar({
               <span className="text-sm font-medium text-emerald-800">
                 {completion ? t.completedAs(completion.actionLabel) : t.doneWith}
               </span>
+              {onOpenChangeCategory ? (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <DetailLink onClick={onOpenChangeCategory} disabled={busy}>
+                    {t.changeCategory}
+                  </DetailLink>
+                </>
+              ) : null}
+              {forwardHref ? (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <a
+                    href={forwardHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-[#0F172A] transition hover:underline"
+                  >
+                    {actions.forward}
+                  </a>
+                </>
+              ) : null}
               <span className="text-gray-300">·</span>
               <DetailLink onClick={() => void handleUndo()} disabled={busy}>
                 {t.undo}
@@ -94,6 +174,14 @@ export function EmailStatusBar({
       </div>
 
       {!completed ? (
+        <EmailIntentActions
+          locale={props.locale}
+          busy={busy}
+          onSelect={(id, label, extras) => void handleComplete(id, label, extras)}
+        />
+      ) : null}
+
+      {!completed ? (
         <CompletionSuggestion
           emailId={props.emailId}
           sender={props.sender}
@@ -101,15 +189,17 @@ export function EmailStatusBar({
           category={props.category}
           locale={props.locale}
           busy={busy}
+          categoryConfidence={categoryConfidence}
+          actionable={actionable}
+          actionState={actionState}
           onSelect={(id, label, extras) => void handleComplete(id, label, extras)}
         />
       ) : null}
 
       {showDonePicker && !completed ? (
         <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-3">
-          <CompletionActionPicker
+          <DoneWithThisPicker
             locale={props.locale}
-            compact
             busy={busy}
             onSelect={(id, label, extras) => void handleComplete(id, label, extras)}
           />
@@ -118,7 +208,7 @@ export function EmailStatusBar({
             onClick={() => setShowDonePicker(false)}
             className="mt-2 text-xs text-gray-500 underline"
           >
-            {props.locale === "it" ? "Annulla" : "Cancel"}
+            {actions.cancel}
           </button>
         </div>
       ) : null}

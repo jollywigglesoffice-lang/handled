@@ -53,7 +53,7 @@ export async function POST(request: Request) {
   }
 
   const overriddenCategory = normalizeInboxAiCategory(
-    body.overriddenCategory ?? body.category ?? "needs_attention",
+    body.overriddenCategory ?? body.category ?? "worth_your_attention",
   );
   const originalRaw = body.originalCategory ?? body.guessedCategory;
   const originalCategory =

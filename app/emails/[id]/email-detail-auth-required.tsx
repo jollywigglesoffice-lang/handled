@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { buildLoginUrl } from "@/lib/auth/app-origin";
+import { AttachInboxButton } from "@/app/emails/attach-inbox-button";
 
 type EmailDetailAuthRequiredProps = {
   emailId: string;
@@ -14,10 +17,10 @@ export function EmailDetailAuthRequired({
   const loginHref = buildLoginUrl(nextPath);
 
   const title =
-    reason === "connect_gmail" ? "Connect Gmail to open this email" : "Sign in to view this email";
+    reason === "connect_gmail" ? "Attach inbox to open this email" : "Sign in to view this email";
   const description =
     reason === "connect_gmail"
-      ? "You’re signed in, but Handled needs Google read-only access to load this message. Sign in with Google using the same account."
+      ? "You're signed in — attach the Gmail account for this message. Your Handled session stays the same."
       : "Sign in to load Gmail messages, save preferences, and use AI replies on this thread.";
 
   return (
@@ -35,12 +38,16 @@ export function EmailDetailAuthRequired({
           <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
             Handled never sends email without your approval.
           </p>
-          <Link
-            href={loginHref}
-            className="inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover"
-          >
-            {reason === "connect_gmail" ? "Continue with Google" : "Sign in"}
-          </Link>
+          {reason === "connect_gmail" ? (
+            <AttachInboxButton variant="primary" next={nextPath} />
+          ) : (
+            <Link
+              href={loginHref}
+              className="inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover"
+            >
+              Sign in
+            </Link>
+          )}
         </section>
       </div>
     </main>

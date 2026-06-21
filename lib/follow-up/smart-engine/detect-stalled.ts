@@ -54,10 +54,10 @@ export function isLikelyClosedConversation(
   category: InboxAiCategory,
   days: number,
 ): boolean {
-  if (category === "handled" && days >= 10 && CLOSED_SIGNALS.test(hay)) {
+  if (category === "good_to_know" && days >= 10 && CLOSED_SIGNALS.test(hay)) {
     return true;
   }
-  if (category === "promotion" || category === "newsletter") {
+  if (category === "promotions" || category === "newsletters") {
     return true;
   }
   return false;

@@ -23,7 +23,7 @@ export function parseEmailCompletionsJson(raw: unknown): EmailCompletionMap {
       sender: typeof row.sender === "string" ? row.sender : "",
       subject: typeof row.subject === "string" ? row.subject : "",
       snippet: typeof row.snippet === "string" ? row.snippet : undefined,
-      category: (typeof row.category === "string" ? row.category : "needs_attention") as EmailCompletionRecord["category"],
+      category: (typeof row.category === "string" ? row.category : "worth_your_attention") as EmailCompletionRecord["category"],
       senderDomain: typeof row.senderDomain === "string" ? row.senderDomain : undefined,
       threadId: typeof row.threadId === "string" ? row.threadId : undefined,
       waitingOn: typeof row.waitingOn === "string" ? row.waitingOn : undefined,
@@ -89,7 +89,7 @@ function migrateLegacyHandledIds(): EmailCompletionMap {
         completedAt: now,
         sender: "",
         subject: "",
-        category: "needs_attention",
+        category: "worth_your_attention",
       };
     }
     if (Object.keys(map).length > 0) {

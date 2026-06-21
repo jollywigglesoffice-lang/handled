@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CompletionActionPicker } from "@/app/emails/completion-action-picker";
+import { DoneWithThisPicker } from "@/app/emails/done-with-this-picker";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
 
 type DoneWithThisPanelProps = {
@@ -42,11 +42,10 @@ export function DoneWithThisPanel({
           : "rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/80 to-white p-6 shadow-sm"
       }
     >
-      <CompletionActionPicker
+      <DoneWithThisPicker
         locale={locale}
-        compact={compact}
         busy={busy}
-        onSelect={(id, label) => void handleSelect(id, label)}
+        onSelect={(id, label, extras) => void handleSelect(id, label)}
       />
       {onDismiss ? (
         <button

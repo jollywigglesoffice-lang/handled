@@ -2,8 +2,8 @@
 
 import { GmailApiError } from "@/lib/gmail-api-error";
 import {
-  extractEmailBodyFromPayload,
-  htmlToPlainText,
+  extractEmailBodyFromPayloadAsync,
+  resolveEmailDisplayBody,
   type GmailMimePart,
 } from "@/lib/gmail-extract-body";
 import { formatGmailSender } from "@/lib/sender-identity";
@@ -107,15 +107,6 @@ export async function gmailGetUserProfile(
   return { email: data.emailAddress?.trim() ?? "" };
 }
 
-function decodeBase64Url(data: string): string {
-  const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
-  try {
-    return Buffer.from(normalized, "base64").toString("utf8");
-  } catch {
-    return "";
-  }
-}
-
 function headerValue(
   headers: Array<{ name?: string; value?: string }> | undefined,
   name: string,
@@ -167,12 +158,12 @@ export async function gmailBatchModifyLabels(
  */
 export async function gmailListInboxPage(
   accessToken: string,
-  options?: { maxResults?: number; pageToken?: string | null },
+  options?: { maxResults?: number; pageToken?: string | null; query?: string },
 ): Promise<GmailListPage> {
   const maxResults = options?.maxResults ?? 200;
   const url = new URL(`${GMAIL_BASE}/messages`);
   url.searchParams.set("maxResults", String(maxResults));
-  url.searchParams.set("q", "in:inbox");
+  url.searchParams.set("q", options?.query?.trim() || "in:inbox");
   if (options?.pageToken) {
     url.searchParams.set("pageToken", options.pageToken);
   }
@@ -288,6 +279,33 @@ export async function gmailGetMessageMetadata(
   };
 }
 
+export async function gmailGetMessageAttachment(
+  accessToken: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<string | null> {
+  const url = `${GMAIL_BASE}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`;
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("[gmail-api] attachment fetch failed", {
+      messageId,
+      attachmentId,
+      status: res.status,
+      detail: text.slice(0, 200),
+    });
+    return null;
+  }
+
+  const data = (await res.json()) as { data?: string };
+  return data.data ?? null;
+}
+
 export async function gmailGetMessageFull(
   accessToken: string,
   messageId: string,
@@ -330,14 +348,28 @@ export async function gmailGetMessageFull(
   const subject = headerValue(headers, "Subject") || "(No subject)";
   const internalMs = msg.internalDate ? Number(msg.internalDate) : 0;
 
-  const { bodyHtml, bodyPlain } = extractEmailBodyFromPayload(msg.payload);
+  const snippet = msg.snippet ?? "";
+  const fetchAttachment = (attachmentId: string) =>
+    gmailGetMessageAttachment(accessToken, msg.id, attachmentId);
 
-  let bodyText = bodyPlain.trim();
-  if (!bodyText && bodyHtml.trim()) {
-    bodyText = htmlToPlainText(bodyHtml);
-  }
-  if (!bodyText.trim()) {
-    bodyText = msg.snippet ?? "";
+  const { bodyHtml, bodyPlain } = await extractEmailBodyFromPayloadAsync(
+    msg.payload,
+    fetchAttachment,
+  );
+
+  const { bodyText, bodyHtml: resolvedHtml } = resolveEmailDisplayBody({
+    bodyPlain,
+    bodyHtml,
+    snippet,
+  });
+
+  if (!bodyText.trim() && !resolvedHtml.trim()) {
+    console.error("[gmail-api] message body empty after extraction", {
+      messageId: msg.id,
+      hasPayload: Boolean(msg.payload),
+      hasParts: Boolean(msg.payload?.parts?.length),
+      snippetLength: snippet.length,
+    });
   }
 
   return {
@@ -345,9 +377,9 @@ export async function gmailGetMessageFull(
     threadId: msg.threadId ?? msg.id,
     sender,
     subject,
-    snippet: msg.snippet ?? "",
+    snippet,
     bodyText,
-    bodyHtml: bodyHtml.trim(),
+    bodyHtml: resolvedHtml,
     internalDateMs: internalMs,
     listUnsubscribe: headerValue(headers, "List-Unsubscribe") || undefined,
     listUnsubscribePost: headerValue(headers, "List-Unsubscribe-Post") || undefined,

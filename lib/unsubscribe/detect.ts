@@ -214,19 +214,19 @@ export function analyzeUnsubscribe(input: UnsubscribeDetectInput): UnsubscribeAn
 
   const category = input.inboxCategory;
   const isNewsletterLike =
-    category === "newsletter" ||
-    category === "promotion" ||
+    category === "newsletters" ||
+    category === "promotions" ||
     BODY_PHRASES.test(hay) ||
     Boolean(input.listUnsubscribe?.trim());
 
   const showBadge =
     isNewsletterLike &&
-    (deduped.length > 0 || category === "newsletter" || category === "promotion");
+    (deduped.length > 0 || category === "newsletters" || category === "promotions");
 
   const badgeLabel =
-    category === "promotion"
+    category === "promotions"
       ? "Promotion detected"
-      : category === "newsletter"
+      : category === "newsletters"
         ? "Newsletter detected"
         : "Mailing list detected";
 

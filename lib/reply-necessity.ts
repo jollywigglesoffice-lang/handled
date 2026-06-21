@@ -1,6 +1,15 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
-import { analyzeEmailIntent, requiresHumanReply } from "@/lib/email-intent";
+import { coerceLegacyInboxCategory } from "@/lib/inbox-ai-categories";
+import { analyzeEmailIntent } from "@/lib/email-intent";
+import {
+  hasExplicitActionTrigger,
+  hasExplicitQuestion,
+  hasExplicitRequest,
+  hasExplicitSchedulingRequest,
+  isAnnouncementEmail,
+  rowHaystack,
+} from "@/lib/explicit-email-signals";
 import {
   hasUrgentHumanSignal,
   isCommercialBulk,
@@ -19,9 +28,9 @@ export type ReplyNeedAssessment = {
 function modeSuppressesReplies(mode: WorkflowMode, category: InboxAiCategory): boolean {
   const profile = getWorkflowModeProfile(mode);
   if (!profile.showReplySection) {
-    return category !== "needs_attention";
+    return category !== "worth_your_attention";
   }
-  if (profile.hidePromotionsInList && (category === "promotion" || category === "newsletter")) {
+  if (profile.hidePromotionsInList && (category === "promotions" || category === "newsletters")) {
     return true;
   }
   return false;
@@ -36,12 +45,32 @@ export function assessReplyNeed(input: {
   category: InboxAiCategory;
   workflowMode?: WorkflowMode;
 }): ReplyNeedAssessment {
-  const { row, category, workflowMode = "assist" } = input;
+  const { row, category: rawCategory, workflowMode = "assist" } = input;
+  const category = coerceLegacyInboxCategory(rawCategory);
   const subject = (row.subject ?? "").trim();
   const rowForSignals = row as GmailInboxRow;
+  const hay = rowHaystack(rowForSignals);
   const intent = analyzeEmailIntent(rowForSignals);
 
-  if (intent.requiresReply || requiresHumanReply(rowForSignals)) {
+  if (isAnnouncementEmail(hay)) {
+    return {
+      recommended: false,
+      reason: "Announcement or broadcast — no personal reply expected.",
+      suggestedAction: "Read when convenient — no reply needed.",
+      confidence: 0.9,
+    };
+  }
+
+  const explicitTrigger = hasExplicitActionTrigger(rowForSignals);
+
+  if (
+    explicitTrigger &&
+    (hasExplicitQuestion(hay) ||
+      hasExplicitRequest(hay) ||
+      hasExplicitSchedulingRequest(hay) ||
+      intent.kinds.includes("pricing_inquiry") ||
+      intent.kinds.includes("sales_lead"))
+  ) {
     const action =
       intent.opportunityHint ??
       (intent.kinds.includes("pricing_inquiry")
@@ -61,7 +90,7 @@ export function assessReplyNeed(input: {
     };
   }
 
-  if (category === "promotion") {
+  if (category === "promotions") {
     return {
       recommended: false,
       reason: "Promotional email — nothing you need to send back.",
@@ -70,7 +99,7 @@ export function assessReplyNeed(input: {
     };
   }
 
-  if (category === "newsletter") {
+  if (category === "newsletters") {
     return {
       recommended: false,
       reason: "Newsletter or digest — read when you want.",
@@ -79,7 +108,7 @@ export function assessReplyNeed(input: {
     };
   }
 
-  if (category === "fyi") {
+  if (category === "good_to_know") {
     return {
       recommended: false,
       reason: "Confirmation or update — important to see, but nothing to send back.",
@@ -88,7 +117,7 @@ export function assessReplyNeed(input: {
     };
   }
 
-  if (category === "handled") {
+  if (category === "good_to_know") {
     if (isTransactionalFyi(rowForSignals) && !hasUrgentHumanSignal(rowForSignals)) {
       return {
         recommended: false,
@@ -126,34 +155,34 @@ export function assessReplyNeed(input: {
     };
   }
 
-  if (category === "quick_reply" && hasUrgentHumanSignal(rowForSignals)) {
+  if (category === "worth_your_attention" && explicitTrigger && hasUrgentHumanSignal(rowForSignals)) {
     return {
       recommended: true,
-      reason: "Short message that may need a quick acknowledgment.",
-      suggestedAction: "A brief reply may help.",
-      confidence: 0.7,
-    };
-  }
-
-  if (category === "needs_attention" || hasUrgentHumanSignal(rowForSignals)) {
-    return {
-      recommended: true,
-      reason: "They're waiting to hear from you.",
+      reason: "The message contains an explicit request or question.",
       suggestedAction: "Send a reply when you're ready.",
       confidence: 0.8,
     };
   }
 
-  if (category === "quick_reply") {
+  if (category === "worth_your_attention" && hasExplicitQuestion(hay)) {
     return {
       recommended: true,
-      reason: "May benefit from a short reply.",
-      suggestedAction: "Optional quick response.",
-      confidence: 0.55,
+      reason: "Short message with a direct question.",
+      suggestedAction: "A brief reply may help.",
+      confidence: 0.7,
     };
   }
 
-  if (hasUrgentHumanSignal(rowForSignals)) {
+  if (category === "worth_your_attention") {
+    return {
+      recommended: false,
+      reason: "No explicit question, request, or deadline in the message.",
+      suggestedAction: "Read when convenient — reply only if you choose to.",
+      confidence: 0.65,
+    };
+  }
+
+  if (hasUrgentHumanSignal(rowForSignals) && explicitTrigger) {
     return {
       recommended: true,
       reason: "May need a response.",

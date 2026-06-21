@@ -72,8 +72,8 @@ function parseRelationshipBody(
     "client",
     "team",
     "billing",
-    "newsletter",
-    "promotion",
+    "newsletters",
+    "promotions",
     "marketing",
     "unknown",
   ]);

@@ -48,7 +48,7 @@ export type DailyBriefingStats = {
   meetings: number;
   payments: number;
   opportunities: number;
-  promotionsUnsubscribe: number;
+  promotionUnsubscribe: number;
 };
 
 export type DailyBriefingResult = {

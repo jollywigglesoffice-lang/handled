@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useCompletionActions } from "@/app/completion-actions-context";
 import { useInboxCategories } from "@/app/inbox-categories-context";
+import { handledActionCopy } from "@/lib/handled-action-copy";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
 import { inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
 
@@ -23,23 +24,33 @@ type BulkActionBarProps = {
 const COPY = {
   en: {
     selected: (n: number) => `${n} selected`,
-    moveTo: "Move to",
-    doneWith: "Done with this",
-    archive: "Archive",
+    ...(() => {
+      const a = handledActionCopy("en");
+      return {
+        moveTo: a.moveTo,
+        handled: a.handled,
+        putAway: a.putAway,
+        markRead: a.markRead,
+        unreadAgain: a.unreadAgain,
+      };
+    })(),
     del: "Delete",
-    markRead: "Read",
-    markUnread: "Unread",
     selectAll: "Select all",
     clear: "Clear",
   },
   it: {
     selected: (n: number) => `${n} selezionate`,
-    moveTo: "Sposta in",
-    doneWith: "Fatto con queste",
-    archive: "Archivia",
+    ...(() => {
+      const a = handledActionCopy("it");
+      return {
+        moveTo: a.moveTo,
+        handled: a.handled,
+        putAway: a.putAway,
+        markRead: a.markRead,
+        unreadAgain: a.unreadAgain,
+      };
+    })(),
     del: "Elimina",
-    markRead: "Letta",
-    markUnread: "Da leggere",
     selectAll: "Seleziona tutte",
     clear: "Pulisci",
   },
@@ -143,7 +154,7 @@ export function BulkActionBar({
             aria-expanded={doneOpen}
             className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
           >
-            {t.doneWith}
+            {t.handled}
             <Chevron light />
           </button>
           {doneOpen ? (
@@ -166,13 +177,13 @@ export function BulkActionBar({
           ) : null}
         </div>
 
-        <BarButton onClick={onArchive}>{t.archive}</BarButton>
+        <BarButton onClick={onArchive}>{t.putAway}</BarButton>
         <BarButton onClick={onDelete}>{t.del}</BarButton>
 
         <span className="mx-1 hidden h-5 w-px bg-gray-200 sm:block" aria-hidden />
 
         <BarButton onClick={onMarkRead}>{t.markRead}</BarButton>
-        <BarButton onClick={onMarkUnread}>{t.markUnread}</BarButton>
+        <BarButton onClick={onMarkUnread}>{t.unreadAgain}</BarButton>
         {count < totalVisible ? (
           <BarButton onClick={onSelectAllVisible}>{t.selectAll}</BarButton>
         ) : null}

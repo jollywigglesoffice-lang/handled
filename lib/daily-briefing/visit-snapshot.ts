@@ -6,8 +6,8 @@ const STORAGE_KEY = "handled_inbox_visit_snapshot_v1";
 export type InboxVisitSnapshot = {
   visitedAt: number;
   counts: {
-    needs_attention: number;
-    quick_reply: number;
+    worth_your_attention: number;
+    waiting_on: number;
     fyi: number;
     promotion: number;
     waitingOn: number;
@@ -39,10 +39,10 @@ export function buildVisitSnapshot(
   return {
     visitedAt: now,
     counts: {
-      needs_attention: counts.needs_attention ?? 0,
-      quick_reply: counts.quick_reply ?? 0,
-      fyi: counts.fyi ?? 0,
-      promotion: counts.promotion ?? 0,
+      worth_your_attention: counts.worth_your_attention ?? 0,
+      waiting_on: waitingOnCount,
+      fyi: counts.good_to_know ?? 0,
+      promotion: counts.promotions ?? 0,
       waitingOn: waitingOnCount,
     },
     emailFingerprints,

@@ -2,7 +2,7 @@ import type { InboxBuckets, InboxBucketMessage } from "@/lib/inbox-buckets";
 import type { EmailCompletionMap } from "@/lib/email-completions/types";
 import { importanceInboxBoost } from "@/lib/importance-memory/score";
 
-const PRIORITY_CATEGORIES = ["needs_attention", "quick_reply"] as const;
+const PRIORITY_CATEGORIES = ["worth_your_attention"] as const;
 
 type MessageWithSender = InboxBucketMessage & { sender: string; internalDateMs?: number };
 
@@ -46,7 +46,7 @@ export function applyImportanceOrderingToBuckets<T extends MessageWithSender>(
     ...buckets,
     byCategory,
     allVisible: buckets.categoryOrder.flatMap((c) => byCategory[c] ?? []),
-    needsAttentionEmails: byCategory.needs_attention ?? [],
-    quickReplyEmails: byCategory.quick_reply ?? [],
+    needsAttentionEmails: byCategory.worth_your_attention ?? [],
+    waitingOnEmails: [],
   };
 }

@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     snippet: m.snippet,
     date: m.date,
     internalDateMs: m.internalDateMs,
-    category: normalizeInboxAiCategory(m.category ?? "needs_attention"),
+    category: normalizeInboxAiCategory(m.category ?? "worth_your_attention"),
     relationship: m.relationship,
     aiSummary: m.aiSummary,
     timelineIntelligence: m.timelineIntelligence,

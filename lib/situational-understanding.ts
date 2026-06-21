@@ -1,10 +1,15 @@
-import { detectSchedulingIntent } from "@/lib/calendar-awareness";
-import { calmWorthCheckingToday } from "@/lib/calm-confidence";
+import {
+  hasExplicitDeadline,
+  hasExplicitQuestion,
+  hasExplicitRequest,
+  hasExplicitSchedulingRequest,
+  isAnnouncementEmail,
+  rowHaystack,
+} from "@/lib/explicit-email-signals";
 import { extractDeadlinePhrase } from "@/lib/glance-clarity";
-import { analyzeEmailIntent, type EmailIntentKind } from "@/lib/email-intent";
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
-import { emailHaystack, isCommercialBulk } from "@/lib/inbox-triage-signals";
+import { isCommercialBulk } from "@/lib/inbox-triage-signals";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 
 export type SituationInput = Pick<GmailInboxRow, "sender" | "subject" | "snippet"> & {
@@ -18,6 +23,15 @@ export type SituationContext = {
   replyRecommended?: boolean;
   suggestedNextAction?: string | null;
   schedulingDetected?: boolean;
+};
+
+export type SituationBundle = {
+  /** Extractive only — describes what is explicitly present. */
+  summary: string;
+  /** Optional labeled inference when explicit triggers exist in the source. */
+  interpretation: string | null;
+  chips: string[];
+  nextStep: string | null;
 };
 
 /** Display name from From header — "Acme <a@b.com>" → "Acme" */
@@ -39,194 +53,112 @@ export function senderDisplayName(sender: string): string {
   return trimmed.slice(0, 48) || "They";
 }
 
-function childNameFromHaystack(hay: string): string | null {
-  const m =
-    hay.match(/\b(?:son|daughter|child|figlio|figlia)\s+([A-Z][a-zà-ù]{2,20})\b/i) ??
-    hay.match(/\b([A-Z][a-zà-ù]{2,20})(?:'s)?\s+(?:school|class|teacher)\b/i);
-  return m?.[1] ?? null;
+function cleanSubject(subject: string): string {
+  return subject.replace(/^(re|fwd?|r):\s*/gi, "").trim().slice(0, 80);
 }
 
-function countTimeOptions(hay: string): number {
-  const slots =
-    hay.match(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi) ??
-    hay.match(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunedì|martedì|mercoledì|giovedì|venerdì)\b/gi);
-  return slots?.length ?? 0;
+/** Use the Gmail snippet verbatim — no reinterpretation. */
+function extractiveSnippetText(snippet: string | undefined, maxLen = 140): string | null {
+  if (!snippet?.trim()) return null;
+  const t = snippet.replace(/\s+/g, " ").trim();
+  if (t.length <= maxLen) return t;
+  const cut = t.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${lastSpace > 40 ? cut.slice(0, lastSpace) : cut}…`;
 }
 
-function buildHighPrioritySummary(
+function interpretationPrefix(locale: "en" | "it"): string {
+  return locale === "it" ? "Possibile intento: " : "Possible intent: ";
+}
+
+/**
+ * Labeled inference — only when explicit triggers exist in the email text.
+ * Never invents obligations from announcements or vague category guesses.
+ */
+export function buildSuggestedInterpretation(
   row: SituationInput,
-  kinds: EmailIntentKind[],
-  locale: "en" | "it",
+  context: SituationContext,
 ): string | null {
-  const hay = emailHaystack(row as GmailInboxRow);
-  const who = senderDisplayName(row.sender);
-  const child = childNameFromHaystack(hay);
+  const locale = context.locale ?? "en";
+  const hay = rowHaystack(row, row.bodyPlain);
+  const prefix = interpretationPrefix(locale);
 
-  if (kinds.includes("scheduling") || detectSchedulingIntent(row as GmailInboxRow).detected) {
-    if (/reschedul|riprenot|new time|nuovo orario|spostare|postpone|riprogramm/i.test(hay)) {
+  if (isAnnouncementEmail(hay)) return null;
+
+  if (hasExplicitSchedulingRequest(hay)) {
+    if (/reschedul|riprenot|new time|nuovo orario|postpone|spostare/i.test(hay)) {
       return locale === "it"
-        ? `${who} chiede di spostare un appuntamento — serve una nuova data.`
-        : `${who} needs you to pick a new appointment time.`;
-    }
-    if (countTimeOptions(hay) >= 2) {
-      return locale === "it"
-        ? `${who} propone alcune fasce orarie — scegli quella che ti va.`
-        : `${who} sent a few time options — pick what works for you.`;
+        ? `${prefix}richiesta di spostare un appuntamento.`
+        : `${prefix}request to reschedule a meeting.`;
     }
     return locale === "it"
-      ? `${who} vuole fissare un incontro o una chiamata.`
-      : `${who} is trying to schedule time with you.`;
+      ? `${prefix}richiesta di fissare un incontro o una chiamata.`
+      : `${prefix}request to schedule a meeting or call.`;
   }
 
-  if (kinds.includes("pricing_inquiry")) {
-    const emp = hay.match(/(\d+)\s*(?:employees?|dipendenti|seats?)/i);
+  if (hasExplicitDeadline(hay)) {
+    const deadline = extractDeadlinePhrase(hay, locale);
+    return deadline
+      ? locale === "it"
+        ? `${prefix}scadenza menzionata (${deadline}).`
+        : `${prefix}deadline mentioned (${deadline}).`
+      : locale === "it"
+        ? `${prefix}scadenza menzionata nel messaggio.`
+        : `${prefix}deadline mentioned in the message.`;
+  }
+
+  if (hasExplicitQuestion(hay)) {
     return locale === "it"
-      ? emp
-        ? `${who} chiede un preventivo per circa ${emp[1]} persone.`
-        : `${who} chiede informazioni su prezzi o piani.`
-      : emp
-        ? `${who} is asking about pricing for about ${emp[1]} people.`
-        : `${who} is asking about pricing or plans.`;
+      ? `${prefix}domanda diretta che potrebbe richiedere risposta.`
+      : `${prefix}direct question that may need a reply.`;
   }
 
-  if (kinds.includes("sales_lead")) {
+  if (hasExplicitRequest(hay)) {
     return locale === "it"
-      ? `${who} mostra interesse commerciale — vale la pena rispondere.`
-      : `${who} is interested in working with you — worth a reply.`;
+      ? `${prefix}richiesta esplicita nel messaggio.`
+      : `${prefix}explicit request in the message.`;
   }
 
-  if (/school|scuola|pickup|ritiro|classroom|insegnante|teacher|bambini|child/i.test(hay)) {
-    if (/pickup|ritiro|confirm|conferm/i.test(hay)) {
-      const deadline = extractDeadlinePhrase(hay, locale);
-      if (locale === "it") {
-        if (deadline) {
-          return child
-            ? `Conferma ritiro per ${child} ${deadline}.`
-            : `Conferma ritiro scolastico ${deadline}.`;
-        }
-        return child
-          ? `La scuola di ${child} chiede conferma sul ritiro.`
-          : `Messaggio dalla scuola — serve conferma sul ritiro.`;
-      }
-      if (deadline) {
-        return child
-          ? `${child}'s school needs pickup confirmation ${deadline}.`
-          : `School pickup confirmation needed ${deadline}.`;
-      }
-      return child
-        ? `${child}'s school needs pickup confirmation.`
-        : `School pickup confirmation needed.`;
-    }
+  if (/payment failed|declined|non riuscito|rifiutato/i.test(hay) && /payment|billing|pagamento/i.test(hay)) {
     return locale === "it"
-      ? child
-        ? `La scuola di ${child} ha scritto — potrebbe richiedere una risposta.`
-        : `Messaggio scolastico da ${who}.`
-      : child
-        ? `${child}'s school reached out — may need a quick reply.`
-        : `School message from ${who}.`;
+      ? `${prefix}problema di pagamento da verificare.`
+      : `${prefix}payment issue to review.`;
   }
 
-  if (/payment|billing|subscription|invoice|pagamento|abbonamento|play store|app store/i.test(hay)) {
-    if (/failed|declined|couldn't|could not|non riuscito|rifiutato/i.test(hay)) {
-      return locale === "it"
-        ? `Problema con un pagamento o abbonamento — da verificare.`
-        : `A payment or subscription didn't go through — worth checking.`;
-    }
-    return locale === "it"
-      ? `Nota su fattura o pagamento da ${who}.`
-      : `Billing or payment note from ${who}.`;
-  }
-
-  if (kinds.includes("support_request")) {
-    return locale === "it"
-      ? `${who} segnala un problema e chiede aiuto.`
-      : `${who} reported an issue and needs help.`;
-  }
-
-  if (kinds.includes("decision_required")) {
-    return locale === "it"
-      ? `${who} aspetta una tua decisione o approvazione.`
-      : `${who} is waiting on your decision or approval.`;
-  }
-
-  if (kinds.includes("direct_question") || kinds.includes("information_request")) {
-    return locale === "it"
-      ? `${who} ha una domanda diretta — una risposta breve dovrebbe bastare.`
-      : `${who} asked something directly — a short reply should do.`;
-  }
-
-  if (kinds.includes("urgent_request") || kinds.includes("deadline")) {
-    return locale === "it"
-      ? `${who} — ${calmWorthCheckingToday("it")}`
-      : `${who} — ${calmWorthCheckingToday("en")}`;
-  }
-
-  return locale === "it"
-    ? `Messaggio importante da ${who}.`
-    : `Important message from ${who}.`;
+  return null;
 }
 
-/** One calm sentence — situation, not classification. */
-export function buildSituationSummary(
+/** Strictly extractive — only what is explicitly present in subject/snippet. */
+export function buildExtractiveSummary(
   row: SituationInput,
   category: InboxAiCategory,
   context: SituationContext = { category },
 ): string {
   const locale = context.locale ?? "en";
-  const fullRow = row as GmailInboxRow;
-  const hay = emailHaystack(fullRow);
-  const intent = analyzeEmailIntent(fullRow);
-
-  if (intent.highPriority) {
-    const line = buildHighPrioritySummary(row, intent.kinds, locale);
-    if (line) return line;
-  }
-
+  const hay = rowHaystack(row, row.bodyPlain);
   const who = senderDisplayName(row.sender);
-  const topic = (row.subject ?? "")
-    .replace(/^(re|fwd?|r):\s*/gi, "")
-    .trim()
-    .slice(0, 60);
+  const topic = cleanSubject(row.subject ?? "");
+  const snippet = extractiveSnippetText(row.snippet);
 
-  if (context.relationship?.kind === "school") {
-    const child = childNameFromHaystack(hay);
-    if (/pickup|ritiro/i.test(hay)) {
+  if (category === "promotions") {
+    if (topic) {
       return locale === "it"
-        ? child
-          ? `La scuola di ${child} chiede conferma sul ritiro.`
-          : `La scuola chiede conferma sul ritiro.`
-        : child
-          ? `Nota dalla scuola di ${child}.`
-          : `Nota dalla scuola.`;
-    }
-  }
-
-  if (category === "promotion") {
-    if (/instagram|tiktok|social/i.test(hay)) {
-      return locale === "it"
-        ? "Notifica da un social — puoi ignorarla."
-        : "Social notification — safe to skip.";
+        ? `Promozione da ${who}: «${topic}».`
+        : `Promotion from ${who}: "${topic}".`;
     }
     return locale === "it"
-      ? topic
-        ? `Promozione da ${who} su «${topic}».`
-        : `Promozione da ${who} — nessuna risposta necessaria.`
-      : topic
-        ? `${who} sent a promotion about “${topic}”.`
-        : `${who} sent a promotional email — no reply needed.`;
+      ? `Promozione da ${who}.`
+      : `Promotion from ${who}.`;
   }
 
-  if (category === "newsletter") {
-    return locale === "it"
-      ? topic
-        ? `Newsletter: ${topic}.`
-        : `Newsletter da ${who} — leggi quando vuoi.`
-      : topic
-        ? `Newsletter: ${topic}.`
-        : `Newsletter from ${who} — read when you have time.`;
+  if (category === "newsletters") {
+    if (topic) {
+      return locale === "it" ? `Newsletter: «${topic}».` : `Newsletter: "${topic}".`;
+    }
+    return locale === "it" ? `Newsletter da ${who}.` : `Newsletter from ${who}.`;
   }
 
-  if (category === "handled") {
+  if (category === "good_to_know") {
     if (/receipt|invoice|payment received|ricevuta|fattura/i.test(hay)) {
       return locale === "it"
         ? `Ricevuta o conferma pagamento da ${who}.`
@@ -237,34 +169,53 @@ export function buildSituationSummary(
         ? `Aggiornamento spedizione da ${who}.`
         : `Shipping update from ${who}.`;
     }
+    if (topic) {
+      return locale === "it"
+        ? `Aggiornamento automatico da ${who}: «${topic}».`
+        : `Automated update from ${who}: "${topic}".`;
+    }
     return locale === "it"
       ? `Aggiornamento automatico da ${who}.`
-      : `Automated update from ${who} — nothing you need to send.`;
+      : `Automated update from ${who}.`;
   }
 
-  if (category === "quick_reply") {
+  if (isAnnouncementEmail(hay)) {
+    if (topic) {
+      return locale === "it"
+        ? `Comunicazione da ${who}: «${topic}».`
+        : `Announcement from ${who}: "${topic}".`;
+    }
     return locale === "it"
-      ? topic
-        ? `${who} su «${topic}» — bastano poche righe di risposta.`
-        : `Messaggio breve da ${who} — risposta veloce.`
-      : topic
-        ? `${who} about “${topic}” — a short reply should do.`
-        : `Short note from ${who} — a quick reply should do.`;
+      ? `Comunicazione da ${who}.`
+      : `Announcement from ${who}.`;
   }
 
-  if (/doctor|clinic|ospedale|appointment|visita|medico/i.test(hay)) {
+  if (topic && snippet) {
     return locale === "it"
-      ? `${who} — messaggio sanitario da rivedere.`
-      : `${who} — health-related message to review.`;
+      ? `Email da ${who} — «${topic}». ${snippet}`
+      : `Email from ${who} — "${topic}". ${snippet}`;
   }
 
-  return locale === "it"
-    ? topic
-      ? `${who} ha scritto riguardo «${topic}».`
-      : `Messaggio da ${who} da valutare.`
-    : topic
-      ? `${who} wrote about “${topic}”.`
-      : `Message from ${who} to review.`;
+  if (topic) {
+    return locale === "it"
+      ? `Email da ${who} — oggetto: «${topic}».`
+      : `Email from ${who} — subject: "${topic}".`;
+  }
+
+  if (snippet) {
+    return `${who}: ${snippet}`;
+  }
+
+  return locale === "it" ? `Email da ${who}.` : `Email from ${who}.`;
+}
+
+/** Returns extractive summary only (no labeled inference). */
+export function buildSituationSummary(
+  row: SituationInput,
+  category: InboxAiCategory,
+  context: SituationContext = { category },
+): string {
+  return buildExtractiveSummary(row, category, context);
 }
 
 export function deriveIntentChips(
@@ -272,10 +223,7 @@ export function deriveIntentChips(
   context: SituationContext,
 ): string[] {
   const locale = context.locale ?? "en";
-  const fullRow = row as GmailInboxRow;
-  const hay = emailHaystack(fullRow);
-  const intent = analyzeEmailIntent(fullRow);
-  const scheduling = detectSchedulingIntent(fullRow);
+  const hay = rowHaystack(row, row.bodyPlain);
   const chips: string[] = [];
   const add = (en: string, it: string) => {
     const label = locale === "it" ? it : en;
@@ -286,11 +234,14 @@ export function deriveIntentChips(
   if (context.relationship?.kind === "healthcare") add("Health", "Salute");
   if (context.relationship?.kind === "family") add("Family", "Famiglia");
 
-  if (scheduling.detected) {
+  if (isAnnouncementEmail(hay)) {
+    add("Announcement", "Comunicazione");
+    return chips.slice(0, 5);
+  }
+
+  if (hasExplicitSchedulingRequest(hay)) {
     if (/reschedul|riprenot|new time|nuovo orario/i.test(hay)) add("Reschedule", "Riprenotare");
     else add("Scheduling", "Appuntamento");
-    const slots = countTimeOptions(hay);
-    if (slots >= 2) add(`${slots} time options`, `${slots} orari`);
   }
 
   if (/payment|billing|subscription|pagamento|abbonamento/i.test(hay)) {
@@ -298,30 +249,27 @@ export function deriveIntentChips(
     else add("Billing", "Fatturazione");
   }
 
-  if (intent.kinds.includes("pricing_inquiry")) add("Pricing", "Prezzi");
-  if (intent.kinds.includes("sales_lead")) add("Sales", "Commerciale");
-  if (intent.kinds.includes("support_request")) add("Support", "Supporto");
-  if (intent.kinds.includes("decision_required")) add("Needs decision", "Decisione");
-  const lowUrgency =
-    context.category === "promotion" ||
-    context.category === "newsletter" ||
-    context.category === "handled" ||
-    isCommercialBulk(fullRow);
+  if (/pricing|quote|preventivo/i.test(hay) && hasExplicitQuestion(hay)) add("Pricing", "Prezzi");
+  if (/support|issue|problem|bug/i.test(hay) && hasExplicitRequest(hay)) add("Support", "Supporto");
+  if (hasExplicitRequest(hay) && /approv|decision|firma/i.test(hay)) add("Needs decision", "Decisione");
 
-  if (
-    (intent.kinds.includes("deadline") || intent.kinds.includes("urgent_request")) &&
-    !lowUrgency
-  ) {
+  const lowUrgency =
+    context.category === "promotions" ||
+    context.category === "newsletters" ||
+    context.category === "good_to_know" ||
+    isCommercialBulk(row as GmailInboxRow);
+
+  if (hasExplicitDeadline(hay) && !lowUrgency) {
     add("Worth checking today", "Da vedere oggi");
   }
 
-  if (context.replyRecommended && context.category !== "handled" && !lowUrgency) {
-    add("Reply when ready", "Rispondi quando puoi");
+  if (hasExplicitQuestion(hay) && !lowUrgency) {
+    add("Question", "Domanda");
   } else if (lowUrgency) {
     add("Can wait", "Può aspettare");
   }
 
-  if (/waiting|follow up|in attesa|aspett/i.test(hay)) {
+  if (/waiting|follow up|in attesa/i.test(hay) && hasExplicitRequest(hay)) {
     add("Waiting for confirmation", "In attesa conferma");
   }
 
@@ -360,9 +308,10 @@ export function polishNextStep(text: string | null | undefined, locale: "en" | "
 export function buildSituationBundle(
   row: SituationInput,
   context: SituationContext,
-): { summary: string; chips: string[]; nextStep: string | null } {
-  const summary = buildSituationSummary(row, context.category, context);
+): SituationBundle {
+  const summary = buildExtractiveSummary(row, context.category, context);
+  const interpretation = buildSuggestedInterpretation(row, context);
   const chips = deriveIntentChips(row, context);
   const nextStep = polishNextStep(context.suggestedNextAction, context.locale ?? "en");
-  return { summary, chips, nextStep };
+  return { summary, interpretation, chips, nextStep };
 }

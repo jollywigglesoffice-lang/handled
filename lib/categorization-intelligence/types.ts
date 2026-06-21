@@ -23,7 +23,7 @@ export type CategorizationReasonCode =
   | "meeting_request"
   | "mixed_signals"
   | "ambiguous_unknown_sender"
-  | "safety_needs_attention"
+  | "safety_worth_your_attention"
   | "personal_name_sender"
   | "promotional_bulk"
   | "marketing_urgency_filtered"
@@ -43,7 +43,7 @@ export type CategorizationIntelligenceResult = {
   reasonLabels: string[];
   /** When true, never assign handled / promotion / newsletter */
   blockLowPriorityCategories: boolean;
-  /** When true, bias finalize toward needs_attention */
+  /** When true, bias finalize toward worth_your_attention */
   forceNeedsAttention: boolean;
   /** When true, classify as promotion/newsletter and skip urgency escalation */
   forcePromotional: boolean;

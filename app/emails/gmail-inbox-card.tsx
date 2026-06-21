@@ -2,17 +2,19 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { InboxCalmActions } from "@/app/components/inbox-calm-actions";
+import { SmartReplyPanel } from "@/app/emails/smart-reply-panel";
+import { InboxCardDetails } from "@/app/components/inbox-card-details";
+import { InboxEmotionalStateIndicator } from "@/app/components/inbox-emotional-state";
+import { InboxSchedulePanel } from "@/app/components/inbox-schedule-panel";
+import { PassiveAwarenessLine } from "@/app/components/passive-awareness-line";
 import {
-  EmailCardActionRow,
-  EmailReadStateDot,
-} from "@/app/components/email-card-integrated-controls";
+  AutopilotAttentionBadge,
+  AutopilotSuggestionLine,
+} from "@/app/components/autopilot-status";
 import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
 import { useEmailStatusActions } from "@/app/emails/use-email-status-actions";
 import { useInboxCategories } from "@/app/inbox-categories-context";
-import type { EmailLifecycleState } from "@/lib/email-lifecycle";
-import type { ReadStateMap } from "@/lib/read-state/client-storage";
-import { inboxCategoryAccent, inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
-import type { CategorySource } from "@/lib/inbox-ai-categories";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
 import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
 import { logSenderRuleDebug, senderIdentityForTeachHandled } from "@/lib/sender-identity";
@@ -25,11 +27,11 @@ import type { CategoryApplyScope } from "@/lib/category-correction";
 import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import { RelationshipAssignPanel } from "@/app/emails/relationship-assign-panel";
-import { RelationshipBadge } from "@/app/emails/relationship-badge";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
-import { CalendarContextBadge } from "@/app/components/calendar-context-badge";
-import type { ActionLabelId } from "@/lib/action-intelligence";
-import { ConversationStatusChip } from "@/app/components/conversation-status-chip";
+import type { ActionIntelligenceSummary } from "@/lib/action-intelligence";
+import type { TimeImpactResult } from "@/lib/time-impact/types";
+import { logAssistedConfirmation } from "@/lib/autopilot/execute";
+import type { AutopilotSummary } from "@/lib/autopilot/types";
 import type { ConversationStatus } from "@/lib/timeline-intelligence";
 import { shouldShowUnsubscribeInboxBadge } from "@/lib/workflow-mode-unsubscribe";
 import { useUiCopy } from "@/app/use-ui-copy";
@@ -40,11 +42,20 @@ import {
 } from "@/lib/inbox-return-context";
 import { buildContinuityContext } from "@/lib/continuity-context";
 import { buildInboxGlanceLine } from "@/lib/glance-clarity";
-import { buildSituationSummary } from "@/lib/situational-understanding";
-import { CompletionLikelyBadge } from "@/app/emails/completion-likely-badge";
-import { WaitingResponseBadge } from "@/app/emails/waiting-response-badge";
+import { buildSituationBundle } from "@/lib/situational-understanding";
+import {
+  buildInboxMetaDetails,
+  resolveInboxEmotionalState,
+  resolveInboxPrimaryAction,
+} from "@/lib/inbox-emotional-state";
 import { trackEvent } from "@/lib/analytics";
-import { AccountBadge } from "@/app/emails/account-badge";
+import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import type { CategorySource } from "@/lib/inbox-ai-categories";
+import { inboxCategoryTitle } from "@/lib/inbox-category-catalog";
+import type { ReadStateMap } from "@/lib/read-state/client-storage";
+import { HandledDebugBadge } from "@/app/emails/handled-debug-badge";
+import type { CategoryResolutionAudit } from "@/lib/final-category-resolution";
+import type { CalendarIntentLevel } from "@/lib/calendar-awareness/types";
 
 export type GmailCardMessage = {
   id: string;
@@ -58,11 +69,10 @@ export type GmailCardMessage = {
   categorySource?: CategorySource;
   hasUnsubscribeSignal?: boolean;
   needsCalendarContext?: boolean;
-  actionIntelligence?: {
-    actionable: boolean;
-    primaryLabel: ActionLabelId | null;
-    suggestedNextAction: string | null;
-  };
+  calendarIntentLevel?: CalendarIntentLevel;
+  actionIntelligence?: ActionIntelligenceSummary;
+  timeImpact?: TimeImpactResult;
+  autopilot?: AutopilotSummary;
   timelineIntelligence?: {
     active: boolean;
     conversationStatus: ConversationStatus;
@@ -71,9 +81,13 @@ export type GmailCardMessage = {
   };
   relationship?: SenderRelationshipProfile;
   waitingResponseUpdate?: boolean;
+  /** Post-action workflow — not an inbox category. */
+  workflowState?: "waiting_on";
+  waitingOnPerson?: string;
   accountId?: string;
   accountEmail?: string;
   accountLabel?: string;
+  categoryResolution?: CategoryResolutionAudit;
 };
 
 function emailDetailHref(message: GmailCardMessage): string {
@@ -88,7 +102,15 @@ function formatInboxDate(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) {
+    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 type GmailInboxCardProps = {
@@ -105,7 +127,6 @@ type GmailInboxCardProps = {
   onToggleSelect?: (id: string) => void;
   readStateMap?: ReadStateMap;
   inboxReturnCapture?: InboxReturnCapture;
-  /** Show account origin badge (recommended when multiple accounts are connected). */
   showAccountBadge?: boolean;
 };
 
@@ -125,6 +146,7 @@ export function GmailInboxCard({
   const [saveStatus, setSaveStatus] = useState<SaveStatusState>("idle");
   const [showCorrection, setShowCorrection] = useState(false);
   const [showRelationship, setShowRelationship] = useState(false);
+  const [showSmartReply, setShowSmartReply] = useState(false);
   const [learningPrompt, setLearningPrompt] = useState<string | null>(null);
   const initialLearning = useMemo(
     () => getSenderLearningSuggestion(message.sender, locale)?.message ?? null,
@@ -145,6 +167,22 @@ export function GmailInboxCard({
     category: message.category,
     locale,
     readStateMap,
+    onCompleted: ({ actionId, actionLabel }) => {
+      logAssistedConfirmation(
+        {
+          id: message.id,
+          accountId: message.accountId,
+          sender: message.sender,
+          subject: message.subject,
+          snippet: message.snippet,
+          category: message.category,
+          autopilot: message.autopilot,
+        },
+        actionId,
+        actionLabel,
+        locale,
+      );
+    },
   });
 
   const isUnread = emailStatus.lifecycle === "unread";
@@ -152,7 +190,7 @@ export function GmailInboxCard({
   useEffect(() => {
     guessedRef.current = message.category;
   }, [message.id, message.category]);
-  const accent = inboxCategoryAccent(message.category, catalog);
+
   const catLabel = inboxCategoryTitle(message.category, locale, catalog);
   const learnedApplied = message.categorySource === "sender_rule";
   const manualOverride = message.categorySource === "manual_override";
@@ -164,15 +202,46 @@ export function GmailInboxCard({
       message.category,
     ) ||
     (workflowMode === "assist" &&
-      (message.category === "newsletter" || message.category === "promotion"));
-  const badgeLabel =
-    message.category === "promotion"
+      (message.category === "newsletters" || message.category === "promotions"));
+  const newsletterLabel =
+    message.category === "promotions"
       ? locale === "it"
         ? "Promozione"
         : "Promotion"
       : locale === "it"
         ? "Newsletter"
         : "Newsletter";
+
+  const emotionalInput = {
+    category: message.category,
+    actionIntelligence: message.actionIntelligence,
+    calendarIntentLevel: message.calendarIntentLevel,
+    waitingResponseUpdate: message.waitingResponseUpdate,
+    timelineStatus: message.timelineIntelligence?.conversationStatus,
+    timeImpactKind: message.timeImpact?.kind,
+  };
+  const emotionalState = resolveInboxEmotionalState(emotionalInput);
+  const primaryAction = resolveInboxPrimaryAction(emotionalInput);
+  const isPassive = message.actionIntelligence?.actionState === "passive";
+  const showSchedulePanel =
+    message.calendarIntentLevel === "SCHEDULE_REQUIRED" && !emailStatus.completed;
+  const [scheduleDraft, setScheduleDraft] = useState<string | null>(null);
+
+  const metaLine = buildInboxMetaDetails({
+    locale,
+    categoryLabel: catLabel,
+    showNewsletterBadge,
+    newsletterLabel,
+    learnedApplied,
+    manualOverride,
+    needsCalendarContext: message.needsCalendarContext,
+    relationship: message.relationship,
+    accountLabel: message.accountLabel,
+    showAccountBadge,
+    waitingResponseUpdate: message.waitingResponseUpdate,
+    timelineStatus: message.timelineIntelligence?.conversationStatus,
+    primaryLabel: message.actionIntelligence?.primaryLabel,
+  });
 
   const handleApply = useCallback(
     async (chosen: InboxAiCategory, scope: CategoryApplyScope) => {
@@ -198,7 +267,6 @@ export function GmailInboxCard({
       setSaveStatus("saving");
 
       try {
-        logSenderRuleDebug("submitCategoryFeedback starting", { scope, emailId: message.id });
         const result = await submitCategoryFeedback({
           emailId: message.id,
           sender: message.sender,
@@ -208,11 +276,6 @@ export function GmailInboxCard({
           chosenCategory: chosen,
           scope,
           accountId: message.accountId,
-        });
-        logSenderRuleDebug("submitCategoryFeedback done", {
-          scope,
-          learnedSender: result.learnedSender,
-          message: result.message,
         });
         const extra =
           scope === "sender" ? " Matching emails in your inbox were updated." : "";
@@ -232,12 +295,7 @@ export function GmailInboxCard({
         }
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : "Could not save";
-        logSenderRuleDebug("submitCategoryFeedback failed", { scope, error: errMsg });
-        setFeedback(
-          scope === "sender"
-            ? errMsg || "Saved on this device — will sync when online."
-            : errMsg || "Could not save — try again.",
-        );
+        setFeedback(errMsg || "Could not save — try again.");
         setSaveStatus(scope === "this_email" ? "offline" : "error");
       }
       window.setTimeout(() => setSaveStatus("idle"), 2500);
@@ -267,7 +325,7 @@ export function GmailInboxCard({
     setSaveStatus("saving");
     try {
       await assignSenderRelationshipPreset(message.sender, "school");
-      await handleApply("needs_attention", "sender");
+      await handleApply("worth_your_attention", "sender");
       clearSenderLearningSuggestion(message.sender);
       setLearningPrompt(null);
     } catch {
@@ -281,18 +339,25 @@ export function GmailInboxCard({
       ? `Seleziona email da ${message.sender}`
       : `Select email from ${message.sender}`;
 
-  const panelsOpen = showCorrection || showRelationship || emailStatus.showDonePicker;
+  const panelsOpen = showCorrection || showRelationship || emailStatus.showDonePicker || showSmartReply;
 
   const captureReturn = useCallback(() => {
     if (!inboxReturnCapture) return;
     captureInboxReturnFromOpen(inboxReturnCapture, message.id);
   }, [inboxReturnCapture, message.id]);
 
+  const preview = buildInboxMessagePreview(message, locale);
+  const detailHref = emailDetailHref(message);
+
   return (
-    <div className="group relative flex items-start gap-2">
+    <div
+      className={`group relative -mx-2 flex items-start gap-3 rounded-lg px-2 py-4 transition-colors duration-200 hover:bg-gray-50/60 ${
+        selected ? "bg-gray-50/80" : ""
+      }`}
+    >
       {onToggleSelect ? (
         <div
-          className={`flex shrink-0 items-center self-stretch pl-0.5 pt-4 transition-opacity duration-150 sm:pt-5 ${
+          className={`flex shrink-0 items-center self-stretch pt-0.5 transition-opacity duration-150 ${
             selected || selectionMode
               ? "opacity-100"
               : "opacity-0 focus-within:opacity-100 group-hover:opacity-100"
@@ -307,139 +372,214 @@ export function GmailInboxCard({
           />
         </div>
       ) : null}
-      <div
-        className={`min-w-0 flex-1 rounded-xl border p-4 shadow-sm transition-[border-color,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:p-5 hover:border-accent/40 hover:shadow-md ${accent} ${
-          selected
-            ? "border-accent/60 ring-2 ring-[#9733ff]/30"
-            : "border-[#E2E8F0]"
-        }`}
-      >
-        <article className="space-y-2">
-          <CardHeader
-            message={message}
-            catLabel={catLabel}
-            learnedApplied={learnedApplied}
-            manualOverride={manualOverride}
-            showNewsletterBadge={showNewsletterBadge}
-            badgeLabel={badgeLabel}
-            locale={locale}
-            isUnread={isUnread}
-            lifecycle={emailStatus.lifecycle}
-            showCompletionLikely={!emailStatus.completed}
-            showAccountBadge={showAccountBadge}
-            onOpenEmail={captureReturn}
-          />
 
-          <Link
-            href={emailDetailHref(message)}
-            className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            onClick={() => {
-              captureReturn();
-              if (message.waitingResponseUpdate) {
-                trackEvent("response_received_opened", {
-                  response_email_id: message.id,
-                  thread_id: message.threadId ?? null,
-                  source: "inbox",
-                });
-              }
-              const preview = buildInboxMessagePreview(message, locale);
-              saveEmailPreview({
-                id: message.id,
-                sender: message.sender,
-                subject: message.subject,
-                snippet: message.snippet,
-                summary: preview.glanceLine,
-                chips: [],
+      <article className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-center justify-between gap-3">
+          {message.autopilot?.state === "worth_your_attention" ? (
+            <AutopilotAttentionBadge autopilot={message.autopilot} locale={locale} />
+          ) : (
+            <InboxEmotionalStateIndicator state={emotionalState} locale={locale} />
+          )}
+          <time className="shrink-0 text-[11px] text-gray-300" dateTime={message.date}>
+            {formatInboxDate(message.date)}
+          </time>
+        </div>
+
+        <p
+          className={`text-sm leading-snug ${
+            isUnread ? "font-semibold text-gray-900" : "font-medium text-gray-500"
+          }`}
+        >
+          {message.sender}
+        </p>
+
+        <Link
+          href={detailHref}
+          className="block rounded outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          onClick={() => {
+            captureReturn();
+            if (message.waitingResponseUpdate) {
+              trackEvent("response_received_opened", {
+                response_email_id: message.id,
+                thread_id: message.threadId ?? null,
+                source: "inbox",
               });
-            }}
-          >
-            <h3
-              className={`text-[15px] leading-snug transition-colors duration-200 ${
-                isUnread ? "font-semibold text-[#0F172A]" : "font-medium text-[#0F172A]"
-              }`}
-            >
-              {message.subject}
-            </h3>
-          </Link>
-
-          <InboxGlanceLine message={message} locale={locale} />
-
-          {showRelationship ? (
-            <RelationshipAssignPanel
-              compact
-              sender={message.sender}
-              onDismiss={() => setShowRelationship(false)}
-            />
-          ) : null}
-
-          {activeLearningPrompt && !panelsOpen ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3">
-              <p className="text-xs leading-relaxed text-amber-950">{activeLearningPrompt}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void acceptLearningPrioritize()}
-                  className="rounded-lg bg-amber-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-900"
-                >
-                  {locale === "it" ? "Sì, prioritarizza" : "Yes, prioritize"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearSenderLearningSuggestion(message.sender);
-                    setLearningPrompt(null);
-                  }}
-                  className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
-                >
-                  {locale === "it" ? "Non ora" : "Not now"}
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {showCorrection ? (
-            <CategoryCorrectionPanel
-              compact
-              target={{
-                id: message.id,
-                sender: message.sender,
-                subject: message.subject,
-                snippet: message.snippet,
-                guessedCategory: message.category,
-              }}
-              onApply={handleApply}
-              onDismiss={() => setShowCorrection(false)}
-            />
-          ) : null}
-
-          <EmailCardActionRow
-            status={emailStatus}
-            locale={locale}
-            hideActions={showCorrection || showRelationship}
-            onChangeCategory={() => setShowCorrection(true)}
-            onSetRelationship={() => setShowRelationship(true)}
-            changeCategoryLabel={
-              locale === "it" ? "Cambia categoria" : "Change category"
             }
-            setRelationshipLabel={ui.relationship.assignLink}
+            saveEmailPreview({
+              id: message.id,
+              sender: message.sender,
+              subject: message.subject,
+              snippet: message.snippet,
+              summary: preview.glanceLine,
+              chips: [],
+            });
+          }}
+        >
+          <h3
+            className={`text-[15px] leading-snug text-gray-900 transition-colors duration-200 hover:text-gray-700 ${
+              isUnread ? "font-semibold" : "font-medium"
+            }`}
+          >
+            {isUnread ? (
+              <span
+                className="mr-1.5 inline-block h-1.5 w-1.5 shrink-0 translate-y-[-1px] rounded-full bg-sky-500 align-middle"
+                aria-hidden
+              />
+            ) : null}
+            {message.subject}
+          </h3>
+        </Link>
+
+        {message.autopilot?.state === "assisted" ? (
+          <AutopilotSuggestionLine autopilot={message.autopilot} locale={locale} />
+        ) : null}
+
+        {isPassive && !emailStatus.completed ? (
+          <PassiveAwarenessLine locale={locale} />
+        ) : (
+          <p className="text-sm leading-relaxed text-gray-500 calm-fade-in">
+            {message.timeImpact?.deadlineHint
+              ? `${preview.glanceLine} · ${message.timeImpact.deadlineHint}`
+              : preview.glanceLine}
+          </p>
+        )}
+
+        {showSchedulePanel ? (
+          <div id={`schedule-panel-${message.id}`}>
+          <InboxSchedulePanel
+            emailId={message.id}
+            sender={message.sender}
+            subject={message.subject}
+            locale={locale}
+            accountId={message.accountId}
+            detailHref={detailHref}
+            onDraftReply={(text) => {
+              setScheduleDraft(text);
+              setShowSmartReply(true);
+            }}
+            onScheduled={(msg) => setFeedback(msg)}
           />
-
-          {manualOverride && onResetOverride && !panelsOpen ? (
-            <button
-              type="button"
-              onClick={() => void handleReset()}
-              className="text-xs font-medium text-gray-500 hover:text-gray-800 hover:underline"
-            >
-              Reset to AI categorization
-            </button>
-          ) : null}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <SaveStatus status={saveStatus} />
-            {feedback ? <p className="text-xs text-emerald-700">{feedback}</p> : null}
           </div>
-        </article>
-      </div>
+        ) : null}
+
+        {showRelationship ? (
+          <RelationshipAssignPanel
+            compact
+            sender={message.sender}
+            onDismiss={() => setShowRelationship(false)}
+          />
+        ) : null}
+
+        {activeLearningPrompt && !panelsOpen ? (
+          <div className="rounded-lg bg-amber-50/60 px-3 py-2.5">
+            <p className="text-xs leading-relaxed text-amber-900/80">{activeLearningPrompt}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void acceptLearningPrioritize()}
+                className="rounded-md bg-amber-800/90 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-900"
+              >
+                {locale === "it" ? "Sì, prioritarizza" : "Yes, prioritize"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearSenderLearningSuggestion(message.sender);
+                  setLearningPrompt(null);
+                }}
+                className="text-xs font-medium text-amber-800/70 hover:text-amber-900"
+              >
+                {locale === "it" ? "Non ora" : "Not now"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {showCorrection ? (
+          <CategoryCorrectionPanel
+            compact
+            target={{
+              id: message.id,
+              sender: message.sender,
+              subject: message.subject,
+              snippet: message.snippet,
+              guessedCategory: message.category,
+            }}
+            onApply={handleApply}
+            onDismiss={() => setShowCorrection(false)}
+          />
+        ) : null}
+
+        <InboxCalmActions
+          status={emailStatus}
+          locale={locale}
+          primaryAction={primaryAction}
+          detailHref={detailHref}
+          hideActions={showCorrection || showRelationship}
+          category={message.category}
+          categoryConfidence={message.categoryConfidence}
+          actionable={message.actionIntelligence?.actionable}
+          actionState={message.actionIntelligence?.actionState}
+          onChangeCategory={() => setShowCorrection(true)}
+          onSetRelationship={() => setShowRelationship(true)}
+          setRelationshipLabel={ui.relationship.assignLink}
+          onResetOverride={() => void handleReset()}
+          showResetOverride={manualOverride && Boolean(onResetOverride) && !panelsOpen}
+          onSmartReply={
+            primaryAction === "reply"
+              ? () => setShowSmartReply(true)
+              : undefined
+          }
+          onSchedule={
+            primaryAction === "schedule" || showSchedulePanel
+              ? () => {
+                  document
+                    .getElementById(`schedule-panel-${message.id}`)
+                    ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                }
+              : undefined
+          }
+        />
+
+        {showSmartReply ? (
+          <SmartReplyPanel
+            emailId={message.id}
+            accountId={message.accountId}
+            sender={message.sender}
+            subject={message.subject}
+            snippet={message.snippet}
+            emailContent={`${message.subject}\n\n${message.snippet}`}
+            category={message.category}
+            locale={locale}
+            detailHref={detailHref}
+            forceOffer={primaryAction === "reply"}
+            initialDraft={scheduleDraft ?? undefined}
+            onDismiss={() => setShowSmartReply(false)}
+            onMarkReplied={() => {
+              const label = locale === "it" ? "Risposto" : "Replied";
+              void emailStatus.handleComplete("replied", label);
+              setShowSmartReply(false);
+            }}
+          />
+        ) : primaryAction === "ignore" && !emailStatus.completed ? (
+          <p className="mt-3 text-xs text-gray-400">
+            {locale === "it" ? "Nessuna azione necessaria" : "No action needed"}
+          </p>
+        ) : null}
+
+        <InboxCardDetails locale={locale} metaLine={metaLine} />
+
+        <HandledDebugBadge
+          categoryResolution={message.categoryResolution}
+          autopilot={message.autopilot}
+          categorySource={message.categorySource}
+        />
+
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          <SaveStatus status={saveStatus} />
+          {feedback ? <p className="text-xs text-emerald-700/80">{feedback}</p> : null}
+        </div>
+      </article>
     </div>
   );
 }
@@ -450,13 +590,13 @@ function buildInboxMessagePreview(message: GmailCardMessage, locale: "en" | "it"
     subject: message.subject,
     snippet: message.snippet,
   };
-  const summary = buildSituationSummary(row, message.category, {
+  const bundle = buildSituationBundle(row, {
     category: message.category,
     locale,
     relationship: message.relationship,
   });
   const haystack = `${message.sender} ${message.subject} ${message.snippet}`;
-  let continuityLine: string | null = null;
+  let continuityLine: string | null = bundle.interpretation;
   if (
     message.timelineIntelligence?.active &&
     (message.timelineIntelligence.conversationStatus === "stalled" ||
@@ -470,131 +610,16 @@ function buildInboxMessagePreview(message: GmailCardMessage, locale: "en" | "it"
         snippet: message.snippet,
         relationship: message.relationship,
         locale,
-      }).lines[0] ?? null;
+      }).lines[0] ?? continuityLine;
   }
-  const glanceLine = buildInboxGlanceLine(summary, {
+  const glanceLine = buildInboxGlanceLine(bundle.summary, {
     continuityLine,
-    nextStep: message.actionIntelligence?.suggestedNextAction ?? null,
+    nextStep:
+      message.actionIntelligence?.actionState === "passive"
+        ? null
+        : (message.actionIntelligence?.suggestedNextAction ?? null),
     haystack,
     locale,
   });
-  return { summary, glanceLine };
-}
-
-function InboxGlanceLine({
-  message,
-  locale,
-}: {
-  message: GmailCardMessage;
-  locale: "en" | "it";
-}) {
-  const line = buildInboxMessagePreview(message, locale).glanceLine;
-  return (
-    <p className="text-sm leading-snug text-gray-600 calm-fade-in">{line}</p>
-  );
-}
-
-function CardHeader({
-  message,
-  catLabel,
-  learnedApplied,
-  manualOverride,
-  showNewsletterBadge,
-  badgeLabel,
-  locale,
-  isUnread = false,
-  lifecycle,
-  showCompletionLikely = false,
-  showAccountBadge = false,
-  onOpenEmail,
-}: {
-  message: GmailCardMessage;
-  catLabel: string;
-  learnedApplied: boolean;
-  manualOverride: boolean;
-  showNewsletterBadge: boolean;
-  badgeLabel: string;
-  locale: "en" | "it";
-  isUnread?: boolean;
-  lifecycle: EmailLifecycleState;
-  showCompletionLikely?: boolean;
-  showAccountBadge?: boolean;
-  onOpenEmail?: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <p
-        className={`text-sm ${
-          isUnread ? "font-semibold text-[#0F172A]" : "font-medium text-gray-500"
-        }`}
-      >
-        {message.sender}
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        {showAccountBadge && message.accountLabel ? (
-          <AccountBadge label={message.accountLabel} />
-        ) : null}
-        {message.timelineIntelligence?.active &&
-        (message.timelineIntelligence.conversationStatus === "escalating" ||
-          message.timelineIntelligence.conversationStatus === "stalled") ? (
-          <ConversationStatusChip
-            status={message.timelineIntelligence.conversationStatus}
-            locale={locale}
-            compact
-          />
-        ) : null}
-        {message.needsCalendarContext ? (
-          <CalendarContextBadge locale={locale} compact showLink={false} />
-        ) : null}
-        {showNewsletterBadge ? (
-          <Link
-            href={emailDetailHref(message)}
-            className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-800 hover:bg-violet-100"
-            onClick={onOpenEmail}
-          >
-            {badgeLabel}
-          </Link>
-        ) : null}
-        {manualOverride ? (
-          <span
-            className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800"
-            title="You moved this email manually"
-          >
-            You changed this
-          </span>
-        ) : null}
-        {message.relationship ? (
-          <RelationshipBadge relationship={message.relationship} />
-        ) : null}
-        {learnedApplied ? (
-          <span
-            className="rounded-full border border-accent/20 bg-accent-muted px-2 py-0.5 text-[10px] font-medium text-accent"
-            title="A learned sender rule set this category"
-          >
-            Rule applied
-          </span>
-        ) : null}
-        {showCompletionLikely ? (
-          <CompletionLikelyBadge
-            emailId={message.id}
-            sender={message.sender}
-            subject={message.subject}
-            category={message.category}
-            locale={locale}
-          />
-        ) : null}
-        {message.waitingResponseUpdate ? <WaitingResponseBadge locale={locale} /> : null}
-        <span
-          className="rounded-full border border-[#E2E8F0] bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent"
-          aria-label={`Category: ${catLabel}`}
-        >
-          {catLabel}
-        </span>
-        <time className="text-xs text-gray-400" dateTime={message.date}>
-          {formatInboxDate(message.date)}
-        </time>
-        <EmailReadStateDot lifecycle={lifecycle} locale={locale} />
-      </div>
-    </div>
-  );
+  return { summary: bundle.summary, glanceLine };
 }

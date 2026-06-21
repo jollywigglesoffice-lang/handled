@@ -229,16 +229,7 @@ export function analyzeEmailIntent(row: GmailInboxRow): EmailIntentAnalysis {
       kinds.includes("information_request") ||
       kinds.includes("partnership"));
 
-  let suggestedCategory: InboxAiCategory = "needs_attention";
-  if (
-    kinds.includes("direct_question") &&
-    qCount <= 1 &&
-    hay.length < 350 &&
-    !kinds.includes("pricing_inquiry") &&
-    !kinds.includes("sales_lead")
-  ) {
-    suggestedCategory = "quick_reply";
-  }
+  let suggestedCategory: InboxAiCategory = "worth_your_attention";
 
   let opportunityHint: string | undefined;
   if (kinds.includes("sales_lead") || kinds.includes("pricing_inquiry")) {
@@ -282,16 +273,11 @@ export function applyIntentToCategory(
     return category;
   }
   if (
-    category === "handled" ||
-    category === "promotion" ||
-    category === "newsletter"
+    category === "good_to_know" ||
+    category === "promotions" ||
+    category === "newsletters"
   ) {
     return intent.suggestedCategory;
-  }
-  if (category === "quick_reply" && intent.suggestedCategory === "needs_attention") {
-    if (intent.kinds.includes("pricing_inquiry") || intent.kinds.includes("sales_lead")) {
-      return "needs_attention";
-    }
   }
   return category;
 }
@@ -304,18 +290,18 @@ function isImportantRelationship(
   return ["school", "family", "healthcare", "vip_client"].includes(profile.kind);
 }
 
-/** Low confidence → bias toward needs_attention (never miss important mail) */
+/** Low confidence → bias toward worth_your_attention (never miss important mail) */
 export function safetyCategoryWhenUncertain(
   row: GmailInboxRow,
   category: InboxAiCategory,
   confidence: number,
   relationship?: SenderRelationshipProfile | null,
 ): InboxAiCategory {
-  if (isImportantRelationship(relationship) && category === "handled") {
-    return "needs_attention";
+  if (isImportantRelationship(relationship) && category === "good_to_know") {
+    return "worth_your_attention";
   }
-  if (isPersonalPriorityContext(row) && category === "handled" && !isPromotionalDominant(row, detectRealHumanSignals(row).score)) {
-    return "needs_attention";
+  if (isPersonalPriorityContext(row) && category === "good_to_know" && !isPromotionalDominant(row, detectRealHumanSignals(row).score)) {
+    return "worth_your_attention";
   }
   if (confidence >= 0.72) {
     return applyIntentToCategory(row, category);
@@ -323,9 +309,9 @@ export function safetyCategoryWhenUncertain(
   if (hasHighPriorityIntent(row)) {
     return analyzeEmailIntent(row).suggestedCategory;
   }
-  if (category === "handled" && confidence < 0.72) {
+  if (category === "good_to_know" && confidence < 0.72) {
     if (looksLikePossibleHumanEmail(row) || isImportantRelationship(relationship)) {
-      return "needs_attention";
+      return "worth_your_attention";
     }
   }
   return applyIntentToCategory(row, category);

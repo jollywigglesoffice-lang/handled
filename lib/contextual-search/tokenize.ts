@@ -23,7 +23,7 @@ const STOPWORDS = new Set([
   "said",
   "reply",
   "replied",
-  "handled",
+  "good_to_know",
 ]);
 
 export function tokenizeSearchText(text: string): string[] {

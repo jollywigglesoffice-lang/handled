@@ -288,7 +288,7 @@ export function headlinesForFollowUpState(input: {
       sender: input.row.sender,
       subject: input.row.subject,
       snippet: input.row.snippet ?? "",
-      category: "needs_attention",
+      category: "worth_your_attention",
       state: input.state,
       urgencyScore: 0,
       headline: "",

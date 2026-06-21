@@ -1,10 +1,20 @@
 export type {
   CalendarAwarenessFlags,
   CalendarConnectionStatus,
+  CalendarIntentLevel,
   FutureCalendarAvailability,
   SchedulingIntentKind,
   SchedulingIntentResult,
 } from "@/lib/calendar-awareness/types";
+
+export {
+  detectSoftSchedulingIntent,
+} from "@/lib/calendar-awareness/detect-soft-scheduling";
+
+export {
+  classifyCalendarIntent,
+  type ClassifyCalendarIntentInput,
+} from "@/lib/calendar-awareness/classify-intent";
 
 export {
   detectSchedulingIntent,
@@ -24,10 +34,13 @@ export {
 
 export {
   connectGoogleCalendarPlaceholder,
+  connectGoogleCalendarViaOAuth,
   disconnectGoogleCalendarPlaceholder,
+  fetchCalendarConnectionStatus,
   fetchFutureCalendarAvailability,
   isCalendarConnected,
   readCalendarConnectionState,
+  syncCalendarConnectionFromApi,
   writeCalendarConnectionState,
   type CalendarConnectionState,
   type ConnectCalendarResult,
@@ -38,3 +51,11 @@ export {
   enrichMessageWithCalendarAwareness,
   type MessageWithCalendarAwareness,
 } from "@/lib/calendar-awareness/enrich";
+
+export {
+  buildSuggestedSlots,
+  detectSlotConflicts,
+  draftSchedulingReply,
+  findFreeTimeSlots,
+  findNextFreeAlternative,
+} from "@/lib/calendar-awareness/slots";

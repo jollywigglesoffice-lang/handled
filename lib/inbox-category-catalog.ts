@@ -12,6 +12,7 @@ import {
   inboxCategorySectionSubtitle,
   inboxCategorySectionTitle,
   inboxCategorySelectorLabel,
+  coerceLegacyInboxCategory,
   isSystemInboxCategory,
   SYSTEM_INBOX_CATEGORY_VALUES,
   type InboxAiCategory,
@@ -85,11 +86,13 @@ export function resolveCategoryWithCatalog(
   catalog: InboxCategoryCatalog,
 ): InboxAiCategory {
   const s = String(raw).trim();
-  if (!s) return "handled";
-  if (isSystemInboxCategory(s)) return s;
-  if (catalog.personalIds.includes(s)) return s;
+  if (!s) return "good_to_know";
+  const coerced = coerceLegacyInboxCategory(s);
+  if (isSystemInboxCategory(coerced)) return coerced;
+  if (catalog.personalIds.includes(coerced)) return coerced;
   const normalized = s.replace(/[\s-]+/g, "_").toLowerCase();
-  if (isSystemInboxCategory(normalized)) return normalized;
+  const coercedNorm = coerceLegacyInboxCategory(normalized);
+  if (isSystemInboxCategory(coercedNorm)) return coercedNorm;
   if (catalog.personalIds.includes(normalized)) return normalized;
   const prefixed = normalized.startsWith("custom:") ? normalized : `custom:${normalized}`;
   if (catalog.personalIds.includes(prefixed)) return prefixed;
@@ -97,7 +100,7 @@ export function resolveCategoryWithCatalog(
     const labelSlug = p.label.toLowerCase().replace(/[\s-]+/g, "_");
     if (labelSlug === normalized || p.id === prefixed) return p.id as InboxAiCategory;
   }
-  return "handled";
+  return "good_to_know";
 }
 
 export function inboxCategoryTitle(

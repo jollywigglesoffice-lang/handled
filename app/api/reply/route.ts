@@ -27,6 +27,7 @@ import { workflowModeBrainMaxChunks } from "@/lib/workflow-mode-effects";
 import type { WorkflowMode } from "@/lib/workflow-mode";
 import {
   buildGenerateReplyPrompt,
+  buildSmartReplyPrompt,
   generateEmailRepliesJson,
   generateEmailRepliesWithValidation,
 } from "@/lib/generate-email-replies";
@@ -80,8 +81,12 @@ type ReplyRequestBody = {
   sender?: string;
   subject?: string;
   snippet?: string;
-  /** Client pre-check; server re-validates */
+  /** Client pre-check; server re-validates unless detailView */
   replyRecommended?: boolean;
+  /** Detail view — user can always request AI reply drafts */
+  detailView?: boolean;
+  /** Smart Reply preset — default / short / formal variants */
+  smartReplyPreset?: boolean;
   brain?: HandledBrain;
   identity?: UserIdentity;
   draftMemory?: DraftMemoryStore;
@@ -658,8 +663,8 @@ export async function POST(request: Request) {
     );
   }
 
-  if (mode === "generate") {
-    const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
+  if (mode === "generate" && !body.detailView) {
+    const category = normalizeInboxAiCategory(body.category ?? "worth_your_attention");
     const assessment = assessReplyNeed({
       row: {
         sender: body.sender ?? "",
@@ -723,7 +728,7 @@ export async function POST(request: Request) {
     body.toneSlider,
   );
 
-  const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
+  const category = normalizeInboxAiCategory(body.category ?? "worth_your_attention");
   const relationship = await resolveRelationshipForReply(request, body.sender, category);
 
   const replyContextForBrain =
@@ -803,19 +808,32 @@ export async function POST(request: Request) {
 
   const generatePrompt =
     mode === "generate" && replyContext
-      ? buildGenerateReplyPrompt({
-          email,
-          tone,
-          languageLabel,
-          userName: authorName,
-          identity: userIdentity,
-          contextBlock,
-          workflowMode: body.workflowMode,
-          category,
-          brainContext,
-          replyContext,
-          draftMemoryBlock,
-        })
+      ? body.smartReplyPreset
+        ? buildSmartReplyPrompt({
+            email,
+            languageLabel,
+            userName: authorName,
+            identity: userIdentity,
+            contextBlock,
+            workflowMode: body.workflowMode,
+            category,
+            brainContext,
+            replyContext,
+            draftMemoryBlock,
+          })
+        : buildGenerateReplyPrompt({
+            email,
+            tone,
+            languageLabel,
+            userName: authorName,
+            identity: userIdentity,
+            contextBlock,
+            workflowMode: body.workflowMode,
+            category,
+            brainContext,
+            replyContext,
+            draftMemoryBlock,
+          })
       : "";
 
   const prompt =

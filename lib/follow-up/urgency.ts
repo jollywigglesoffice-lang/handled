@@ -17,10 +17,10 @@ export function scoreFollowUpUrgency(input: {
 }): number {
   let score = 40;
 
-  if (input.category === "promotion" || input.category === "newsletter") {
+  if (input.category === "promotions" || input.category === "newsletters") {
     return Math.min(score, 25);
   }
-  if (input.category === "handled") {
+  if (input.category === "good_to_know") {
     score -= 15;
   }
 

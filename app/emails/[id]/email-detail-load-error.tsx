@@ -1,17 +1,22 @@
 import Link from "next/link";
+import { calmErrorBody, calmErrorTitle, calmRetryLabel } from "@/lib/calm-system-copy";
 
 type EmailDetailLoadErrorProps = {
   emailId: string;
   message: string;
+  locale?: "en" | "it";
   onRetryHref?: string;
 };
 
 export function EmailDetailLoadError({
   emailId,
   message,
+  locale = "en",
   onRetryHref,
 }: EmailDetailLoadErrorProps) {
   const retryHref = onRetryHref ?? `/emails/${encodeURIComponent(emailId)}`;
+  const title = calmErrorTitle("slippedAway", locale);
+  const fallbackMessage = calmErrorBody("slippedAway", locale);
 
   return (
     <main className="min-h-screen bg-[#F8FAFC] px-4 py-16 sm:px-6 lg:px-8">
@@ -20,19 +25,19 @@ export function EmailDetailLoadError({
           href="/emails"
           className="text-sm font-medium text-accent transition hover:opacity-90"
         >
-          ← Back to inbox
+          ← {locale === "it" ? "Torna alla inbox" : "Back to inbox"}
         </Link>
         <section
           role="alert"
-          className="rounded-2xl border border-red-200 bg-red-50 p-8 shadow-sm space-y-4"
+          className="space-y-4 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm"
         >
-          <h1 className="text-xl font-semibold text-red-900">Couldn&apos;t load this email</h1>
-          <p className="text-sm leading-relaxed text-red-800">{message}</p>
+          <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
+          <p className="text-sm leading-relaxed text-gray-600">{message || fallbackMessage}</p>
           <a
             href={retryHref}
-            className="inline-flex w-full items-center justify-center rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-800 transition hover:bg-red-100"
+            className="inline-flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 transition hover:border-accent/30 hover:bg-accent-muted/20"
           >
-            Try again
+            {calmRetryLabel(locale)}
           </a>
         </section>
       </div>

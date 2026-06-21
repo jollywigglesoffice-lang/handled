@@ -21,7 +21,7 @@ export function resolveRelationshipCategory(
   row: GmailInboxRow,
   senderRelationships: SenderRelationship[],
 ): RelationshipCategoryResult | null {
-  const storedProfile = resolveSenderRelationship(row, "needs_attention", senderRelationships);
+  const storedProfile = resolveSenderRelationship(row, "worth_your_attention", senderRelationships);
   const semanticProfile = matchSemanticMemory(row, senderRelationships);
 
   const profile =

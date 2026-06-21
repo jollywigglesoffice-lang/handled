@@ -9,9 +9,9 @@ export type MockInboxMessage = InboxBucketMessage & {
 };
 
 function sectionToCategory(section: InboxSectionTitle): InboxAiCategory {
-  if (section === "Needs Your Attention") return "needs_attention";
-  if (section === "Handled For You") return "handled";
-  return "newsletter";
+  if (section === "Needs Your Attention") return "worth_your_attention";
+  if (section === "Handled For You") return "good_to_know";
+  return "newsletters";
 }
 
 export function fakeEmailsToInboxMessages(

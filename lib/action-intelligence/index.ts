@@ -6,6 +6,7 @@ export type {
   ActionIntelligenceSummary,
   ActionLabelId,
   AnalyzeActionIntelligenceInput,
+  EmailActionState,
   ImpliedActionKind,
   SafeReminderSuggestion,
   TaskAwarenessItem,
@@ -46,3 +47,5 @@ export {
   enrichMessageWithActionIntelligence,
   type MessageWithActionIntelligence,
 } from "@/lib/action-intelligence/enrich";
+
+export { resolveEmailActionState } from "@/lib/action-intelligence/resolve-action-state";

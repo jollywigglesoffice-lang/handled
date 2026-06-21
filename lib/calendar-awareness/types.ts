@@ -3,6 +3,12 @@
  * No auto-booking or auto-send; user approval required for all scheduling actions.
  */
 
+export type CalendarIntentLevel =
+  | "SCHEDULE_REQUIRED"
+  | "SOFT_SCHEDULING"
+  | "TIME_SENSITIVE"
+  | "NO_TIME_CONTEXT";
+
 export type CalendarConnectionStatus =
   | "disconnected"
   | "connecting"
@@ -40,5 +46,6 @@ export type FutureCalendarAvailability = {
 export type CalendarAwarenessFlags = {
   schedulingIntent: SchedulingIntentResult;
   needsCalendarContext: boolean;
+  calendarIntentLevel: CalendarIntentLevel;
   calendarConnected: boolean;
 };

@@ -32,12 +32,12 @@ create table if not exists public.inbox_rules (
     check (
       category is null
       or category in (
-        'needs_attention',
-        'quick_reply',
-        'fyi',
-        'newsletter',
-        'promotion',
-        'handled'
+        'worth_your_attention',
+        'worth_your_attention',
+        'good_to_know',
+        'newsletters',
+        'promotions',
+        'good_to_know'
       )
     ),
   match_type text not null

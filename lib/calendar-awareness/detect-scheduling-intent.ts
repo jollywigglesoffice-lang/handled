@@ -1,5 +1,9 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { SchedulingIntentKind, SchedulingIntentResult } from "@/lib/calendar-awareness/types";
+import {
+  hasExplicitSchedulingRequest,
+  isAnnouncementEmail,
+} from "@/lib/explicit-email-signals";
 
 type PatternRule = {
   kind: SchedulingIntentKind;
@@ -7,44 +11,42 @@ type PatternRule = {
   phrase: string;
 };
 
-/** EN + IT scheduling phrases — centralized for inbox, replies, and follow-ups */
+/** Only explicit scheduling requests — no vague "can we meet" or availability asks. */
 const SCHEDULING_PATTERNS: PatternRule[] = [
-  {
-    kind: "availability_request",
-    pattern:
-      /\b(are you (?:free|available)|when (?:are you|can you be) (?:free|available)|what times? (?:work|are good)|do you have (?:any )?(?:time|availability)|when can (?:we|you)|quando (?:sei|saresti) (?:liber[oa]|disponibil[ei])|hai (?:tempo|disponibilità)|when works for you)\b/i,
-    phrase: "availability",
-  },
   {
     kind: "meeting_request",
     pattern:
-      /\b(meeting|meet(?:ing)?\s+(?:request|invite)|call|zoom|teams|google meet|video call|riunione|incontro|chiamata|videocall)\b/i,
-    phrase: "meeting",
+      /\b(schedule (?:a |an )?(?:call|meeting|time)|book (?:a |an )?(?:time|slot|meeting|appointment)|set (?:up )?a (?:call|meeting)|set a meeting|fissare un (?:incontro|appuntamento)|prenotare un appuntamento)\b/i,
+    phrase: "schedule meeting",
   },
   {
     kind: "appointment_request",
     pattern:
-      /\b(appointment|book (?:a |an )?(?:time|slot|appointment)|schedule (?:a |an )?(?:call|meeting|time)|set up a (?:call|meeting)|appuntamento|prenotare|fissare un appuntamento)\b/i,
-    phrase: "appointment",
+      /\b(book (?:a |an )?(?:appointment|time|slot)|schedule (?:a |an )?(?:appointment|time))\b/i,
+    phrase: "book appointment",
   },
   {
     kind: "calendar_reference",
     pattern:
-      /\b(calendar|google calendar|outlook calendar|invite|calendar invite|calendario|invito calendario|add to (?:my |your )?calendar)\b/i,
-    phrase: "calendar",
+      /\b(calendar invite|send (?:me )?(?:a |an )?invite|invito calendario)\b/i,
+    phrase: "calendar invite",
   },
   {
     kind: "reschedule",
     pattern:
-      /\b(reschedule|re-?schedule|move (?:the )?meeting|postpone|spostare (?:la )?riunione|rimandare|cambiare l'?orario)\b/i,
+      /\b(reschedule|re-?schedule|postpone (?:the )?meeting|move (?:the )?meeting|riprenotare|spostare (?:la )?riunione)\b/i,
     phrase: "reschedule",
   },
-  {
-    kind: "availability_request",
-    pattern: /\b(when can we|can we meet|free to meet|find a time|pick a time|trova un orario)\b/i,
-    phrase: "when can we",
-  },
 ];
+
+const EMPTY_RESULT: SchedulingIntentResult = {
+  detected: false,
+  needsCalendarContext: false,
+  kinds: [],
+  matchedPhrases: [],
+  confidence: 0,
+  requiresUserApproval: true,
+};
 
 export function schedulingHaystack(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
@@ -59,6 +61,11 @@ export function detectSchedulingIntent(
   extraBody?: string,
 ): SchedulingIntentResult {
   const hay = schedulingHaystack(row, extraBody);
+
+  if (isAnnouncementEmail(hay) || !hasExplicitSchedulingRequest(hay)) {
+    return EMPTY_RESULT;
+  }
+
   const kinds = new Set<SchedulingIntentKind>();
   const matchedPhrases: string[] = [];
 
@@ -71,21 +78,22 @@ export function detectSchedulingIntent(
     }
   }
 
-  const detected = kinds.size > 0;
-  const needsCalendarContext =
-    detected &&
-    (kinds.has("availability_request") ||
-      kinds.has("meeting_request") ||
-      kinds.has("appointment_request") ||
-      kinds.has("reschedule"));
+  if (kinds.size === 0) {
+    return {
+      ...EMPTY_RESULT,
+      detected: true,
+      needsCalendarContext: true,
+      kinds: ["meeting_request"],
+      matchedPhrases: ["explicit scheduling"],
+      confidence: 0.75,
+    };
+  }
 
-  const confidence = Math.min(
-    0.96,
-    0.62 + matchedPhrases.length * 0.1 + (needsCalendarContext ? 0.12 : 0),
-  );
+  const needsCalendarContext = kinds.size > 0;
+  const confidence = Math.min(0.96, 0.72 + matchedPhrases.length * 0.08);
 
   return {
-    detected,
+    detected: true,
     needsCalendarContext,
     kinds: [...kinds],
     matchedPhrases,

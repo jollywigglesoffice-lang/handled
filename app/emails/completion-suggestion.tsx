@@ -9,6 +9,7 @@ import {
   completionSuggestionExplanation,
   suggestCompletionAction,
 } from "@/lib/completion-learning/suggest";
+import { shouldSuppressCompletionSuggestion } from "@/lib/completion-actions/context-filter";
 import type { CompleteEmailExtras } from "@/lib/email-completions/types";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 
@@ -19,6 +20,9 @@ type CompletionSuggestionProps = {
   category: InboxAiCategory;
   locale: "en" | "it";
   busy?: boolean;
+  categoryConfidence?: number;
+  actionable?: boolean;
+  actionState?: import("@/lib/action-intelligence").EmailActionState;
   onSelect: (
     actionId: CompletionActionId,
     actionLabel: string,
@@ -46,6 +50,9 @@ export function CompletionSuggestion({
   category,
   locale,
   busy,
+  categoryConfidence,
+  actionable,
+  actionState,
   onSelect,
 }: CompletionSuggestionProps) {
   const { learning } = useEmailCompletions();
@@ -72,7 +79,22 @@ export function CompletionSuggestion({
     [learning, sender, subject, category, catalog, locale],
   );
 
-  const suggestion = dismissed ? null : rawSuggestion;
+  const suggestion = useMemo(() => {
+    if (dismissed || !rawSuggestion) return null;
+    if (actionState === "passive") return null;
+    if (
+      shouldSuppressCompletionSuggestion(rawSuggestion.actionId, {
+        category,
+        categoryConfidence,
+        actionable,
+        actionState,
+        suggestionConfidence: rawSuggestion.confidence,
+      })
+    ) {
+      return null;
+    }
+    return rawSuggestion;
+  }, [dismissed, rawSuggestion, category, categoryConfidence, actionable, actionState]);
 
   useEffect(() => {
     if (!rawSuggestion || generatedRef.current) return;

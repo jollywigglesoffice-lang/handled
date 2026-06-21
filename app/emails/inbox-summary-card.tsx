@@ -78,12 +78,12 @@ export function InboxSummaryCard({
           >
             {t.inboxZero}
           </button>
-          {counts.quick_reply > 0 ? (
+          {counts.worth_your_attention > 0 ? (
             <SecondaryAction onClick={onHandleQuickReplies}>
-              {t.handleQuickReplies}
+              {locale === "it" ? "Gestisci priorità" : "Handle priorities"}
             </SecondaryAction>
           ) : null}
-          {counts.promotion > 0 ? (
+          {counts.promotions > 0 ? (
             <SecondaryAction onClick={onClearPromotions}>
               {t.clearPromotions}
             </SecondaryAction>

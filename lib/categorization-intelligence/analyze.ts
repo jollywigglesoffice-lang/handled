@@ -100,18 +100,12 @@ export function analyzeCategorizationIntelligence(
     reasonLabels.push("Mixed personal and promotional signals");
   }
 
-  let suggestedCategory: InboxAiCategory = "needs_attention";
+  let suggestedCategory: InboxAiCategory = "worth_your_attention";
 
   if (promotionalDominant && !hasHardPersonalBlock) {
     suggestedCategory = promo.suggestedCategory;
   } else if (real.hasHumanRequest || real.hasHumanQuestion) {
-    suggestedCategory =
-      real.hasHumanQuestion &&
-      hay.length < 380 &&
-      !hasHardPersonalBlock &&
-      !real.hasHumanRequest
-        ? "quick_reply"
-        : "needs_attention";
+    suggestedCategory = "worth_your_attention";
   } else if (memory.suggestedCategory && hasHardPersonalBlock) {
     suggestedCategory = memory.suggestedCategory;
   }
@@ -138,9 +132,9 @@ export function analyzeCategorizationIntelligence(
     }
   }
 
-  if (forceNeedsAttention && !forcePromotional && suggestedCategory === "handled") {
-    suggestedCategory = "needs_attention";
-    reasonCodes.push("safety_needs_attention");
+  if (forceNeedsAttention && !forcePromotional && suggestedCategory === "good_to_know") {
+    suggestedCategory = "worth_your_attention";
+    reasonCodes.push("safety_worth_your_attention");
     reasonLabels.push("Safety rule: prefer Needs Attention when uncertain");
   }
 

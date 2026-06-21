@@ -20,11 +20,17 @@ import { parseSenderRelationshipsHeader } from "@/lib/relationship-intelligence/
 import { loadSenderRelationshipsForUser } from "@/lib/relationship-intelligence/store";
 import type { SenderRelationship } from "@/lib/relationship-intelligence/types";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
+import type { MemoryEngineSnapshot } from "@/lib/memory-engine/types";
+import { memoryRulesFromSnapshot } from "@/lib/memory-engine/apply";
+import { loadMemoryEngineForUser } from "@/lib/memory-engine/store";
 
 export type CategorizationContext = {
   /** Per-email manual overrides — highest priority. */
   emailOverrides: Record<string, InboxAiCategory>;
   emailOverrideRecords: EmailCategoryOverride[];
+  /** Behavioral memory rules — outrank sender prefs after repeated corrections. */
+  memoryRules: InboxUserRule[];
+  memorySnapshot: MemoryEngineSnapshot;
   /** Learned per-sender rules — applied before keyword rules and AI. */
   senderRules: InboxUserRule[];
   /** Keyword / manual inbox rules — applied after sender rules. */
@@ -45,12 +51,13 @@ export async function loadCategorizationContext(
   userId: string,
   request?: Request,
 ): Promise<CategorizationContext> {
-  const [serverKeywordRules, senderRulesFromDb, serverOverrides, serverRelationships] =
+  const [serverKeywordRules, senderRulesFromDb, serverOverrides, serverRelationships, memorySnapshot] =
     await Promise.all([
       loadInboxUserRulesForUser(userId),
       loadSenderRulesForUser(userId),
       loadEmailOverridesForUser(userId),
       loadSenderRelationshipsForUser(userId),
+      loadMemoryEngineForUser(userId),
     ]);
 
   const clientOverrides = request
@@ -66,6 +73,7 @@ export async function loadCategorizationContext(
     ? parseSenderPreferencesHeader(request.headers.get("x-handled-sender-preferences"))
     : [];
 
+  const memoryRules = memoryRulesFromSnapshot(memorySnapshot);
   const senderRules = senderRulesToInboxRules(senderRulesFromDb);
   const clientSenderRules = senderPreferencesToRules(clientPrefs);
 
@@ -104,6 +112,8 @@ export async function loadCategorizationContext(
   return {
     emailOverrides,
     emailOverrideRecords,
+    memoryRules,
+    memorySnapshot,
     senderRules: mergedSender,
     keywordRules,
     allRules,

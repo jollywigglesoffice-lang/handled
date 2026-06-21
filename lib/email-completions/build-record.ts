@@ -34,6 +34,7 @@ export function buildEmailCompletionRecord(
     senderDomain: domain,
     threadId: input.threadId,
     waitingOn,
+    workflowState: input.actionId === "waiting_on_someone" ? "waiting_on" : undefined,
     waitingStatus: input.actionId === "waiting_on_someone" ? "waiting" : undefined,
     followUpAfterDays,
     followUpAt: computeFollowUpAt(completedAt, followUpAfterDays),

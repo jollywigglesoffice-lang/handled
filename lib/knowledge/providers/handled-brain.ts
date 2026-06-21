@@ -32,7 +32,7 @@ const STOPWORDS = new Set([
   "please",
   "email",
   "message",
-  "handled",
+  "good_to_know",
 ]);
 
 const TOPIC_SYNONYMS: Record<string, string[]> = {

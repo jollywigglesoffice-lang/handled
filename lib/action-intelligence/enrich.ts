@@ -30,9 +30,6 @@ export function enrichMessageWithActionIntelligence<
     locale: options?.locale,
   });
   const summary = summarizeActionIntelligence(analysis);
-  if (!summary.actionable) {
-    return row;
-  }
   return {
     ...row,
     actionIntelligence: summary,

@@ -1,5 +1,12 @@
 import type { BrainUsageDto } from "@/lib/knowledge/types";
 import { analyzeEmailIntent } from "@/lib/email-intent";
+import {
+  hasExplicitDeadline,
+  hasExplicitQuestion,
+  hasExplicitRequest,
+  hasExplicitSchedulingRequest,
+  isAnnouncementEmail,
+} from "@/lib/explicit-email-signals";
 import type { FollowUpAnalysis } from "@/lib/follow-up/types";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { emailHaystack, isCommercialBulk } from "@/lib/inbox-triage-signals";
@@ -149,17 +156,17 @@ function inferLikelyNextStep(
   } as GmailInboxRow;
   const intent = analyzeEmailIntent(row);
   const lowUrgency =
-    input.category === "promotion" ||
-    input.category === "newsletter" ||
-    input.category === "handled" ||
+    input.category === "promotions" ||
+    input.category === "newsletters" ||
+    input.category === "good_to_know" ||
     isCommercialBulk(row);
 
-  if (lowUrgency) {
+  if (lowUrgency || isAnnouncementEmail(haystackText)) {
     return locale === "it" ? "Può aspettare." : "Can likely wait.";
   }
 
   if (
-    (input.schedulingDetected || intent.kinds.includes("scheduling")) &&
+    hasExplicitSchedulingRequest(haystackText) &&
     (/reschedul|new time|nuovo orario|riprenot/i.test(haystackText) ||
       countTimeOptions(haystackText) >= 2)
   ) {
@@ -168,13 +175,16 @@ function inferLikelyNextStep(
       : "Confirm one of the new times.";
   }
 
-  if (input.schedulingDetected || intent.kinds.includes("scheduling")) {
+  if (hasExplicitSchedulingRequest(haystackText)) {
     return locale === "it"
       ? "Proponi un orario che ti va."
       : "Offer a time that works.";
   }
 
-  if (intent.kinds.includes("pricing_inquiry") || /pricing|quote|preventivo/i.test(haystackText)) {
+  if (
+    (intent.kinds.includes("pricing_inquiry") || /pricing|quote|preventivo/i.test(haystackText)) &&
+    hasExplicitQuestion(haystackText)
+  ) {
     return locale === "it"
       ? "Potrebbe servire qualche dettaglio sui prezzi."
       : "This may need pricing details from you.";
@@ -182,19 +192,20 @@ function inferLikelyNextStep(
 
   if (
     input.replyRecommended !== false &&
+    hasExplicitDeadline(haystackText) &&
     (intent.kinds.includes("deadline") ||
       /\btoday\b|entro oggi|by eod|by friday|entro venerdì/i.test(haystackText))
   ) {
     return locale === "it" ? "Rispondi oggi." : "Reply today.";
   }
 
-  if (input.replyRecommended !== false && intent.requiresReply) {
+  if (input.replyRecommended !== false && hasExplicitQuestion(haystackText)) {
     return locale === "it"
       ? "Quando puoi, una risposta breve dovrebbe bastare."
       : "When you're ready, a short reply should help.";
   }
 
-  if (/awaiting approval|need your approval|conferma/i.test(haystackText)) {
+  if (hasExplicitRequest(haystackText) && /awaiting approval|need your approval/i.test(haystackText)) {
     return locale === "it"
       ? "Un sì o un no veloce potrebbe bastare."
       : "A quick yes or no may be enough.";

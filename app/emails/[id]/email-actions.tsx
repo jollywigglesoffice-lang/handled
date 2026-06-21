@@ -68,8 +68,16 @@ type EmailActionsProps = {
   relationship?: import("@/lib/relationship-intelligence/types").SenderRelationshipProfile;
   /** Calmer layout: fewer cards, progressive disclosure, no confidence bars. */
   calmLayout?: boolean;
+  /** Detail view: reply always available regardless of AI/workflow/category. */
+  alwaysOfferReply?: boolean;
   /** Start draft generation as soon as the detail view is ready. */
   anticipatoryPrefetch?: boolean;
+  /** Connected account for multi-inbox (overrides URL param when embedded). */
+  accountId?: string;
+  /** Inbox Zero / embedded flow — stay on page after reply. */
+  embedInFlow?: boolean;
+  /** Called after reply is marked sent; used instead of navigating to /emails. */
+  onReplySent?: () => void;
 };
 
 const FETCH_REPLY_TIMEOUT_MS = 28_000;
@@ -396,7 +404,7 @@ function getContextHint(
   }
 
   const isLowPriority =
-    normalizedContent.includes("newsletter") ||
+    normalizedContent.includes("newsletters") ||
     normalizedContent.includes("digest") ||
     normalizedContent.includes("highlights") ||
     normalizedContent.includes("recap");
@@ -415,21 +423,25 @@ export function EmailActions({
   subject = "",
   snippet = "",
   suggestedReply: _suggestedReply,
-  inboxCategory = "needs_attention",
+  inboxCategory = "worth_your_attention",
   replyRecommended: replyRecommendedProp = true,
   replySuppressedReason,
   suggestedTriageAction,
   followUpAnalysis,
   relationship,
   calmLayout = false,
+  alwaysOfferReply: alwaysOfferReplyProp,
   anticipatoryPrefetch = false,
+  accountId: accountIdProp,
+  embedInFlow = false,
+  onReplySent,
 }: EmailActionsProps) {
   const ui = useUiCopy();
   const router = useRouter();
   const searchParams = useSearchParams();
   // Account that owns this message — completion state and Gmail side effects
   // must be scoped to it (Gmail ids are only unique per mailbox).
-  const accountId = searchParams.get("accountId") ?? undefined;
+  const accountId = accountIdProp ?? searchParams.get("accountId") ?? undefined;
   const { completeEmails } = useEmailCompletions();
   const { generatedRepliesCount, incrementGeneratedRepliesCount } = useReplyUsage();
   const {
@@ -540,8 +552,10 @@ export function EmailActions({
   );
 
   const workflowBehavior = getWorkflowModeBehavior(workflowMode);
+  const alwaysOfferReply = alwaysOfferReplyProp ?? calmLayout;
   const shouldOfferReplies =
-    replyRecommendedProp && workflowBehavior.showReplySection;
+    alwaysOfferReply ||
+    (replyRecommendedProp && workflowBehavior.showReplySection);
 
   const contextHint = getContextHint(emailContent, {
     quickApproval: ui.emailActions.contextQuickApproval,
@@ -925,7 +939,8 @@ return () => clearTimeout(timeout);
               sender: _senderName,
               subject,
               snippet,
-              replyRecommended: shouldOfferReplies,
+              replyRecommended: alwaysOfferReply ? true : shouldOfferReplies,
+              detailView: alwaysOfferReply || undefined,
               brain: loadClientHandledBrain(),
               draftMemory: draftStore,
               relationshipKind: relationship?.kind,
@@ -1093,7 +1108,7 @@ return () => clearTimeout(timeout);
           return;
         }
 
-        if (result.replyRecommended === false) {
+        if (result.replyRecommended === false && !alwaysOfferReply) {
           if (runId !== generateRunIdRef.current) {
             return;
           }
@@ -1184,6 +1199,7 @@ return () => clearTimeout(timeout);
       memoryProfile,
       replySuppressedReason,
       shouldOfferReplies,
+      alwaysOfferReply,
       snippet,
       subject,
       tone,
@@ -1217,7 +1233,9 @@ return () => clearTimeout(timeout);
   const tryAnticipatoryGenerate = useCallback(() => {
     if (!authUser?.id || !emailContent) return;
     if (!shouldOfferReplies) return;
-    const autoOk = workflowBehavior.autoGenerateReplies || anticipatoryPrefetch;
+    const autoOk = alwaysOfferReply
+      ? anticipatoryPrefetch
+      : workflowBehavior.autoGenerateReplies || anticipatoryPrefetch;
     if (!autoOk) return;
     if (isGeneratingReplies || isThinking || isStreaming) return;
 
@@ -1236,6 +1254,7 @@ return () => clearTimeout(timeout);
     isThinking,
     isStreaming,
     shouldOfferReplies,
+    alwaysOfferReply,
     workflowBehavior.autoGenerateReplies,
   ]);
 
@@ -1599,7 +1618,11 @@ return () => clearTimeout(timeout);
     }, 2200);
 
     routeBackTimerRef.current = window.setTimeout(() => {
-      router.push("/emails");
+      if (embedInFlow && onReplySent) {
+        onReplySent();
+      } else {
+        router.push("/emails");
+      }
       routeBackTimerRef.current = null;
     }, 2700);
   }
@@ -1933,7 +1956,16 @@ return () => clearTimeout(timeout);
           ) : null}
         </div>
       ) : calmLayout ? (
-        <FocusReplyPanel
+        <>
+          {alwaysOfferReply && !replyRecommendedProp ? (
+            <p className="mb-3 text-xs leading-relaxed text-gray-500">
+              {replySuppressedReason ??
+                (inboxLocale === "it"
+                  ? "L'AI non suggerisce una risposta — puoi comunque rispondere qui sotto."
+                  : "AI doesn't suggest a reply — you can still respond below.")}
+            </p>
+          ) : null}
+          <FocusReplyPanel
           visibleReplies={visibleReplies}
           selectedReplyIndex={selectedReplyIndex}
           editedReplyDraft={editedReplyDraft}
@@ -1993,6 +2025,7 @@ return () => clearTimeout(timeout);
             </div>
           }
         />
+        </>
       ) : (
       <div className="space-y-4 border-t border-gray-200 pt-5">
           {!calmLayout ? (

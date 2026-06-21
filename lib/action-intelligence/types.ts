@@ -43,8 +43,12 @@ export type SafeReminderSuggestion = {
   requiresUserApproval: true;
 };
 
+/** Tri-state posture for what the user should do with this email. */
+export type EmailActionState = "actionable" | "waiting_response" | "passive";
+
 export type ActionIntelligenceResult = {
   actionable: boolean;
+  actionState: EmailActionState;
   impliedActions: ImpliedActionKind[];
   labels: ActionLabelId[];
   primaryLabel: ActionLabelId | null;
@@ -57,6 +61,7 @@ export type ActionIntelligenceResult = {
 /** Slim shape for inbox list API */
 export type ActionIntelligenceSummary = {
   actionable: boolean;
+  actionState: EmailActionState;
   primaryLabel: ActionLabelId | null;
   suggestedNextAction: string | null;
 };

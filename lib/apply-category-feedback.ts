@@ -23,6 +23,7 @@ import {
   recordSenderCategoryCorrection,
   shouldAutoLearnSenderRule,
 } from "@/lib/sender-correction-learning";
+import { collectCategoryCorrection } from "@/lib/memory-engine/collect";
 
 export type CategoryFeedbackInput = {
   emailId: string;
@@ -230,6 +231,16 @@ export async function submitCategoryFeedback(
     learningRecord && learningRecord.correctionsToNeedsAttention >= 2
       ? getSenderLearningSuggestion(input.sender)?.message
       : undefined;
+
+  void collectCategoryCorrection({
+    emailId: input.emailId,
+    accountId: input.accountId,
+    sender: input.sender,
+    subject: input.subject,
+    guessedCategory: input.guessedCategory,
+    chosenCategory: input.chosenCategory,
+    scope: input.scope,
+  });
 
   return {
     message: data.message ?? scopeMessages[input.scope],

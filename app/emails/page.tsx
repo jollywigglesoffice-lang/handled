@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { InboxSectionTitle } from "@/lib/fake-emails";
 import { ensureApiSessionCookies } from "@/lib/auth/ensure-api-session";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -14,7 +14,7 @@ import { InboxViewNav } from "@/app/emails/inbox-view-nav";
 import { AuthNav } from "@/app/components/auth-nav";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
-import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
+import { inboxFetchHeaders, inboxLoadFetchHeaders } from "@/lib/inbox-fetch-headers";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
 import { resolveAllInboxMessagesForDisplay } from "@/lib/final-category-resolution";
 import {
@@ -43,7 +43,16 @@ import {
 import { syncSenderRelationshipsFromAccount } from "@/lib/relationship-intelligence/client-sync";
 import type { SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
 import { syncWorkflowModeFromAccount } from "@/lib/workflow-mode/client-sync";
-import { AccountFilter, type AccountFilterValue } from "@/app/emails/account-filter";
+import { InboxSourceSwitcher, type AccountFilterValue } from "@/app/emails/inbox-source-switcher";
+import { AttachInboxButton } from "@/app/emails/attach-inbox-button";
+import { InboxSearchBar } from "@/app/emails/inbox-search-bar";
+import { InboxSearchResults } from "@/app/emails/inbox-search-results";
+import { mergeInboxSearchResults } from "@/lib/inbox-search/merge";
+import {
+  INBOX_SEARCH_MIN_QUERY_LEN,
+  type InboxSearchFilters,
+  type InboxSearchMessage,
+} from "@/lib/inbox-search/types";
 import { InboxSecondaryTools } from "@/app/emails/inbox-secondary-tools";
 import {
   isEmailCompleted,
@@ -54,8 +63,26 @@ import type { ConnectedGmailAccount } from "@/lib/gmail/account-types";
 import { getWorkflowModeProfile } from "@/lib/workflow-mode/profiles";
 import { InboxClutterSection } from "@/app/emails/inbox-clutter-section";
 import { applyImportanceOrderingToBuckets } from "@/lib/importance-memory";
+import { applyTimeImpactOrderingToBuckets } from "@/lib/time-impact/inbox-sort";
+import { buildTimeStripGroups } from "@/lib/time-impact/time-strip";
+import { isUserLockedCategorySource } from "@/lib/category-authority";
+import { classifyAutopilot, isAutopilotInboxVisible } from "@/lib/autopilot";
+import { useAutopilotProcessor } from "@/app/emails/use-autopilot-processor";
+import { BetaAiFilterBar } from "@/app/emails/beta-ai-filter-bar";
+import { InboxModeToggle } from "@/app/emails/inbox-mode-toggle";
+import { InboxZeroFlowView } from "@/app/emails/inbox-zero-flow-view";
+import { isBetaMode } from "@/lib/beta-mode";
+import { applyBetaAiFilter, countBetaAiFilter, type BetaAiFilter } from "@/lib/beta-inbox/filter";
+import { buildInboxZeroQueue } from "@/lib/inbox-zero/build-queue";
+import {
+  INBOX_INTERACTION_MODE_EVENT,
+  readInboxInteractionMode,
+  writeInboxInteractionMode,
+  type InboxInteractionMode,
+} from "@/lib/inbox-interaction-mode";
 import { useStableInboxBuckets } from "@/app/emails/use-stable-inbox-buckets";
 import { GmailInboxCard, type GmailCardMessage } from "@/app/emails/gmail-inbox-card";
+import { InboxTimeStrip } from "@/app/emails/inbox-time-strip";
 import { InboxSyncBar } from "@/app/emails/inbox-sync-bar";
 import { CalmTypingIndicator } from "@/app/components/calm-loading";
 import {
@@ -71,18 +98,26 @@ import {
   inboxCompletionCopy,
   rotatingCompletionSeed,
 } from "@/lib/empty-states";
-import { classifyFetchError, classifyHttpStatus } from "@/lib/inbox-load/classify";
+import {
+  classifyFetchError,
+  classifyHttpStatus,
+  inboxFailureNeedsConnectAccount,
+  inboxFailureNeedsReconnect,
+} from "@/lib/inbox-load/classify";
 import {
   createInboxLoadId,
   elapsedMs,
+  logInboxApiError,
   logInboxLoadComplete,
   logInboxLoadFailed,
   logInboxLoadStart,
   mergeTimings,
 } from "@/lib/inbox-load/diagnostics";
+import { handledErrorFromInboxFailure, type HandledError } from "@/lib/handled-errors";
 import { inboxLoadUserMessage } from "@/lib/inbox-load/user-messages";
 import type {
   InboxLoadApiErrorBody,
+  InboxLoadFailureReason,
   InboxLoadStage,
   InboxLoadTimings,
 } from "@/lib/inbox-load/types";
@@ -129,13 +164,9 @@ import {
   READ_STATE_EVENT,
   type ReadStateMap,
 } from "@/lib/read-state/client-storage";
-import { GmailTruthPanel } from "@/app/emails/gmail-truth-panel";
-import { WaitingDashboardSummary } from "@/app/emails/waiting-dashboard-summary";
-import { useWaitingOnMetadata } from "@/app/waiting-on-metadata-context";
 import { isActiveWaiting } from "@/lib/waiting-on/helpers";
-import { INBOX_CLUTTER_CATEGORIES } from "@/lib/inbox-ai-categories";
+import { useWaitingOnMetadata } from "@/app/waiting-on-metadata-context";
 import { applyDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
-import { buildInboxTruthSnapshot } from "@/lib/inbox-truth/compute-snapshot";
 import type { GmailTruthStats } from "@/lib/inbox-truth/types";
 import { markEmailsRead, markEmailsUnread } from "@/lib/read-state/gmail-sync";
 import {
@@ -145,16 +176,36 @@ import {
   DISMISSED_EVENT,
 } from "@/lib/dismissed/client-storage";
 import { trackEvent } from "@/lib/analytics";
-import { DailyBriefingCard } from "@/app/emails/daily-briefing-card";
-import type { DailyBriefingMessage } from "@/lib/daily-briefing/types";
+import { InboxLoadingState } from "@/app/emails/inbox-loading-state";
+import { GuidedOnboardingFlow } from "@/app/onboarding/guided-onboarding-flow";
+import {
+  FIRST_ONBOARDING_COMPLETE_EVENT,
+  isFirstOnboardingComplete,
+  markFirstOnboardingComplete,
+} from "@/lib/onboarding/first-time";
+import { TodaysFocusCard } from "@/app/emails/todays-focus-card";
+import {
+  INBOX_ZERO_STATE_COPY,
+  inboxModeHint,
+  inboxModeTitle,
+} from "@/lib/inbox-modes";
 import {
   InboxZeroMode,
   type InboxZeroRecategorizeMeta,
   type InboxZeroStep,
 } from "@/app/emails/inbox-zero-mode";
 import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
+import { collectUserOverrideLog } from "@/lib/memory-engine/collect";
+import {
+  loadClientMemoryRules,
+  mergeClientMemorySnapshot,
+  MEMORY_ENGINE_EVENT,
+} from "@/lib/memory-engine/client-cache";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import { CategoryTabs, type CategoryTab } from "@/app/emails/category-tabs";
+import { calmLoadMoreMessage } from "@/lib/calm-system-copy";
+import { WaitingOnInboxSection } from "@/app/emails/waiting-on-inbox-section";
+import { workflowFieldsFromCompletion } from "@/lib/email-workflow-state";
 import { CategoryViewGuidance } from "@/app/emails/category-view-guidance";
 import {
   consumeInboxScrollRestore,
@@ -178,6 +229,8 @@ type GmailInboxMessage = {
   hasUnsubscribeSignal?: boolean;
   needsCalendarContext?: boolean;
   actionIntelligence?: import("@/lib/action-intelligence").ActionIntelligenceSummary;
+  timeImpact?: import("@/lib/time-impact").TimeImpactResult;
+  autopilot?: import("@/lib/autopilot").AutopilotSummary;
   timelineIntelligence?: import("@/lib/timeline-intelligence").TimelineIntelligenceSummary;
   relationship?: SenderRelationshipProfile;
   accountId?: string;
@@ -301,80 +354,6 @@ function formatInboxDate(iso: string): string {
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-function GmailSectionLeadingIcon({ category }: { category: InboxAiCategory }) {
-  const common = "h-5 w-5 shrink-0 text-accent";
-  if (category === "needs_attention") {
-    return (
-      <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M10 6.25v4.25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="10" cy="13.6" r="0.9" fill="currentColor" />
-      </svg>
-    );
-  }
-  if (category === "quick_reply") {
-    return (
-      <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
-        <path
-          d="M4.5 12.5V16l3.2-2.1a7 7 0 1 1-1.7-1.4"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  if (category === "handled") {
-    return (
-      <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
-        <path
-          d="M6.8 10.2l2.2 2.2 4.3-4.6"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  if (category === "fyi") {
-    return (
-      <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" />
-        <circle cx="10" cy="6.6" r="0.9" fill="currentColor" />
-        <path d="M10 9.4v4.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (category === "newsletter") {
-    return (
-      <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
-        <path
-          d="M5.5 6.5h9v8h-9v-8z"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path d="M5.5 8.5h9" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M8 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  return (
-    <svg aria-hidden className={common} viewBox="0 0 20 20" fill="none">
-      <path
-        d="M6.5 7.5h7l-1 8h-5l-1-8z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-      <path d="M8 5.5h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function GmailCategorySectionHeader({
   category,
   locale,
@@ -387,26 +366,21 @@ function GmailCategorySectionHeader({
   onSelectAll?: () => void;
 }) {
   const { catalog } = useInboxCategories();
-  const subtitle = inboxCategorySubtitle(category, locale, catalog);
+  const subtitle = inboxModeHint(category, locale) ?? inboxCategorySubtitle(category, locale, catalog);
   const isPrimary =
-    category === "needs_attention" ||
-    category === "quick_reply" ||
-    category === "fyi" ||
-    category === "handled" ||
+    category === "worth_your_attention" ||
+    category === "good_to_know" ||
     catalog.personalIds.includes(category);
 
   return (
-    <div className="group/section flex flex-wrap items-baseline justify-between gap-2">
+    <div className="group/section flex flex-wrap items-baseline justify-between gap-2 pb-2 pt-4">
       <div className="flex min-w-0 items-center gap-2">
-        {isPrimary ? (
-          <GmailSectionLeadingIcon category={category} />
-        ) : null}
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-gray-900">
-            {inboxCategoryTitle(category, locale, catalog)}
+          <h2 className="text-sm font-medium text-gray-600">
+            {inboxModeTitle(category, locale, catalog)}
           </h2>
           {subtitle && isPrimary ? (
-            <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>
+            <p className="mt-0.5 text-xs text-gray-400">{subtitle}</p>
           ) : null}
         </div>
       </div>
@@ -460,14 +434,14 @@ function GmailCategorySection({
   showAccountBadges: boolean;
 }) {
   return (
-    <section className="space-y-3">
+    <section className="space-y-1">
       <GmailCategorySectionHeader
         category={category}
         locale={uiLanguage}
         count={count}
         onSelectAll={onSelectAll}
       />
-      <div className="space-y-2">
+      <div>
         {list.map((message) => (
           <div
             key={message.id}
@@ -497,15 +471,16 @@ function GmailCategorySection({
 
 function EmailCardSkeleton() {
   return (
-    <div className="rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] p-4 shadow-sm sm:p-5">
-      <div className="space-y-3">
+    <div className="border-b border-gray-100/90 py-5">
+      <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <div className="h-4 w-40 rounded-lg subtle-shimmer" />
-          <div className="h-4 w-20 rounded-lg subtle-shimmer" />
+          <div className="h-3 w-16 rounded subtle-shimmer" />
+          <div className="h-3 w-12 rounded subtle-shimmer" />
         </div>
-        <div className="h-6 w-3/4 rounded-lg subtle-shimmer" />
-        <div className="h-4 w-full rounded-lg subtle-shimmer" />
-        <div className="h-3 w-2/3 rounded-lg subtle-shimmer" />
+        <div className="h-4 w-32 rounded subtle-shimmer" />
+        <div className="h-5 w-3/4 rounded subtle-shimmer" />
+        <div className="h-4 w-full rounded subtle-shimmer" />
+        <div className="h-8 w-24 rounded-lg subtle-shimmer" />
       </div>
     </div>
   );
@@ -513,6 +488,7 @@ function EmailCardSkeleton() {
 
 export default function EmailsInboxPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const ui = useUiCopy();
   const { catalog } = useInboxCategories();
   const validTabIds = useMemo(
@@ -530,6 +506,8 @@ export default function EmailsInboxPage() {
     completeEmails,
     scanWaitingResponses,
     waitingResponseRecords,
+    waitingOpenRecords,
+    isCompleted,
   } = useEmailCompletions();
 
   const [inboxMode, setInboxMode] = useState<InboxMode>("loading");
@@ -542,10 +520,13 @@ export default function EmailsInboxPage() {
     {},
   );
   const [senderPrefsVersion, setSenderPrefsVersion] = useState(0);
+  const [memoryVersion, setMemoryVersion] = useState(0);
   const [persistenceReady, setPersistenceReady] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [workflowMode, setWorkflowMode] = useState(readWorkflowModeFromStorage);
   const [gmailError, setGmailError] = useState("");
+  const [inboxFailureReason, setInboxFailureReason] = useState<InboxLoadFailureReason | null>(null);
+  const [structuredInboxError, setStructuredInboxError] = useState<HandledError | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [gmailTruth, setGmailTruth] = useState<GmailTruthStats | null>(null);
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedGmailAccount[]>([]);
@@ -560,6 +541,8 @@ export default function EmailsInboxPage() {
   const [messageIndex, setMessageIndex] = useState(0);
   const [showMicroMessage, setShowMicroMessage] = useState(true);
   const [rateLimitNotice, setRateLimitNotice] = useState("");
+  const [attachNotice, setAttachNotice] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
   const loadInFlightRef = useRef(false);
   const pendingSilentRefreshRef = useRef(false);
   const hasLoadedInboxRef = useRef(false);
@@ -572,6 +555,8 @@ export default function EmailsInboxPage() {
     if (cache.gmailTruth) setGmailTruth(cache.gmailTruth);
     if (cache.lastSyncedAt) setLastSyncedAt(cache.lastSyncedAt);
     setGmailError("");
+    setInboxFailureReason(null);
+    setStructuredInboxError(null);
     setInboxMode("gmail");
     return true;
   }, []);
@@ -637,6 +622,8 @@ export default function EmailsInboxPage() {
         setIsRefreshing(true);
       }
       setGmailError("");
+    setInboxFailureReason(null);
+    setStructuredInboxError(null);
 
       const sessionStarted = Date.now();
       const hasSession = await ensureApiSessionCookies();
@@ -644,7 +631,7 @@ export default function EmailsInboxPage() {
 
       try {
         if (!hasSession) {
-          router.replace("/");
+          router.replace(`/login?next=${encodeURIComponent("/emails")}`);
           return;
         }
 
@@ -664,14 +651,14 @@ export default function EmailsInboxPage() {
         const fetchStarted = Date.now();
         const res = await fetch(url, {
           credentials: "include",
-          headers: await inboxFetchHeaders(),
+          headers: await inboxLoadFetchHeaders(),
           signal: AbortSignal.timeout(INBOX_LOAD_CLIENT_TIMEOUT_MS),
         });
         clientTimings = mergeTimings(clientTimings, {
           clientFetchMs: elapsedMs(fetchStarted),
         });
 
-        const body = (await res.json()) as InboxLoadApiErrorBody & {
+        let body: InboxLoadApiErrorBody & {
           messages?: GmailInboxMessage[];
           categoryOverrides?: Record<string, InboxAiCategory>;
           emailOverrideRecords?: EmailCategoryOverride[];
@@ -681,9 +668,52 @@ export default function EmailsInboxPage() {
           gmailTruth?: GmailTruthStats | null;
           accounts?: ConnectedGmailAccount[];
           diagnostics?: InboxLoadApiErrorBody["diagnostics"];
+          code?: string;
+          category?: HandledError["category"];
+          userMessage?: string;
+          actionLabel?: string;
+          action?: HandledError["action"];
+          title?: string;
         };
 
-        if (res.status === 403 && body.error === "missing_google_token") {
+        const applyStructuredFailure = (
+          failureReason: InboxLoadFailureReason,
+          apiBody?: typeof body,
+          userMessage?: string,
+        ) => {
+          const structured =
+            apiBody?.userMessage && apiBody?.action
+              ? ({
+                  code: apiBody.code ?? failureReason,
+                  category: apiBody.category ?? "server",
+                  userMessage: apiBody.userMessage,
+                  actionLabel: apiBody.actionLabel ?? "Try again",
+                  action: apiBody.action ?? "retry",
+                  title: apiBody.title,
+                } as HandledError)
+              : handledErrorFromInboxFailure(failureReason, locale);
+          setInboxFailureReason(failureReason);
+          setStructuredInboxError(structured);
+          setGmailError(userMessage ?? structured.userMessage);
+          return structured;
+        };
+
+        try {
+          body = (await res.json()) as typeof body;
+        } catch (parseError) {
+          const failureReason: InboxLoadFailureReason =
+            res.status === 431 ? "headers_too_large" : "server_unavailable";
+          applyStructuredFailure(failureReason);
+          logInboxApiError({
+            endpoint: url,
+            httpStatus: res.status,
+            accountId: activeAccountFilter !== "all" ? activeAccountFilter : null,
+            failureReason,
+            failureStage: "client_fetch",
+            loadId,
+            errorBody: { parseError: String(parseError) },
+            cause: parseError,
+          });
           logInboxLoadFailed({
             loadId,
             startedAt: loadStarted,
@@ -691,15 +721,47 @@ export default function EmailsInboxPage() {
             pageToken: options?.pageToken ?? null,
             append,
             refresh,
-            failureReason: "oauth_missing",
-            failureStage: "google_token",
-            timings: mergeTimings(clientTimings, body.diagnostics?.timings, {
-              totalMs: elapsedMs(loadStarted),
-            }),
+            failureReason,
+            failureStage: "client_fetch",
+            timings: mergeTimings(clientTimings, { totalMs: elapsedMs(loadStarted) }),
           });
-          setInboxMode("no_google");
+          if (!append) {
+            setInboxMode("gmail_error");
+          }
           return;
         }
+
+        const applyInboxFailure = (
+          failureReason: InboxLoadFailureReason,
+          failureStage: InboxLoadStage,
+          userMessage: string,
+        ) => {
+          applyStructuredFailure(failureReason, body, userMessage);
+          logInboxApiError({
+            endpoint: url,
+            httpStatus: res.status,
+            accountId: activeAccountFilter !== "all" ? activeAccountFilter : null,
+            failureReason,
+            failureStage,
+            loadId,
+            errorBody: body,
+          });
+
+          if (inboxFailureNeedsConnectAccount(failureReason)) {
+            setInboxMode("no_google");
+            return;
+          }
+
+          if (!append) {
+            setInboxMode("gmail_error");
+          } else {
+            console.warn("[inbox-load] load-more failed", {
+              loadId,
+              failureReason,
+              failureStage,
+            });
+          }
+        };
 
         if (!res.ok) {
           const failureReason = classifyHttpStatus(res.status, body);
@@ -762,16 +824,7 @@ export default function EmailsInboxPage() {
             });
           }
 
-          if (!append) {
-            setGmailError(userMessage);
-            setInboxMode("gmail_error");
-          } else {
-            console.warn("[inbox-load] load-more failed", {
-              loadId,
-              failureReason,
-              failureStage,
-            });
-          }
+          applyInboxFailure(failureReason, failureStage, userMessage);
           return;
         }
 
@@ -810,7 +863,7 @@ export default function EmailsInboxPage() {
               ? (r as { labelIds: string[] }).labelIds
               : undefined,
             category: normalizeInboxAiCategory(
-              typeof r.category === "string" ? r.category : "needs_attention",
+              typeof r.category === "string" ? r.category : "worth_your_attention",
             ),
             categoryConfidence:
               typeof r.categoryConfidence === "number" ? r.categoryConfidence : undefined,
@@ -831,6 +884,8 @@ export default function EmailsInboxPage() {
             needsCalendarContext: Boolean(r.needsCalendarContext),
             actionIntelligence: (r as { actionIntelligence?: GmailCardMessage["actionIntelligence"] })
               .actionIntelligence,
+            timeImpact: (r as { timeImpact?: GmailCardMessage["timeImpact"] }).timeImpact,
+            autopilot: (r as { autopilot?: GmailCardMessage["autopilot"] }).autopilot,
             timelineIntelligence: (
               r as { timelineIntelligence?: GmailCardMessage["timelineIntelligence"] }
             ).timelineIntelligence,
@@ -947,7 +1002,21 @@ export default function EmailsInboxPage() {
         });
       } catch (e) {
         const failureReason = classifyFetchError(e);
-        const userMessage = inboxLoadUserMessage(failureReason, locale);
+        const structured = handledErrorFromInboxFailure(failureReason, locale);
+        setInboxFailureReason(failureReason);
+        setStructuredInboxError(structured);
+        setGmailError(structured.userMessage);
+        const accountIdForLog = activeAccountFilter !== "all" ? activeAccountFilter : null;
+
+        logInboxApiError({
+          endpoint: "/api/gmail/messages",
+          httpStatus: 0,
+          accountId: accountIdForLog,
+          failureReason,
+          failureStage: "client_fetch",
+          loadId,
+          cause: e,
+        });
 
         logInboxLoadFailed({
           loadId,
@@ -962,7 +1031,6 @@ export default function EmailsInboxPage() {
         });
 
         if (!append) {
-          setGmailError(userMessage);
           setInboxMode("gmail_error");
         }
       } finally {
@@ -1121,18 +1189,32 @@ export default function EmailsInboxPage() {
   }, [inboxLoading, loadingMicroMessages.length]);
 
   useEffect(() => {
-    const bump = () => setSenderPrefsVersion((v) => v + 1);
-    window.addEventListener("handled-sender-preferences-changed", bump);
-    return () => window.removeEventListener("handled-sender-preferences-changed", bump);
+    const bump = () => setMemoryVersion((v) => v + 1);
+    window.addEventListener(MEMORY_ENGINE_EVENT, bump);
+    return () => window.removeEventListener(MEMORY_ENGINE_EVENT, bump);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/memory/snapshot", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((snapshot) => {
+        if (!cancelled && snapshot) mergeClientMemorySnapshot(snapshot);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const categoryResolutionContext = useMemo(() => {
     const fromStorage = loadClientEmailOverrideMap();
     return {
       emailOverrides: { ...fromStorage, ...categoryOverrides },
+      memoryRules: loadClientMemoryRules(),
       senderRules: senderPreferencesToRules(loadClientSenderPreferences()),
     };
-  }, [categoryOverrides, senderPrefsVersion]);
+  }, [categoryOverrides, senderPrefsVersion, memoryVersion]);
 
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => new Set());
   useEffect(() => {
@@ -1186,22 +1268,65 @@ export default function EmailsInboxPage() {
         .filter((id): id is string => Boolean(id)),
     );
     return messagesWithOverrides.map((m) => {
-      if (!responseEmailIds.has(m.id)) return m;
-      // Manual overrides are the highest-priority source of truth: keep the
-      // waiting-response badge, but never recategorize a user-set category.
-      if (m.categorySource === "manual_override") {
-        return { ...m, waitingResponseUpdate: true };
-      }
-      return {
-        ...m,
-        category: "needs_attention" as InboxAiCategory,
-        waitingResponseUpdate: true,
-      };
+      const lockedCategory = isUserLockedCategorySource(m.categorySource ?? "ai");
+      const completion = lookupScopedValue(completions, m.id, m.accountId);
+      const workflow = workflowFieldsFromCompletion(completion);
+      const base =
+        responseEmailIds.has(m.id) && !lockedCategory
+          ? { ...m, category: "worth_your_attention" as InboxAiCategory, waitingResponseUpdate: true }
+          : m.waitingResponseUpdate && lockedCategory
+            ? { ...m, waitingResponseUpdate: true }
+            : m;
+
+      const withWorkflow = { ...base, ...workflow };
+
+      const autopilot =
+        withWorkflow.autopilot ??
+        classifyAutopilot({
+          row: withWorkflow,
+          category: withWorkflow.category,
+          categoryConfidence: withWorkflow.categoryConfidence,
+          categorySource: withWorkflow.categorySource,
+          actionState: withWorkflow.actionIntelligence?.actionState,
+          primaryLabel: withWorkflow.actionIntelligence?.primaryLabel,
+          timeImpactKind: withWorkflow.timeImpact?.kind,
+          waitingResponseUpdate: withWorkflow.waitingResponseUpdate,
+        });
+
+      return { ...withWorkflow, autopilot };
     });
-  }, [messagesWithOverrides, waitingResponseRecords]);
+  }, [messagesWithOverrides, waitingResponseRecords, completions]);
+
+  /** Autopilot inbox: Level 3 + 4 only. Level 1/2 never appear. */
+  const messagesForInbox = useMemo(
+    () => messagesForDisplay.filter((m) => isAutopilotInboxVisible(m.autopilot)),
+    [messagesForDisplay],
+  );
+
+  /** Tab buckets always include every loaded message — autopilot only trims workflow sections. */
+  const inboxBucketMessages = useMemo(
+    () => messagesForDisplay as GmailCardMessage[],
+    [messagesForDisplay],
+  );
+
+  const inboxLocaleEarly = uiLanguage === "it" ? "it" : "en";
+  useAutopilotProcessor(
+    messagesForDisplay as GmailInboxMessage[],
+    inboxLocaleEarly,
+    inboxMode === "gmail",
+  );
+
+  /** All loaded messages for search — includes completed; bypasses workflow visibility. */
+  const messagesForSearchPool = useMemo(() => {
+    const visible =
+      dismissedIds.size === 0
+        ? gmailMessages
+        : gmailMessages.filter((m) => !isDismissedMessage(m));
+    return resolveAllInboxMessagesForDisplay(visible, categoryResolutionContext);
+  }, [gmailMessages, categoryResolutionContext, dismissedIds, isDismissedMessage]);
 
   const { buckets: gmailBucketsRaw, isCountsPending } = useStableInboxBuckets({
-    messages: messagesForDisplay,
+    messages: inboxBucketMessages,
     workflowMode,
     isRefreshing,
     isInitialLoading: inboxMode === "loading",
@@ -1209,19 +1334,11 @@ export default function EmailsInboxPage() {
   });
 
   const gmailBuckets = useMemo(
-    () => applyImportanceOrderingToBuckets(gmailBucketsRaw, completions),
-    [gmailBucketsRaw, completions],
-  );
-
-  const inboxTruthSnapshot = useMemo(
     () =>
-      buildInboxTruthSnapshot({
-        gmailTruth,
-        loadedCount: gmailMessages.length,
-        visibleCount: gmailBuckets.allVisible.length,
-        completions,
-      }),
-    [gmailTruth, gmailMessages.length, gmailBuckets.allVisible.length, completions],
+      applyTimeImpactOrderingToBuckets(
+        applyImportanceOrderingToBuckets(gmailBucketsRaw, completions),
+      ),
+    [gmailBucketsRaw, completions],
   );
 
   const { summary: waitingSummary } = useWaitingOnMetadata();
@@ -1231,38 +1348,110 @@ export default function EmailsInboxPage() {
     [completions],
   );
 
-  const briefingCounts = useMemo(() => {
-    const responseInInbox = messagesForDisplay.filter(
-      // Manual-override emails keep their category, so only subtract the ones
-      // actually promoted into needs_attention.
-      (m) => m.waitingResponseUpdate && m.category === "needs_attention",
-    ).length;
-    return {
-      ...gmailBuckets.counts,
-      needs_attention: Math.max(
-        0,
-        (gmailBuckets.counts.needs_attention ?? 0) - responseInInbox,
-      ),
-    };
-  }, [gmailBuckets.counts, messagesForDisplay]);
+  const betaMode = isBetaMode();
+  const [betaAiFilter, setBetaAiFilter] = useState<BetaAiFilter>("all");
+  const [inboxInteractionMode, setInboxInteractionMode] = useState<InboxInteractionMode>("standard");
 
-  const briefingMessages = useMemo((): DailyBriefingMessage[] => {
-    return messagesWithOverrides.map((m) => ({
+  useEffect(() => {
+    setInboxInteractionMode(readInboxInteractionMode());
+    const sync = () => setInboxInteractionMode(readInboxInteractionMode());
+    window.addEventListener(INBOX_INTERACTION_MODE_EVENT, sync);
+    return () => window.removeEventListener(INBOX_INTERACTION_MODE_EVENT, sync);
+  }, []);
+
+  const handleInboxInteractionModeChange = useCallback((mode: InboxInteractionMode) => {
+    setInboxInteractionMode(mode);
+    writeInboxInteractionMode(mode);
+    if (mode === "inbox_zero") {
+      trackEvent("inbox_zero_mode_enabled");
+    } else {
+      trackEvent("inbox_zero_mode_exited");
+    }
+  }, []);
+
+  const [firstOnboardingDone, setFirstOnboardingDone] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return isFirstOnboardingComplete();
+  });
+  useEffect(() => {
+    const sync = () => setFirstOnboardingDone(isFirstOnboardingComplete());
+    window.addEventListener(FIRST_ONBOARDING_COMPLETE_EVENT, sync);
+    return () => window.removeEventListener(FIRST_ONBOARDING_COMPLETE_EVENT, sync);
+  }, []);
+
+  const firstOnboardingPending = !firstOnboardingDone;
+  const showGuidedOnboarding = firstOnboardingPending;
+
+  const handleFirstOnboardingFinished = useCallback(() => {
+    markFirstOnboardingComplete();
+    setFirstOnboardingDone(true);
+    trackEvent("guided_onboarding_completed");
+  }, []);
+
+  const betaAiFilterCounts = useMemo(
+    () => countBetaAiFilter(gmailBuckets.allVisible as GmailCardMessage[]),
+    [gmailBuckets.allVisible],
+  );
+
+  const filterInboxList = useCallback(
+    (list: GmailCardMessage[], options?: { categoryTabOnly?: boolean }) =>
+      betaMode && !options?.categoryTabOnly ? applyBetaAiFilter(list, betaAiFilter) : list,
+    [betaMode, betaAiFilter],
+  );
+
+  /** All-tab workflow sections hide autopilot-auto; category tabs show every message. */
+  const filterWorkflowSection = useCallback(
+    (list: GmailCardMessage[]) => {
+      const filtered = filterInboxList(list);
+      return betaMode
+        ? filtered
+        : filtered.filter((m) => isAutopilotInboxVisible(m.autopilot));
+    },
+    [filterInboxList, betaMode],
+  );
+
+  const betaFilterActive = betaMode && betaAiFilter !== "all";
+
+  const focusEmails = useMemo(() => {
+    const pool = gmailBuckets.byCategoryAll.worth_your_attention ?? [];
+    return pool.slice(0, 3).map((m) => ({
       id: m.id,
-      threadId: m.threadId,
       sender: m.sender,
       subject: m.subject,
       snippet: m.snippet,
-      category: m.category,
-      internalDateMs: m.internalDateMs,
-      date: m.date,
-      relationship: m.relationship,
-      hasUnsubscribeSignal: m.hasUnsubscribeSignal,
-      needsCalendarContext: m.needsCalendarContext,
+      accountId: m.accountId,
     }));
-  }, [messagesWithOverrides]);
+  }, [gmailBuckets.byCategoryAll]);
+
+  const focusAttentionCount = gmailBuckets.counts.worth_your_attention ?? 0;
+
+  const handledElsewhereCount = Math.max(
+    0,
+    messagesForDisplay.length - focusEmails.length,
+  );
 
   const inboxLocale = uiLanguage === "it" ? "it" : "en";
+
+  const timeStripGroups = useMemo(
+    () =>
+      buildTimeStripGroups(
+        messagesForInbox.map((m) => ({
+          id: m.id,
+          sender: m.sender,
+          subject: m.subject,
+          timeImpact: m.timeImpact,
+          accountId: m.accountId,
+        })),
+        inboxLocale,
+      ),
+    [messagesForInbox, inboxLocale],
+  );
+
+  const autopilotWorkflowClear =
+    !isBetaMode() &&
+    inboxMode === "gmail" &&
+    messagesForInbox.length === 0 &&
+    messagesForDisplay.length > 0;
 
   const completionCopy = useMemo(
     () => inboxCompletionCopy(inboxLocale, rotatingCompletionSeed()),
@@ -1302,6 +1491,149 @@ export default function EmailsInboxPage() {
   }, []);
 
   const [activeCategoryTab, setActiveCategoryTab] = useState<CategoryTab>("all");
+
+  const inboxZeroQueue = useMemo(
+    () =>
+      inboxInteractionMode === "inbox_zero"
+        ? buildInboxZeroQueue(
+            activeCategoryTab,
+            gmailBuckets,
+            (list) =>
+              activeCategoryTab === "all"
+                ? filterWorkflowSection(list)
+                : filterInboxList(list, { categoryTabOnly: true }),
+            isCompleted,
+          )
+        : [],
+    [
+      inboxInteractionMode,
+      activeCategoryTab,
+      gmailBuckets,
+      filterInboxList,
+      isCompleted,
+      completions,
+    ],
+  );
+
+  const [searchFilters, setSearchFilters] = useState<InboxSearchFilters>({
+    query: "",
+    category: "all",
+    accountId: "all",
+    read: "all",
+  });
+  const [searchGmailResults, setSearchGmailResults] = useState<InboxSearchMessage[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  const isSearchActive =
+    searchFilters.query.trim().length >= INBOX_SEARCH_MIN_QUERY_LEN;
+
+  const searchResultSet = useMemo(() => {
+    if (!isSearchActive) {
+      return { inbox: [] as InboxSearchMessage[], completedOnly: [] };
+    }
+    return mergeInboxSearchResults({
+      gmailResults: searchGmailResults,
+      loadedMessages: messagesForSearchPool as InboxSearchMessage[],
+      completions,
+      filters: searchFilters,
+      readMap: readStateMap,
+    });
+  }, [
+    isSearchActive,
+    searchGmailResults,
+    messagesForSearchPool,
+    completions,
+    searchFilters,
+    readStateMap,
+  ]);
+
+  useEffect(() => {
+    const q = searchFilters.query.trim();
+    if (q.length < INBOX_SEARCH_MIN_QUERY_LEN) {
+      setSearchGmailResults([]);
+      setSearchLoading(false);
+      setSearchError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setSearchLoading(true);
+        setSearchError(null);
+        try {
+          const params = new URLSearchParams({ q });
+          if (searchFilters.read !== "all") {
+            params.set("read", searchFilters.read);
+          }
+          const res = await fetch(`/api/gmail/search?${params.toString()}`, {
+            credentials: "include",
+            headers: await inboxLoadFetchHeaders(),
+            signal: controller.signal,
+          });
+          const body = (await res.json()) as {
+            messages?: InboxSearchMessage[];
+            userMessage?: string;
+          };
+          if (!res.ok) {
+            setSearchGmailResults([]);
+            setSearchError(
+              body.userMessage ??
+                (inboxLocale === "it"
+                  ? "Gmail non ha completato la ricerca — riprova."
+                  : "Gmail couldn't complete your search — try again."),
+            );
+            return;
+          }
+          setSearchGmailResults(body.messages ?? []);
+        } catch (error) {
+          if (!(error instanceof DOMException && error.name === "AbortError")) {
+            console.error("[inbox search]", error);
+          }
+        } finally {
+          setSearchLoading(false);
+        }
+      })();
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchFilters.query, searchFilters.read]);
+
+  useEffect(() => {
+    void supabaseBrowser.auth.getSession().then(({ data }) => {
+      setSignedIn(Boolean(data.session?.user));
+    });
+    const { data } = supabaseBrowser.auth.onAuthStateChange((_e, session) => {
+      setSignedIn(Boolean(session?.user));
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (searchParams.get("inbox_added") === "1") {
+      setAttachNotice(
+        inboxLocale === "it"
+          ? "Inbox collegata — compare nella tua inbox unificata."
+          : "Inbox attached — it will appear in your unified inbox.",
+      );
+      void loadInbox({ refresh: true, force: true });
+      window.history.replaceState(null, "", "/emails");
+    }
+    const attachError = searchParams.get("attach_error");
+    if (attachError) {
+      setAttachNotice(
+        inboxLocale === "it"
+          ? `Impossibile allegare l'inbox: ${decodeURIComponent(attachError)}`
+          : `Could not attach inbox: ${decodeURIComponent(attachError)}`,
+      );
+      window.history.replaceState(null, "", "/emails");
+    }
+  }, [searchParams, inboxLocale, loadInbox]);
+
   useEffect(() => {
     setActiveCategoryTab(loadCategoryTab(validTabIds));
     setActiveAccountFilter(loadAccountFilter());
@@ -1408,7 +1740,7 @@ export default function EmailsInboxPage() {
 
       applyCategoryToIds(ids, category);
 
-      if (category === "promotion" || category === "newsletter") {
+      if (category === "promotions" || category === "newsletters") {
         handleCategoryTabChange(category);
       }
 
@@ -1491,7 +1823,7 @@ export default function EmailsInboxPage() {
             subject: m?.subject ?? "",
             snippet: m?.snippet,
             threadId: m?.threadId,
-            category: m?.category ?? "needs_attention",
+            category: m?.category ?? "worth_your_attention",
             accountId: m?.accountId,
             accountEmail: m?.accountEmail,
             accountLabel: m?.accountLabel,
@@ -1575,6 +1907,34 @@ export default function EmailsInboxPage() {
   const handleBulkArchive = useCallback(() => dismissSelected("archive"), [dismissSelected]);
   const handleBulkDelete = useCallback(() => dismissSelected("delete"), [dismissSelected]);
 
+  const handleArchiveEmailInZero = useCallback(
+    (message: GmailCardMessage) => {
+      const scopedId = scopedEmailKey(message.id, message.accountId);
+      addDismissedIds([scopedId]);
+      setDismissedIds((prev) => {
+        const next = new Set(prev);
+        next.add(scopedId);
+        return next;
+      });
+      trackEvent("bulk_action_used", { bulk_action_type: "archive", count: 1, source: "inbox_zero" });
+      const verb =
+        inboxLocale === "it" ? "Email archiviata" : "Archived";
+      offerActionUndo({
+        message: verb,
+        actionType: "archive",
+        onUndo: () => {
+          removeDismissedIds([scopedId]);
+          setDismissedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(scopedId);
+            return next;
+          });
+        },
+      });
+    },
+    [inboxLocale, offerActionUndo],
+  );
+
   // ---- Inbox Zero enhancement layer ----
   const [zeroSession, setZeroSession] = useState<{
     mode: "quick_replies" | "inbox_zero";
@@ -1589,23 +1949,23 @@ export default function EmailsInboxPage() {
     const snapshot = buildCategoryUndoSnapshot({
       scope: "this_email",
       triggerEmailId: ids[0],
-      newCategory: "handled",
+      newCategory: "good_to_know",
       messages: gmailMessages,
       categoryOverrides,
       explicitAffectedIds: ids,
     });
 
-    applyCategoryToIds(ids, "handled");
+    applyCategoryToIds(ids, "good_to_know");
     trackEvent("clear_promotions_used", { count: ids.length });
 
     const message =
       inboxLocale === "it"
         ? `${ids.length} email svuotate`
         : `${ids.length} email${ids.length === 1 ? "" : "s"} cleared`;
-    offerCategoryUndo(snapshot, "handled", ids.length, message);
+    offerCategoryUndo(snapshot, "good_to_know", ids.length, message);
     selection.clear();
   }, [
-    gmailBuckets.byCategory,
+    gmailBuckets.promotionEmails,
     gmailMessages,
     categoryOverrides,
     applyCategoryToIds,
@@ -1615,11 +1975,11 @@ export default function EmailsInboxPage() {
   ]);
 
   const handleStartQuickReplies = useCallback(() => {
-    const emails = gmailBuckets.byCategory.quick_reply ?? [];
+    const emails = gmailBuckets.byCategory.worth_your_attention ?? [];
     if (emails.length === 0) return;
     const steps: InboxZeroStep[] = emails.map((message) => ({
       kind: "email",
-      category: "quick_reply",
+      category: "worth_your_attention",
       message: message as GmailCardMessage,
     }));
     trackEvent("quick_reply_queue_started", { count: emails.length });
@@ -1627,41 +1987,23 @@ export default function EmailsInboxPage() {
   }, [gmailBuckets.byCategory]);
 
   const handleStartInboxZero = useCallback(() => {
-    const quickReplies = gmailBuckets.byCategory.quick_reply ?? [];
-    const needsAttentionAll = gmailBuckets.byCategory.needs_attention ?? [];
-    const needsAttention = needsAttentionAll.filter(
-      (m) => !(m as GmailInboxMessage).waitingResponseUpdate,
-    );
-    const responseReceived = needsAttentionAll.filter(
-      (m) => (m as GmailInboxMessage).waitingResponseUpdate,
-    );
-    const promotions = gmailBuckets.promotionEmails;
-
-    const steps: InboxZeroStep[] = [
-      ...quickReplies.map((message) => ({
-        kind: "email" as const,
-        category: "quick_reply" as const,
-        message: message as GmailCardMessage,
-      })),
-      ...needsAttention.map((message) => ({
-        kind: "email" as const,
-        category: "needs_attention" as const,
-        message: message as GmailCardMessage,
-      })),
-      ...responseReceived.map((message) => ({
-        kind: "email" as const,
-        category: "needs_attention" as const,
-        message: message as GmailCardMessage,
-      })),
-    ];
-    if (promotions.length > 0) {
-      steps.push({ kind: "cleanup", emails: promotions as GmailCardMessage[] });
-    }
-    if (steps.length === 0) return;
-
-    trackEvent("inbox_zero_started", { steps: steps.length });
-    setZeroSession({ mode: "inbox_zero", steps });
-  }, [gmailBuckets.byCategory]);
+    handleInboxInteractionModeChange("inbox_zero");
+    trackEvent("inbox_zero_started", {
+      source: "briefing",
+      queue: buildInboxZeroQueue(
+        activeCategoryTab,
+        gmailBuckets,
+        filterInboxList,
+        isCompleted,
+      ).length,
+    });
+  }, [
+    handleInboxInteractionModeChange,
+    activeCategoryTab,
+    gmailBuckets,
+    filterInboxList,
+    isCompleted,
+  ]);
 
   // Completing an email in a session clears it from the inbox (reversible via dismissed store).
   const completeEmailInZero = useCallback(
@@ -1670,6 +2012,7 @@ export default function EmailsInboxPage() {
       _category: InboxAiCategory,
       actionId: CompletionActionId,
       actionLabel: string,
+      extras?: import("@/lib/email-completions/types").CompleteEmailExtras,
     ) => {
       const id = _id;
       const m = gmailMessages.find((row) => row.id === id);
@@ -1683,10 +2026,11 @@ export default function EmailsInboxPage() {
             subject: m?.subject ?? "",
             snippet: m?.snippet,
             threadId: m?.threadId,
-            category: m?.category ?? "needs_attention",
+            category: m?.category ?? "worth_your_attention",
             accountId: m?.accountId,
             accountEmail: m?.accountEmail,
             accountLabel: m?.accountLabel,
+            ...extras,
           },
         ],
         { locale: inboxLocale },
@@ -1704,7 +2048,7 @@ export default function EmailsInboxPage() {
 
   const clearPromotionsInZero = useCallback(
     (ids: string[]) => {
-      applyCategoryToIds(ids, "handled");
+      applyCategoryToIds(ids, "good_to_know");
       trackEvent("clear_promotions_used", { count: ids.length, source: "inbox_zero" });
     },
     [applyCategoryToIds],
@@ -1724,7 +2068,7 @@ export default function EmailsInboxPage() {
 
   // Bulk keyboard shortcuts. (Esc → clear is handled in useInboxSelection.)
   useEffect(() => {
-    if (inboxMode !== "gmail" || zeroSession) return;
+    if (inboxMode !== "gmail" || zeroSession || inboxInteractionMode === "inbox_zero") return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
@@ -1754,7 +2098,7 @@ export default function EmailsInboxPage() {
         );
       } else if (key === "p") {
         e.preventDefault();
-        handleBulkCategoryChange("promotion");
+        handleBulkCategoryChange("promotions");
       } else if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         handleBulkArchive();
@@ -1765,6 +2109,7 @@ export default function EmailsInboxPage() {
   }, [
     inboxMode,
     zeroSession,
+    inboxInteractionMode,
     selection.count,
     handleSelectAllVisible,
     handleBulkComplete,
@@ -1772,6 +2117,17 @@ export default function EmailsInboxPage() {
     handleBulkArchive,
     inboxLocale,
   ]);
+
+  useEffect(() => {
+    if (inboxInteractionMode !== "inbox_zero") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      handleInboxInteractionModeChange("standard");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [inboxInteractionMode, handleInboxInteractionModeChange]);
 
   const handleCategoryChange = useCallback(
     (id: string, category: InboxAiCategory, options?: InboxCategoryChangeOptions) => {
@@ -1802,6 +2158,19 @@ export default function EmailsInboxPage() {
           { triggerEmailId: id },
         );
         setGmailMessages(messages);
+        const triggerRow = gmailMessages.find((m) => m.id === id);
+        void submitCategoryFeedback({
+          emailId: id,
+          sender: options.sender,
+          subject: triggerRow?.subject ?? "",
+          snippet: triggerRow?.snippet,
+          guessedCategory: options?.guessedCategory ?? triggerRow?.category ?? category,
+          chosenCategory: category,
+          scope: "sender",
+          accountId,
+        }).then(() => {
+          window.dispatchEvent(new Event("handled-sender-preferences-changed"));
+        });
         // Gap #2: sender-scope changes must NOT write per-email manual
         // override state for matched emails — that would mask persisted
         // manual overrides. The sender rule itself (persisted separately)
@@ -1858,17 +2227,21 @@ export default function EmailsInboxPage() {
           originalCategory: options?.guessedCategory,
           accountId,
         });
+        void collectUserOverrideLog({
+          emailId: id,
+          accountId,
+          sender: gmailMessages.find((m) => m.id === id)?.sender ?? "",
+          subject: gmailMessages.find((m) => m.id === id)?.subject,
+          previousCategory: options?.guessedCategory ?? null,
+          newCategory: category,
+          scope: "this_email",
+        });
       }
 
       offerCategoryUndo(snapshot, category);
 
       // Jump to the destination tab so moved emails never feel like they vanished.
-      if (
-        scope === "this_email" &&
-        (category === "promotion" ||
-          category === "newsletter" ||
-          INBOX_CLUTTER_CATEGORIES.includes(category))
-      ) {
+      if (scope === "this_email") {
         handleCategoryTabChange(category);
       }
     },
@@ -1934,28 +2307,47 @@ export default function EmailsInboxPage() {
   const attentionSnapshot: AttentionSnapshot = useMemo(
     () => ({
       needsAttention: gmailBuckets.todayAttentionCount,
-      quickReply: gmailBuckets.quickReplyEmails.length,
-      handled: gmailBuckets.handledEmails.length,
+      waitingOn: waitingOpenRecords.length,
+      goodToKnow: gmailBuckets.counts.good_to_know ?? 0,
       newsletter: gmailBuckets.newsletterEmails.length,
       promotion: gmailBuckets.promotionEmails.length,
       clutter: gmailBuckets.clutterCount,
       totalVisible: gmailBuckets.allVisible.length,
     }),
-    [gmailBuckets],
+    [gmailBuckets, waitingOpenRecords.length],
   );
   const todayHeadline = calmTodayHeadline(attentionSnapshot, inboxLocale);
   const reliefMessage = useMemo(
     () => (inboxLoading ? null : pickFocusReassurance(attentionSnapshot, inboxLocale)),
     [inboxLoading, attentionSnapshot, inboxLocale],
   );
-  const inboxErrorMessage =
-    gmailError || inboxLoadUserMessage("unknown", inboxLocale);
+  const inboxErrorDisplay =
+    structuredInboxError ??
+    handledErrorFromInboxFailure(inboxFailureReason ?? "unknown", inboxLocale);
 
   const workflowProfile = getWorkflowModeProfile(workflowMode);
 
   return (
     <main className="min-h-screen bg-white px-4 py-8 sm:px-6 sm:py-12">
       <div className="mx-auto flex w-full max-w-2xl flex-col">
+        {showGuidedOnboarding ? (
+          <GuidedOnboardingFlow
+            locale={inboxLocale}
+            inboxMode={inboxMode}
+            signedIn={signedIn}
+            connectedAccountCount={connectedAccounts.length}
+            messages={messagesWithOverrides}
+            readStateMap={readStateMap}
+            isCompleted={isCompleted}
+            onFinished={handleFirstOnboardingFinished}
+          />
+        ) : inboxLoading ? (
+          <InboxLoadingState
+            locale={inboxLocale}
+            message={loadingMicroMessages[messageIndex]}
+          />
+        ) : (
+          <>
         <header
           className={`flex flex-wrap items-start justify-between gap-4 transition-opacity duration-500 ${
             showContent ? "opacity-100" : "opacity-0"
@@ -1964,9 +2356,10 @@ export default function EmailsInboxPage() {
           <div className="min-w-0 space-y-3">
             <InboxViewNav locale={inboxLocale} />
             <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
-              {ui.home.todayTitle}
+              {ui.home.heroTitle}
             </h1>
-            {!inboxLoading ? (
+            <p className="text-sm leading-relaxed text-gray-500">{ui.home.inboxTagline}</p>
+            {!betaMode ? (
               <div className="space-y-1">
                 <p className="text-sm text-gray-500">
                   {isCountsPending && inboxMode === "gmail" ? (
@@ -1983,9 +2376,7 @@ export default function EmailsInboxPage() {
                   </p>
                 ) : null}
               </div>
-            ) : (
-              <p className="text-sm text-gray-500">{ui.home.organizingInbox}</p>
-            )}
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <label htmlFor="app-language" className="sr-only">
@@ -2000,6 +2391,9 @@ export default function EmailsInboxPage() {
               <option value="en">{ui.home.appLanguageEnglish}</option>
               <option value="it">{ui.home.appLanguageItalian}</option>
             </select>
+            {signedIn ? (
+              <AttachInboxButton locale={inboxLocale} variant="header" />
+            ) : null}
             <AuthNav />
             <Link href="/settings" className="link-accent text-xs">
               {ui.home.settingsButton}
@@ -2007,76 +2401,84 @@ export default function EmailsInboxPage() {
           </div>
         </header>
 
-        {inboxLoading ? (
-          <section className="mt-10 space-y-6 calm-fade-in">
-            <div className="flex min-h-16 items-center justify-center gap-3">
-              <CalmTypingIndicator />
-              <p
-                className={`text-sm text-gray-400 transition-opacity duration-500 ${
-                  showMicroMessage ? "opacity-100" : "opacity-0"
-                }`}
-              >
-                {loadingMicroMessages[messageIndex]}
-              </p>
-            </div>
-            <div className="space-y-3">
-              {Array.from({ length: 2 }).map((_, i) => (
-                <EmailCardSkeleton key={`load-sk-${i}`} />
-              ))}
-            </div>
-          </section>
-        ) : null}
-
         <section
-          className={`mt-10 space-y-8 transition-opacity duration-500 ${
-            inboxLoading ? "opacity-100" : showContent ? "opacity-100" : "opacity-0"
+          className={`mt-10 space-y-10 transition-opacity duration-500 ${
+            showContent ? "opacity-100" : "opacity-0"
           }`}
         >
-          {inboxMode === "loading" ? (
-            <div className="rounded-2xl border border-[#E2E8F0] bg-[#FFFFFF] p-8 shadow-sm">
-              <h2 className="mb-5 flex items-center gap-2 text-lg font-medium text-[#0F172A]">
-                <SectionIcon title="Needs Your Attention" />
-                {ui.home.inboxLoadingTitle}
-              </h2>
-              <div className="space-y-4">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <EmailCardSkeleton key={`sk-${i}`} />
-                ))}
-              </div>
-            </div>
-          ) : inboxMode === "no_google" ? (
+          {inboxMode === "no_google" ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900">{ui.home.connectGmailTitle}</h2>
               <p className="mt-2 text-sm leading-relaxed text-gray-600">
-                {ui.home.connectGmailBody}
+                {gmailError || ui.home.connectGmailBody}
               </p>
-              <Link
-                href="/login"
-                className="mt-4 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover"
-              >
-                Continue with Google
-              </Link>
+              {signedIn ? (
+                <div className="mt-4">
+                  <AttachInboxButton locale={inboxLocale} variant="primary" />
+                </div>
+              ) : (
+                <Link
+                  href="/login"
+                  className="mt-4 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover"
+                >
+                  Continue with Google
+                </Link>
+              )}
             </div>
           ) : inboxMode === "gmail_error" ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900">{ui.home.inboxErrorTitle}</h2>
-              <p className="mt-2 text-sm leading-relaxed text-gray-600">{inboxErrorMessage}</p>
-              <button
-                type="button"
-                onClick={() => void loadInbox()}
-                className="btn-primary-sm mt-4"
-              >
-                {ui.calm.errors.tryAgain}
-              </button>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {inboxErrorDisplay.title ?? ui.home.inboxErrorTitle}
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                {inboxErrorDisplay.userMessage}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                {inboxErrorDisplay.action === "sign_out" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void supabaseBrowser.auth.signOut().then(() => {
+                        router.push("/login");
+                        router.refresh();
+                      });
+                    }}
+                    className="btn-primary-sm"
+                  >
+                    {inboxErrorDisplay.actionLabel || ui.calm.errors.tryAgain}
+                  </button>
+                ) : inboxErrorDisplay.action === "retry" ||
+                  inboxErrorDisplay.action === "reconnect_gmail" ? (
+                  <button
+                    type="button"
+                    onClick={() => void loadInbox()}
+                    className="btn-primary-sm"
+                  >
+                    {inboxErrorDisplay.actionLabel || ui.calm.errors.tryAgain}
+                  </button>
+                ) : null}
+                {inboxErrorDisplay.action === "connect_account" && signedIn ? (
+                  <AttachInboxButton locale={inboxLocale} variant="primary" />
+                ) : null}
+                {inboxFailureReason === "auth_error" && signedIn ? (
+                  <AttachInboxButton locale={inboxLocale} variant="primary" />
+                ) : null}
+              </div>
             </div>
           ) : inboxMode === "gmail_empty" ? (
             <InboxEmptyState
               tone="calm"
-              title={completionCopy.title}
-              subtitle={completionCopy.subtitle}
+              title={INBOX_ZERO_STATE_COPY[inboxLocale].title}
+              subtitle={INBOX_ZERO_STATE_COPY[inboxLocale].subtitle}
+              footer={INBOX_ZERO_STATE_COPY[inboxLocale].footer}
             />
           ) : inboxMode === "gmail" ? (
             <div className="space-y-8">
+              {attachNotice ? (
+                <p className="rounded-xl border border-emerald-100 bg-emerald-50/80 px-4 py-2.5 text-sm text-emerald-800">
+                  {attachNotice}
+                </p>
+              ) : null}
               <InboxSyncBar
                 lastSyncedAt={lastSyncedAt}
                 isRefreshing={isRefreshing}
@@ -2084,57 +2486,135 @@ export default function EmailsInboxPage() {
                 locale={inboxLocale}
                 onRefresh={() => void loadInbox({ silent: true, refresh: true, force: true })}
               />
-              <GmailTruthPanel
-                snapshot={inboxTruthSnapshot}
-                locale={inboxLocale}
-                hasMoreToLoad={Boolean(nextPageToken)}
-              />
-              <DailyBriefingCard
-                counts={briefingCounts}
-                messages={briefingMessages}
-                locale={inboxLocale}
-                onClearPromotions={handleClearPromotions}
-                onHandleQuickReplies={handleStartQuickReplies}
-                onInboxZero={handleStartInboxZero}
-              />
-              <WaitingDashboardSummary summary={waitingSummary} locale={inboxLocale} compact />
-              <AccountFilter
+              {!betaMode && !isSearchActive ? (
+                <TodaysFocusCard
+                  locale={inboxLocale}
+                  focusEmails={focusEmails}
+                  attentionCount={focusAttentionCount}
+                  handledElsewhereCount={handledElsewhereCount}
+                />
+              ) : null}
+              {!betaMode ? (
+                <InboxSearchBar
+                  locale={inboxLocale}
+                  accounts={connectedAccounts}
+                  filters={searchFilters}
+                  onFiltersChange={setSearchFilters}
+                  resultCount={
+                    isSearchActive
+                      ? searchResultSet.inbox.length + searchResultSet.completedOnly.length
+                      : undefined
+                  }
+                  loading={searchLoading}
+                />
+              ) : null}
+              {!betaMode && isSearchActive ? (
+                <InboxSearchResults
+                  locale={inboxLocale}
+                  messages={searchResultSet.inbox}
+                  completedOnly={searchResultSet.completedOnly}
+                  loading={searchLoading}
+                  errorMessage={searchError}
+                  catalog={catalog}
+                  readStateMap={readStateMap}
+                  showAccountBadges={connectedAccounts.length > 1}
+                  onCategoryChange={handleCategoryChange}
+                  onResetOverride={handleResetCategoryOverride}
+                />
+              ) : (
+                <>
+              <InboxSourceSwitcher
                 accounts={connectedAccounts}
                 value={activeAccountFilter}
                 locale={inboxLocale}
                 onChange={handleAccountFilterChange}
               />
-              <div className="sticky top-0 z-10 -mx-1 bg-[#fafafa]/95 py-2 backdrop-blur-sm">
+              {betaMode ? (
+                <BetaAiFilterBar
+                  active={betaAiFilter}
+                  counts={betaAiFilterCounts}
+                  locale={inboxLocale}
+                  onChange={setBetaAiFilter}
+                />
+              ) : null}
+              <InboxModeToggle
+                mode={inboxInteractionMode}
+                locale={inboxLocale}
+                queueCount={inboxZeroQueue.length}
+                onChange={handleInboxInteractionModeChange}
+              />
+              {!betaMode && !isSearchActive && timeStripGroups.length > 0 ? (
+                <InboxTimeStrip groups={timeStripGroups} locale={inboxLocale} />
+              ) : null}
+              {autopilotWorkflowClear &&
+              activeCategoryTab === "all" &&
+              inboxInteractionMode === "standard" ? (
+                <InboxEmptyState
+                  tone="calm"
+                  title={
+                    inboxLocale === "it"
+                      ? "Handled ha organizzato la tua posta"
+                      : "Handled organized your mail"
+                  }
+                  subtitle={
+                    inboxLocale === "it"
+                      ? "Niente da rivedere qui. Ogni azione automatica è nel Registro — annullabile in qualsiasi momento."
+                      : "Nothing to review here. Every automatic action is in Handled Log — reversible anytime."
+                  }
+                  footer={
+                    inboxLocale === "it"
+                      ? "Correggi o annulla quando vuoi. Altre categorie restano nelle schede sotto."
+                      : "Correct or undo whenever you want. Other categories remain in the tabs below."
+                  }
+                />
+              ) : null}
+              <WaitingOnInboxSection
+                locale={inboxLocale}
+                records={waitingOpenRecords}
+              />
+              <div className="sticky top-0 z-10 -mx-1 bg-white/90 py-3 backdrop-blur-sm">
                 <CategoryTabs
                   active={activeCategoryTab}
                   counts={gmailBuckets.counts}
                   total={gmailBuckets.totalAccessible}
                   locale={inboxLocale}
-                  waitingCount={waitingSummary.total}
                   completedCount={completedCount}
                   onChange={handleCategoryTabChange}
                 />
               </div>
-              {activeCategoryTab === "all" ? (
+              {inboxInteractionMode === "inbox_zero" ? (
+                <InboxZeroFlowView
+                  messages={inboxZeroQueue}
+                  locale={inboxLocale}
+                  readStateMap={readStateMap}
+                  activeCategoryTab={activeCategoryTab}
+                  onExit={() => handleInboxInteractionModeChange("standard")}
+                  onArchiveEmail={handleArchiveEmailInZero}
+                  onCategoryChange={handleCategoryChange}
+                />
+              ) : activeCategoryTab === "all" ? (
                 <>
-                  {gmailBuckets.counts.needs_attention === 0 &&
-                  gmailBuckets.allVisible.length > 0 ? (
+                  {gmailBuckets.counts.worth_your_attention === 0 &&
+                  gmailBuckets.allVisible.length > 0 &&
+                  !autopilotWorkflowClear ? (
                     <section className="space-y-3">
                       <GmailCategorySectionHeader
-                        category="needs_attention"
+                        category="worth_your_attention"
                         locale={uiLanguage}
                         count={0}
                       />
                       <InboxEmptyState
                         compact
                         tone="attention"
-                        title={categoryEmptyMessage("needs_attention", inboxLocale, catalog)}
+                        title={categoryEmptyMessage("worth_your_attention", inboxLocale, catalog)}
                         subtitle={completionCopy.subtitle}
                       />
                     </section>
                   ) : null}
-                  {gmailBuckets.categoryOrder.map((category) => {
-                    const list = gmailBuckets.byCategory[category];
+                  {autopilotWorkflowClear ? null : gmailBuckets.categoryOrder.map((category) => {
+                    const list = filterWorkflowSection(
+                      gmailBuckets.byCategory[category] as GmailCardMessage[],
+                    );
                     if (!list.length) return null;
                     return (
                       <GmailCategorySection
@@ -2142,7 +2622,7 @@ export default function EmailsInboxPage() {
                         category={category}
                         list={list}
                         uiLanguage={uiLanguage}
-                        count={gmailBuckets.counts[category]}
+                        count={list.length}
                         onSelectAll={() => handleSelectAllInSection(category)}
                         showContent={showContent}
                         selection={selection}
@@ -2154,32 +2634,71 @@ export default function EmailsInboxPage() {
                       />
                     );
                   })}
-                  {gmailBuckets.showClutterSection ? (
+                  {gmailBuckets.showClutterSection ||
+                  (autopilotWorkflowClear &&
+                    filterInboxList(
+                      [
+                        ...(gmailBuckets.byCategoryAll.promotions ?? []),
+                        ...(gmailBuckets.byCategoryAll.newsletters ?? []),
+                      ] as GmailCardMessage[],
+                      { categoryTabOnly: true },
+                    ).length > 0) ? (
                     <InboxClutterSection
-                      messages={gmailBuckets.clutterEmails as GmailCardMessage[]}
+                      messages={filterInboxList(
+                        (autopilotWorkflowClear
+                          ? [
+                              ...(gmailBuckets.byCategoryAll.promotions ?? []),
+                              ...(gmailBuckets.byCategoryAll.newsletters ?? []),
+                            ]
+                          : gmailBuckets.clutterEmails) as GmailCardMessage[],
+                        { categoryTabOnly: true },
+                      )}
                       locale={uiLanguage === "it" ? "it" : "en"}
                       onCategoryChange={handleCategoryChange}
                       readStateMap={readStateMap}
                       defaultCollapsed
                       inboxReturnCapture={{ view: "inbox", categoryTab: activeCategoryTab }}
-                      onOpenPromotionsTab={() => handleCategoryTabChange("promotion")}
+                      onOpenPromotionsTab={() => handleCategoryTabChange("promotions")}
                       showAccountBadges={connectedAccounts.length > 1}
                     />
                   ) : null}
+                  {betaFilterActive &&
+                  filterInboxList(gmailBuckets.allVisible as GmailCardMessage[]).length === 0 &&
+                  gmailBuckets.allVisible.length > 0 ? (
+                    <InboxEmptyState
+                      compact
+                      tone="calm"
+                      title={
+                        inboxLocale === "it"
+                          ? "Nessuna email corrisponde a questo filtro IA"
+                          : "No emails match this AI filter"
+                      }
+                      subtitle={
+                        inboxLocale === "it"
+                          ? "Passa a Tutte le email o scegli una categoria — nulla è nascosto."
+                          : "Switch to All emails or pick a category — nothing is hidden."
+                      }
+                    />
+                  ) : null}
                 </>
-              ) : (gmailBuckets.byCategoryAll[activeCategoryTab] ?? []).length > 0 ? (
+              ) : (() => {
+                const rawList = (gmailBuckets.byCategoryAll[activeCategoryTab] ??
+                  []) as GmailCardMessage[];
+                const list = filterInboxList(rawList, { categoryTabOnly: true });
+                if (list.length > 0) {
+                  return (
                 <div className="space-y-4">
                   <CategoryViewGuidance
                     category={activeCategoryTab}
                     locale={inboxLocale}
                     workflowMode={workflowMode}
-                    count={gmailBuckets.counts[activeCategoryTab] ?? 0}
+                    count={list.length}
                   />
                   <GmailCategorySection
                     category={activeCategoryTab}
-                    list={gmailBuckets.byCategoryAll[activeCategoryTab]}
+                    list={list}
                     uiLanguage={uiLanguage}
-                    count={gmailBuckets.counts[activeCategoryTab]}
+                    count={list.length}
                     onSelectAll={() => handleSelectAllInSection(activeCategoryTab)}
                     showContent={showContent}
                     selection={selection}
@@ -2190,12 +2709,38 @@ export default function EmailsInboxPage() {
                     showAccountBadges={connectedAccounts.length > 1}
                   />
                 </div>
-              ) : (
+                  );
+                }
+                if (
+                  betaFilterActive &&
+                  rawList.length > 0 &&
+                  list.length === 0
+                ) {
+                  return (
+                    <InboxEmptyState
+                      compact
+                      tone="calm"
+                      title={
+                        inboxLocale === "it"
+                          ? "Nessuna email corrisponde a questo filtro IA"
+                          : "No emails match this AI filter"
+                      }
+                      subtitle={
+                        inboxLocale === "it"
+                          ? "Passa a Tutte le email per vedere tutto in questa categoria."
+                          : "Switch to All emails to see everything in this category."
+                      }
+                    />
+                  );
+                }
+                return (
                 <InboxEmptyState
                   tone="calm"
                   title={categoryEmptyMessage(activeCategoryTab, inboxLocale, catalog)}
                 />
-              )}
+                );
+              })()}
+              {!betaMode ? (
               <InboxSecondaryTools
                 messages={messagesForDisplay as GmailCardMessage[]}
                 gmailMessages={gmailMessages as GmailCardMessage[]}
@@ -2203,6 +2748,7 @@ export default function EmailsInboxPage() {
                 locale={uiLanguage === "it" ? "it" : "en"}
                 onCategoryChange={handleCategoryChange}
               />
+              ) : null}
               {nextPageToken ? (
                 <div className="flex justify-center pt-2">
                   <button
@@ -2212,18 +2758,20 @@ export default function EmailsInboxPage() {
                     className="rounded-lg border border-border bg-card px-4 py-2 text-xs font-medium text-gray-600 transition hover:border-accent/40 hover:text-accent disabled:opacity-60"
                   >
                     {isLoadingMore
-                      ? inboxLocale === "it"
-                        ? "Caricamento…"
-                        : "Loading…"
+                      ? calmLoadMoreMessage(inboxLocale)
                       : inboxLocale === "it"
                         ? "Carica altre email"
                         : "Load more emails"}
                   </button>
                 </div>
               ) : null}
+                </>
+              )}
             </div>
           ) : null}
         </section>
+          </>
+        )}
       </div>
 
       {undoToast ? (
@@ -2235,7 +2783,7 @@ export default function EmailsInboxPage() {
         />
       ) : null}
 
-      {inboxMode === "gmail" && !undoToast ? (
+      {inboxMode === "gmail" && inboxInteractionMode !== "inbox_zero" && !undoToast && !showGuidedOnboarding ? (
         <BulkActionBar
           count={selection.count}
           totalVisible={gmailBuckets.allVisible.length}

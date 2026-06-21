@@ -21,7 +21,7 @@ export function detectUpcomingCommitments(
   const tasks = extractTaskAwareness({ sender: "", subject, snippet: hay });
   const stalled = detectStalledSignals(
     { sender: "", subject, snippet: hay },
-    (category as "needs_attention") ?? "needs_attention",
+    (category as "worth_your_attention") ?? "worth_your_attention",
   );
   const out: UpcomingCommitment[] = [];
 

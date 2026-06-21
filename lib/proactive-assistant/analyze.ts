@@ -36,7 +36,7 @@ export function analyzeProactiveAssistant(
   },
 ): ProactiveAssistantResult {
   const locale = input.locale ?? "en";
-  const category = (input.row.category ?? "needs_attention") as InboxAiCategory;
+  const category = (input.row.category ?? "worth_your_attention") as InboxAiCategory;
   const hay = `${input.row.sender} ${input.row.subject} ${input.row.snippet}`;
   const days = daysSince(input.row.internalDateMs);
 
@@ -121,8 +121,8 @@ export function analyzeProactiveAssistant(
   const active =
     suggestions.length > 0 &&
     urgencyScore >= 40 &&
-    category !== "promotion" &&
-    category !== "newsletter";
+    category !== "promotions" &&
+    category !== "newsletters";
 
   return {
     active,

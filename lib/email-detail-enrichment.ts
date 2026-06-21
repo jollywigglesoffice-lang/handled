@@ -1,6 +1,8 @@
 import { analyzeActionIntelligence } from "@/lib/action-intelligence";
+import { classifyTimeImpact } from "@/lib/time-impact/classify";
 import type { ActionIntelligenceResult } from "@/lib/action-intelligence";
 import { buildCalendarAwareness } from "@/lib/calendar-awareness";
+import { classifyCalendarIntent } from "@/lib/calendar-awareness/classify-intent";
 import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
 import { analyzeDecisionAssistance } from "@/lib/decision-assistance";
 import type { DecisionAssistanceResult } from "@/lib/decision-assistance";
@@ -50,6 +52,7 @@ export type EmailDetailIntelligence = {
 
 const EMPTY_ACTION: ActionIntelligenceResult = {
   actionable: false,
+  actionState: "passive",
   impliedActions: [],
   labels: [],
   primaryLabel: null,
@@ -199,6 +202,8 @@ export async function enrichEmailDetailIntelligence(
     {
       emailOverrides: {},
       emailOverrideRecords: [],
+      memoryRules: [],
+      memorySnapshot: { senderMemory: [], categoryCorrections: [], categoryPatterns: [], actionMemory: [] },
       senderRules: [],
       keywordRules: [],
       allRules: [],
@@ -214,6 +219,7 @@ export async function enrichEmailDetailIntelligence(
     async () => {
       const rows = await categorizeGmailInboxRows([row], {
         emailOverrides: rulesCtx.emailOverrides,
+        memoryRules: rulesCtx.memoryRules,
         senderRules: rulesCtx.senderRules,
         userRules: rulesCtx.keywordRules,
         senderRelationships: rulesCtx.senderRelationships,
@@ -226,7 +232,7 @@ export async function enrichEmailDetailIntelligence(
     warnings,
   );
 
-  const category: InboxAiCategory = categorized?.category ?? "needs_attention";
+  const category: InboxAiCategory = categorized?.category ?? "worth_your_attention";
   const relationship = categorized?.relationship;
 
   const aiSummary = await safeAsync(
@@ -247,7 +253,7 @@ export async function enrichEmailDetailIntelligence(
     warnings,
   );
 
-  const calendarAwareness = safeSync(
+  const calendarAwarenessBase = safeSync(
     "buildCalendarAwareness",
     () => buildCalendarAwareness(row, displayPlain),
     {
@@ -260,6 +266,7 @@ export async function enrichEmailDetailIntelligence(
         requiresUserApproval: true,
       },
       needsCalendarContext: false,
+      calendarIntentLevel: "NO_TIME_CONTEXT",
       calendarConnected: false,
     },
     warnings,
@@ -277,6 +284,30 @@ export async function enrichEmailDetailIntelligence(
     EMPTY_ACTION,
     warnings,
   );
+
+  const timeImpact = safeSync(
+    "classifyTimeImpact",
+    () =>
+      classifyTimeImpact({
+        row,
+        category,
+        needsCalendarContext: calendarAwarenessBase.needsCalendarContext,
+        actionIntelligence,
+        extraBody: displayPlain,
+      }),
+    { kind: "time_free", flowBand: "awareness_flow", timeBand: null, priorityScore: 0 },
+    warnings,
+  );
+
+  const calendarAwareness = {
+    ...calendarAwarenessBase,
+    calendarIntentLevel: classifyCalendarIntent({
+      row,
+      extraBody: displayPlain,
+      needsCalendarContext: calendarAwarenessBase.needsCalendarContext,
+      timeImpactKind: timeImpact.kind,
+    }),
+  };
 
   const timelineIntelligence = safeSync(
     "analyzeTimelineIntelligence",

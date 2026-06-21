@@ -9,8 +9,12 @@ import {
   listSupabaseAuthCookieNames,
   readRequestCookieEntries,
 } from "@/lib/auth/request-cookies";
+import { buildLoginRedirectUrl, isAppPath } from "@/lib/auth/route-access";
 
 const SKIP_AUTH_REFRESH_PREFIXES = ["/api/stripe-webhook"];
+
+/** Marketing home — no session reads, no auth enforcement. */
+const PUBLIC_SKIP_PATHS = new Set(["/"]);
 
 function canonicalProductionHost(host: string | null): string | null {
   if (!host || process.env.NODE_ENV !== "production") return null;
@@ -20,7 +24,7 @@ function canonicalProductionHost(host: string | null): string | null {
   return null;
 }
 
-function createSupabaseProxyClient(request: NextRequest, response: NextResponse) {
+function createSupabaseMiddlewareClient(request: NextRequest, response: NextResponse) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
   if (!url.startsWith("http") || !key) return null;
@@ -49,7 +53,7 @@ function createSupabaseProxyClient(request: NextRequest, response: NextResponse)
   });
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const host = request.headers.get("host");
 
@@ -64,39 +68,56 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next({ request });
   }
 
-  let supabaseResponse = NextResponse.next({ request });
+  if (PUBLIC_SKIP_PATHS.has(pathname)) {
+    return NextResponse.next({ request });
+  }
 
-  const supabase = createSupabaseProxyClient(request, supabaseResponse);
+  let response = NextResponse.next({ request });
+
+  const supabase = createSupabaseMiddlewareClient(request, response);
   if (!supabase) {
     if (AUTH_DEBUG_ENABLED && pathname.startsWith("/api/")) {
-      console.warn("[auth-debug] proxy: Supabase env missing");
+      console.warn("[auth-debug] middleware: Supabase env missing");
     }
-    return supabaseResponse;
+    return response;
   }
 
   const oauthCode = request.nextUrl.searchParams.get("code");
   if (pathname === "/auth/callback" && oauthCode) {
+    const attach = request.nextUrl.searchParams.get("attach");
     const nextParam = request.nextUrl.searchParams.get("next");
-    const next = nextParam?.startsWith("/") ? nextParam : "/emails";
-    const redirectResponse = NextResponse.redirect(new URL(next, request.url));
-    const oauthSupabase = createSupabaseProxyClient(request, redirectResponse);
+    const isAttach = attach === "true";
+
+    const redirectPath = isAttach
+      ? `/auth/callback?attach=1&next=${encodeURIComponent(
+          nextParam?.startsWith("/") ? nextParam : "/emails?inbox_added=1",
+        )}`
+      : nextParam?.startsWith("/")
+        ? nextParam
+        : "/emails";
+
+    const redirectResponse = NextResponse.redirect(new URL(redirectPath, request.url));
+    const oauthSupabase = createSupabaseMiddlewareClient(request, redirectResponse);
     if (!oauthSupabase) {
-      return NextResponse.redirect(new URL("/login?error=oauth", request.url));
+      const fail = isAttach ? "/emails?attach_error=oauth" : "/login?error=oauth";
+      return NextResponse.redirect(new URL(fail, request.url));
     }
     const { data, error } = await oauthSupabase.auth.exchangeCodeForSession(oauthCode);
     if (error) {
-      console.error("[proxy] exchangeCodeForSession", error);
-      return NextResponse.redirect(new URL("/login?error=oauth", request.url));
+      console.error("[middleware] exchangeCodeForSession", error);
+      const fail = isAttach ? "/emails?attach_error=oauth" : "/login?error=oauth";
+      return NextResponse.redirect(new URL(fail, request.url));
     }
-    // Capture the Google refresh token now — Supabase only surfaces
-    // provider_refresh_token at exchange time and never refreshes it for us.
-    try {
-      const { persistGoogleTokensFromSession } = await import(
-        "@/lib/google/google-access-token"
-      );
-      await persistGoogleTokensFromSession(data.session);
-    } catch (persistError) {
-      console.error("[proxy] persist Google tokens failed", persistError);
+
+    if (!isAttach) {
+      try {
+        const { persistGoogleTokensFromSession } = await import(
+          "@/lib/google/google-access-token"
+        );
+        await persistGoogleTokensFromSession(data.session);
+      } catch (persistError) {
+        console.error("[middleware] persist Google tokens failed", persistError);
+      }
     }
     return redirectResponse;
   }
@@ -105,6 +126,10 @@ export async function proxy(request: NextRequest) {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
+
+  if (!user && isAppPath(pathname)) {
+    return NextResponse.redirect(buildLoginRedirectUrl(request.nextUrl, pathname));
+  }
 
   if (AUTH_DEBUG_ENABLED && pathname.startsWith("/api/")) {
     const entries = readRequestCookieEntries(request);
@@ -117,10 +142,10 @@ export async function proxy(request: NextRequest) {
       cookieUserId: user?.id ?? null,
       cookieUserError: userError?.message ?? null,
     };
-    logAuthDebug("proxy", snapshot);
+    logAuthDebug("middleware", snapshot);
   }
 
-  return supabaseResponse;
+  return response;
 }
 
 export const config = {

@@ -59,6 +59,10 @@ export async function safeParseJsonResponse<T>(
 
   if (!text.trim()) {
     console.error("[safe-json] empty body", { endpoint, status: res.status, contentType });
+    const error =
+      res.status === 431
+        ? "Request headers too large — sign out and sign back in to clear session data."
+        : `Empty response (${res.status})`;
     return {
       ok: false,
       status: res.status,
@@ -66,7 +70,7 @@ export async function safeParseJsonResponse<T>(
       endpoint,
       isHtml: false,
       preview: "",
-      error: `Empty response (${res.status})`,
+      error,
     };
   }
 
@@ -119,7 +123,7 @@ export async function safeFetchJson<T>(
   } catch (networkError) {
     const message =
       networkError instanceof Error ? networkError.message : "Network request failed";
-    console.error("[safe-json] fetch failed", { endpoint, label, message });
+    console.error("[safe-json] fetch failed (network_error)", { endpoint, label, message });
     return {
       ok: false,
       status: 0,
@@ -127,7 +131,7 @@ export async function safeFetchJson<T>(
       endpoint,
       isHtml: false,
       preview: "",
-      error: message,
+      error: `network_error: ${message}`,
       response: new Response(null, { status: 0 }),
     };
   }

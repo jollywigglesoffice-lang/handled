@@ -7,6 +7,11 @@ import { trackEvent } from "@/lib/analytics";
 import { WaitingOnDetailsPanel } from "@/app/emails/waiting-on-details-panel";
 import { createPersonalCompletionAction } from "@/lib/completion-actions/storage";
 import type { CompleteEmailExtras } from "@/lib/email-completions/types";
+import {
+  contextAwarePickerOrder,
+  type CompletionActionContext,
+} from "@/lib/completion-actions/context-filter";
+import { completionLabelForActionState } from "@/lib/email-action-state-copy";
 
 type CompletionActionPickerProps = {
   locale: "en" | "it";
@@ -18,6 +23,9 @@ type CompletionActionPickerProps = {
     extras?: CompleteEmailExtras,
   ) => void;
   showCreate?: boolean;
+  /** When true, show every completion action — never filter by category/AI. */
+  showAllActions?: boolean;
+  context?: CompletionActionContext;
 };
 
 const COPY = {
@@ -43,6 +51,8 @@ export function CompletionActionPicker({
   busy,
   onSelect,
   showCreate = true,
+  showAllActions = false,
+  context,
 }: CompletionActionPickerProps) {
   const { catalog, personal, savePersonal } = useCompletionActions();
   const t = COPY[locale];
@@ -139,28 +149,45 @@ export function CompletionActionPicker({
     );
   }
 
+  const pickerOrder =
+    showAllActions || !context
+      ? catalog.pickerOrder
+      : contextAwarePickerOrder(catalog.pickerOrder, context);
+
   return (
     <div className={compact ? "mt-3" : "mt-4"}>
       <p className="text-sm font-medium text-[#0F172A]">{t.prompt}</p>
       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {catalog.pickerOrder.map((actionId) => (
+        {pickerOrder.map((actionId) => (
           <button
             key={actionId}
             type="button"
             disabled={busy}
-            onClick={() => {
+          onClick={() => {
               if (actionId === "waiting_on_someone") {
                 setShowWaitingDetails(true);
                 return;
               }
-              onSelect(actionId, catalog.labelFor(actionId, locale));
+              const catalogLabel = catalog.labelFor(actionId, locale);
+              const label = completionLabelForActionState(
+                actionId,
+                catalogLabel,
+                locale,
+                context?.actionState,
+              );
+              onSelect(actionId, label);
             }}
             className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-left text-sm text-[#0F172A] transition hover:border-accent/20 hover:bg-accent-muted/30 disabled:opacity-50"
           >
             <span className="text-accent" aria-hidden>
               ✓
             </span>
-            {catalog.labelFor(actionId, locale)}
+            {completionLabelForActionState(
+              actionId,
+              catalog.labelFor(actionId, locale),
+              locale,
+              context?.actionState,
+            )}
           </button>
         ))}
         {showCreate ? (

@@ -10,8 +10,10 @@ import { EmailDetailNotFound } from "./email-detail-not-found";
 import { EmailDetailVisibleError } from "./email-detail-visible-error";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { ensureApiSessionCookies } from "@/lib/auth/ensure-api-session";
+import { emailDetailHasDisplayContent } from "@/lib/email-detail-from-gmail";
 import { readEmailPreview, type EmailPreviewCache } from "@/lib/email-preview-cache";
-import { inboxFetchHeaders } from "@/lib/inbox-fetch-headers";
+import { inboxLoadFetchHeaders } from "@/lib/inbox-fetch-headers";
+import { handledErrorFromInboxFailure } from "@/lib/handled-errors";
 import { safeFetchJson } from "@/lib/safe-json-response";
 import { loadReadStateMap } from "@/lib/read-state/client-storage";
 import { markEmailsRead } from "@/lib/read-state/gmail-sync";
@@ -20,6 +22,8 @@ type GmailDetailApiBody = {
   found?: boolean;
   email?: EmailDetailPayload;
   error?: string;
+  reason?: string;
+  failureReason?: string;
   authRequired?: boolean;
   enrichmentDegraded?: boolean;
 };
@@ -61,7 +65,7 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
       const result = await safeFetchJson<GmailDetailApiBody>(endpoint, {
         label: "[email-detail] gmail message",
         credentials: "include",
-        headers: await inboxFetchHeaders(),
+        headers: await inboxLoadFetchHeaders(),
       });
 
       if (!result.ok) {
@@ -73,6 +77,13 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
           error: result.error,
           preview: result.preview,
         });
+        if (result.status === 431) {
+          setState({
+            status: "error",
+            message: handledErrorFromInboxFailure("headers_too_large").userMessage,
+          });
+          return;
+        }
         if (result.status === 401 || result.status === 403) {
           setState({ status: "auth", reason: "server_session" });
           return;
@@ -99,12 +110,17 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
       const body = result.data;
       const res = result.response;
 
-      if (res.status === 401 || body.authRequired) {
+      if (res.status === 401 || body.error === "auth_error" || body.failureReason === "auth_error") {
         setState({ status: "auth", reason: "server_session" });
         return;
       }
 
-      if (res.status === 403 && body.error === "missing_google_token") {
+      if (
+        res.status === 403 &&
+        (body.error === "missing_account" ||
+          body.failureReason === "missing_account" ||
+          body.error === "missing_google_token")
+      ) {
         setState({ status: "auth", reason: "connect_gmail" });
         return;
       }
@@ -115,26 +131,44 @@ export function EmailDetailClientLoader({ emailId }: EmailDetailClientLoaderProp
       }
 
       if (!res.ok || !body.email) {
-        console.error("[email-detail] API error payload", {
+        const retryReason = body.reason ?? body.error ?? `Request failed (${res.status})`;
+        console.error("[email-detail] API error payload — retry reason:", retryReason, {
           endpoint,
           status: res.status,
+          accountId,
           body,
         });
         setState({
           status: "error",
-          message: body.error || `Request failed (${res.status})`,
-          raw: body,
+          message: body.error === "email_content_empty"
+            ? "email_content_empty"
+            : body.error || `Request failed (${res.status})`,
+          raw: { ...body, retryReason },
+        });
+        return;
+      }
+
+      if (!emailDetailHasDisplayContent(body.email)) {
+        console.error("[email-detail] loaded email missing display content — retry reason: empty_body_after_load", {
+          endpoint,
+          accountId,
+          emailId,
+        });
+        setState({
+          status: "error",
+          message: "email_content_empty",
+          raw: { retryReason: "empty_body_after_load", emailId, accountId },
         });
         return;
       }
 
       setState({ status: "ready", email: body.email });
     } catch (error) {
-      console.error("EMAIL DETAIL LOAD ERROR:", error);
+      console.error("[email-detail] load failed — retry reason:", error);
       setState({
         status: "error",
         message: error instanceof Error ? error.message : String(error),
-        raw: error,
+        raw: { retryReason: error },
       });
     }
   }, [emailId, accountId]);

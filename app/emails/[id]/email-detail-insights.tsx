@@ -31,7 +31,7 @@ function hasInsightContent(email: EmailDetailPayload): boolean {
     email.actionIntelligence?.actionable ||
     email.followUpAnalysis ||
     email.unsubscribeAnalysis ||
-    email.needsCalendarContext ||
+    email.calendarIntentLevel === "SCHEDULE_REQUIRED" ||
     (email.enrichmentWarnings && email.enrichmentWarnings.length > 0),
   );
 }
@@ -107,15 +107,19 @@ export function EmailDetailInsights({
         </div>
       </CalmCollapsible>
 
-      {email.needsCalendarContext && !quiet ? (
+      {email.calendarIntentLevel === "SCHEDULE_REQUIRED" && !quiet ? (
         <CalmCollapsible
           title={locale === "it" ? "Programmazione" : "Scheduling"}
-          summary={locale === "it" ? "Orario da confermare" : "Time to confirm"}
+          summary={
+            locale === "it"
+              ? "Richiesta esplicita di incontro"
+              : "Explicit meeting request"
+          }
         >
           <p className="text-sm leading-snug text-gray-600">
             {locale === "it"
-              ? "Orari in bozza — approvi prima di inviare."
-              : "Times in your draft — you approve before sending."}
+              ? "Gli orari suggeriti provengono solo dal tuo Google Calendar."
+              : "Suggested times come only from your Google Calendar."}
           </p>
         </CalmCollapsible>
       ) : null}

@@ -33,7 +33,7 @@ function ruleDestination(rule: InboxUserRule): InboxAiCategory {
   if (rule.action.type === "demote" || rule.action.type === "boost") {
     return rule.action.toCategory;
   }
-  return "handled";
+  return "good_to_know";
 }
 
 /** Preview how a sample email would be triaged (user rules → system rules → fallback). */
@@ -67,12 +67,12 @@ export function previewInboxTriage(
   }
   if (userPre?.kind === "block") {
     return {
-      finalCategory: "handled",
-      finalLabel: categoryLabel("handled"),
+      finalCategory: "good_to_know",
+      finalLabel: categoryLabel("good_to_know"),
       userRuleMatches,
       builtInLabel: null,
       builtInCategory: null,
-      pipelineNote: "Your rule blocked this message as handled.",
+      pipelineNote: "Your rule blocked this message as good to know.",
     };
   }
 

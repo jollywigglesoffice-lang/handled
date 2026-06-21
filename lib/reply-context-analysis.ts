@@ -41,7 +41,7 @@ export type ReplyEmailType =
   | "support"
   | "scheduling"
   | "personal"
-  | "fyi"
+  | "good_to_know"
   | "confirmation"
   | "promotional"
   | "conversation"
@@ -186,8 +186,8 @@ function resolveEmailType(
   if (primary === "scheduling") return "scheduling";
   if (primary === "personal_conversation") return "personal";
   if (primary === "confirmation") return "confirmation";
-  if (primary === "fyi_no_action") return "fyi";
-  if (category === "promotion" || category === "newsletter") return "promotional";
+  if (primary === "fyi_no_action") return "good_to_know";
+  if (category === "promotions" || category === "newsletters") return "promotional";
   if (primary === "direct_question" || primary === "general") return "conversation";
   return "unknown";
 }
@@ -296,7 +296,7 @@ export function analyzeReplyContext(input: {
     },
     extraBody: input.email,
   });
-  const category = input.category ?? "needs_attention";
+  const category = input.category ?? "worth_your_attention";
   const replyNeed = assessReplyNeed({
     row,
     category,

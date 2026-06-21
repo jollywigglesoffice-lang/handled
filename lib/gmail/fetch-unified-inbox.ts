@@ -110,3 +110,74 @@ export async function fetchUnifiedInboxPage(input: {
     accountsLoaded: fetches.filter((f) => f.rows.length > 0).length,
   };
 }
+
+/** Search messages across connected accounts (Gmail q syntax — subject, sender, body). */
+export async function fetchUnifiedGmailSearch(input: {
+  userId: string;
+  accounts: ConnectedGmailAccount[];
+  accountFilterId?: string | null;
+  gmailQuery: string;
+  maxResults: number;
+}): Promise<UnifiedInboxFetchResult> {
+  const targets = input.accountFilterId
+    ? input.accounts.filter((a) => a.id === input.accountFilterId)
+    : input.accounts;
+
+  if (targets.length === 0) {
+    return { rows: [], gmailTruth: null, accountsLoaded: 0 };
+  }
+
+  const perAccountMax = Math.max(10, Math.ceil(input.maxResults / targets.length));
+
+  const fetches = await Promise.all(
+    targets.map(async (account) => {
+      const token = await getFreshGoogleAccessToken(input.userId, {
+        accountId: account.id,
+      });
+      if (!token) return { rows: [] as GmailInboxRow[] };
+
+      try {
+        const listPage = await withGoogleAuthRetry(
+          input.userId,
+          token,
+          (t) =>
+            gmailListInboxPage(t, {
+              maxResults: perAccountMax,
+              query: input.gmailQuery,
+            }),
+          { accountId: account.id },
+        );
+
+        const rows = await withGoogleAuthRetry(
+          input.userId,
+          token,
+          (t) => gmailGetMessagesMetadata(t, listPage.items.map((m) => m.id), 20),
+          { accountId: account.id },
+        );
+
+        return {
+          rows: rows.map((row) => ({
+            ...row,
+            accountId: account.id,
+            accountEmail: account.email,
+            accountLabel: account.label,
+          })),
+        };
+      } catch (err) {
+        console.warn(`[fetch-unified-search] account ${account.email} failed`, err);
+        return { rows: [] as GmailInboxRow[] };
+      }
+    }),
+  );
+
+  const merged = fetches
+    .flatMap((f) => f.rows)
+    .sort((a, b) => b.internalDateMs - a.internalDateMs)
+    .slice(0, input.maxResults);
+
+  return {
+    rows: merged,
+    gmailTruth: null,
+    accountsLoaded: fetches.filter((f) => f.rows.length > 0).length,
+  };
+}

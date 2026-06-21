@@ -22,7 +22,7 @@ function newKeywordRule(): InboxUserRule {
     phase: "pre",
     label: "My priority keywords",
     match: { type: "keywords_contains", value: "" },
-    action: { type: "force_category", category: "needs_attention" },
+    action: { type: "force_category", category: "worth_your_attention" },
   };
 }
 
@@ -31,7 +31,7 @@ function ruleDestination(rule: InboxUserRule): InboxAiCategory {
   if (rule.action.type === "demote" || rule.action.type === "boost") {
     return rule.action.toCategory;
   }
-  return "handled";
+  return "good_to_know";
 }
 
 function setRuleDestination(rule: InboxUserRule, category: InboxAiCategory): InboxUserRule {

@@ -22,6 +22,14 @@ export function inboxPreferenceHeaders(): HeadersInit {
   };
 }
 
+/**
+ * Auth + workflow only — avoids HTTP 431 from bulky localStorage sync headers.
+ * Use for inbox load, search, and single-message detail fetches.
+ */
+export async function inboxLoadFetchHeaders(): Promise<HeadersInit> {
+  return protectedApiHeaders(workflowModeHeaders());
+}
+
 /** Auth + inbox preference headers for protected /api/* calls. */
 export async function inboxFetchHeaders(): Promise<HeadersInit> {
   return protectedApiHeaders(inboxPreferenceHeaders());

@@ -1,9 +1,11 @@
 "use client";
 
 import { EmailLifecycleIndicator } from "@/app/components/email-lifecycle-indicator";
-import { CompletionActionPicker } from "@/app/emails/completion-action-picker";
+import { DoneWithThisPicker } from "@/app/emails/done-with-this-picker";
+import { handledActionCopy } from "@/lib/handled-action-copy";
 import type { useEmailStatusActions } from "@/app/emails/use-email-status-actions";
 import type { EmailLifecycleState } from "@/lib/email-lifecycle";
+import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 
 export type EmailStatusActionState = ReturnType<typeof useEmailStatusActions>;
 
@@ -26,9 +28,13 @@ type EmailCardActionRowProps = {
   changeCategoryLabel?: string;
   setRelationshipLabel: string;
   hideActions?: boolean;
+  category?: InboxAiCategory;
+  categoryConfidence?: number;
+  actionable?: boolean;
+  actionState?: import("@/lib/action-intelligence").EmailActionState;
 };
 
-/** Bottom row: Change category · Set relationship · Mark read/unread · Done with this */
+/** Bottom row: Move to… · Set relationship · Mark read/unread · Handled */
 export function EmailCardActionRow({
   status,
   locale,
@@ -37,6 +43,10 @@ export function EmailCardActionRow({
   changeCategoryLabel,
   setRelationshipLabel,
   hideActions = false,
+  category,
+  categoryConfidence,
+  actionable,
+  actionState,
 }: EmailCardActionRowProps) {
   const {
     t,
@@ -52,6 +62,8 @@ export function EmailCardActionRow({
     handleComplete,
     handleUndo,
   } = status;
+
+  const actions = handledActionCopy(locale);
 
   if (hideActions) return null;
 
@@ -81,7 +93,7 @@ export function EmailCardActionRow({
               disabled={busy}
               emphasis
             >
-              ✓ {t.doneWith}
+              {t.doneWith}
             </ActionLink>
           </>
         ) : (
@@ -99,9 +111,8 @@ export function EmailCardActionRow({
 
       {showDonePicker && !completed ? (
         <div className="border-t border-emerald-100 pt-2">
-          <CompletionActionPicker
+          <DoneWithThisPicker
             locale={locale}
-            compact
             busy={busy}
             onSelect={(id, label, extras) => void handleComplete(id, label, extras)}
           />
@@ -110,7 +121,7 @@ export function EmailCardActionRow({
             onClick={() => setShowDonePicker(false)}
             className="mt-1.5 text-xs text-gray-400 hover:text-gray-600"
           >
-            {locale === "it" ? "Annulla" : "Cancel"}
+            {actions.cancel}
           </button>
         </div>
       ) : null}

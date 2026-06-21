@@ -26,20 +26,22 @@ function buildSummaryPrompt(
   workflowMode: WorkflowMode,
   locale: "en" | "it",
 ): string {
-  return `Write ONE sentence that explains the situation to a busy professional — like a calm executive assistant briefing them.
+  return `Write ONE extractive sentence describing ONLY what is explicitly in this email.
 
-Forbidden phrases (never use):
-- "needs attention", "likely needs a reply", "scheduling request detected"
-- "AI", "classifier", "category", "automated update", "review if a response is needed"
-- marketing hype or exclamation-heavy tone
+STRICT RULES:
+- Do NOT infer intent, urgency, or required actions unless the exact words appear in the email.
+- Do NOT say someone "needs", "wants", "is asking", or "is trying to schedule" unless they literally ask.
+- Staff announcements, newsletters, and FYI updates are NOT action requests.
+- Use the sender name, subject line, and preview text — nothing else.
+- If inference is unavoidable, prefix with "Possible intent:" (never state it as fact).
+- Max 28 words, neutral tone, plain language.
 
-Required style:
-- Name who wrote (${locale === "it" ? "es." : "e.g."} "Studio Medico Ferrara needs you to choose a new appointment time")
-- What they want or what happened
-- Max 22 words, neutral, confident, plain language
+Forbidden phrases:
+- "needs attention", "likely needs a reply", "scheduling request", "trying to schedule"
+- "needs confirmation", "worth a reply", "action required" (unless quoted from email)
 
-Context (internal only, do not repeat labels):
-- Inbox bucket: ${category.replace(/_/g, " ")}
+Context (internal only — do not repeat):
+- Bucket: ${category.replace(/_/g, " ")}
 - Workflow: ${workflowMode}
 
 Email:
@@ -69,7 +71,7 @@ export async function buildEmailSummary(
   }
 
   if (
-    (category === "promotion" || category === "newsletter" || category === "handled") &&
+    (category === "promotions" || category === "newsletters" || category === "good_to_know") &&
     isCommercialBulk(row as GmailInboxRow)
   ) {
     return fallback;
@@ -88,7 +90,7 @@ export async function buildEmailSummary(
     if (line.length < 8 || line.length > 200) return fallback;
     const lower = line.toLowerCase();
     if (
-      /unlock|journey|needs attention|scheduling request detected|likely needs|automated update|ai generated/i.test(
+      /unlock|journey|needs attention|scheduling request|trying to schedule|likely needs|needs confirmation|needs you to|is asking|automated update|ai generated/i.test(
         lower,
       )
     ) {

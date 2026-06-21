@@ -30,11 +30,11 @@ function isStoreNotification(m: ClutterMessage): boolean {
 
 function batchLabel(
   count: number,
-  kind: "newsletter" | "promotion" | "store",
+  kind: "newsletters" | "promotions" | "store",
   locale: "en" | "it",
   name?: string,
 ): string {
-  if (kind === "newsletter") {
+  if (kind === "newsletters") {
     return locale === "it"
       ? count === 1
         ? "1 newsletter raggruppata"
@@ -75,15 +75,15 @@ export function buildClutterBatches(
 ): ClutterBatch[] {
   if (!messages.length) return [];
 
-  const newsletters = messages.filter((m) => m.category === "newsletter");
-  const promotions = messages.filter((m) => m.category === "promotion");
+  const newsletters = messages.filter((m) => m.category === "newsletters");
+  const promotions = messages.filter((m) => m.category === "promotions");
   const batches: ClutterBatch[] = [];
   const calm = reassurance(locale);
 
   if (newsletters.length > 0) {
     batches.push({
       id: "batch-newsletters",
-      label: batchLabel(newsletters.length, "newsletter", locale),
+      label: batchLabel(newsletters.length, "newsletters", locale),
       reassurance: calm,
       messages: newsletters,
     });
@@ -116,7 +116,7 @@ export function buildClutterBatches(
     if (list.length >= 3) {
       batches.push({
         id: `batch-promo-${key}`,
-        label: batchLabel(list.length, "promotion", locale, senderDisplayName(list[0]!.sender)),
+        label: batchLabel(list.length, "promotions", locale, senderDisplayName(list[0]!.sender)),
         reassurance: calm,
         messages: list,
       });
@@ -128,14 +128,14 @@ export function buildClutterBatches(
   if (singles.length >= 2) {
     batches.push({
       id: "batch-promo-misc",
-      label: batchLabel(singles.length, "promotion", locale),
+      label: batchLabel(singles.length, "promotions", locale),
       reassurance: calm,
       messages: singles,
     });
   } else if (singles.length === 1) {
     batches.push({
       id: `batch-promo-${singles[0]!.id}`,
-      label: batchLabel(1, "promotion", locale, senderDisplayName(singles[0]!.sender)),
+      label: batchLabel(1, "promotions", locale, senderDisplayName(singles[0]!.sender)),
       reassurance: calm,
       messages: singles,
     });

@@ -70,6 +70,31 @@ export function logInboxLoadFailed(
   });
 }
 
+export function logInboxApiError(input: {
+  endpoint: string;
+  httpStatus: number;
+  accountId?: string | null;
+  failureReason: InboxLoadFailureReason;
+  failureStage: InboxLoadStage;
+  errorBody?: unknown;
+  loadId?: string;
+  cause?: unknown;
+}): void {
+  console.error("[inbox-load] API error", {
+    endpoint: input.endpoint,
+    httpStatus: input.httpStatus,
+    accountId: input.accountId ?? null,
+    failureReason: input.failureReason,
+    failureStage: input.failureStage,
+    loadId: input.loadId ?? null,
+    errorBody: input.errorBody,
+    cause:
+      input.cause instanceof Error
+        ? { name: input.cause.name, message: input.cause.message }
+        : input.cause ?? null,
+  });
+}
+
 export function mergeTimings(
   base: InboxLoadTimings,
   ...patches: Array<Partial<InboxLoadTimings> | undefined>

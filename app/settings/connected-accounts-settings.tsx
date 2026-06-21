@@ -4,18 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { protectedApiHeaders } from "@/lib/auth/protected-api-headers";
 import type { ConnectedGmailAccount } from "@/lib/gmail/account-types";
-import { startConnectGmailAccount } from "@/lib/gmail/connect-account-client";
+import { AttachInboxButton } from "@/app/emails/attach-inbox-button";
 import { SettingsSection } from "@/app/settings/settings-section";
 
 const HELPER_COPY =
-  "Connect another Gmail account to manage multiple inboxes in one place.";
-const PLAN_NOTE = "Additional accounts may require a higher plan later.";
+  "Attach another Gmail inbox — same Handled login, switch sources like workspaces.";
 
 export function ConnectedAccountsSettings() {
   const searchParams = useSearchParams();
   const [accounts, setAccounts] = useState<ConnectedGmailAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [connecting, setConnecting] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -28,11 +26,11 @@ export function ConnectedAccountsSettings() {
         headers: await protectedApiHeaders(),
         cache: "no-store",
       });
-      if (!res.ok) throw new Error("Could not load connected accounts.");
+      if (!res.ok) throw new Error("Could not load inboxes.");
       const data = (await res.json()) as { accounts?: ConnectedGmailAccount[] };
       setAccounts(data.accounts ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load accounts.");
+      setError(e instanceof Error ? e.message : "Could not load inboxes.");
     } finally {
       setLoading(false);
     }
@@ -43,30 +41,17 @@ export function ConnectedAccountsSettings() {
   }, [loadAccounts]);
 
   useEffect(() => {
-    if (searchParams.get("connected") === "1") {
-      setSuccess("Gmail account connected. It will appear in your unified inbox.");
+    if (searchParams.get("inbox_added") === "1" || searchParams.get("connected") === "1") {
+      setSuccess("Inbox attached — switch to it from the inbox source picker.");
       void loadAccounts();
     }
-    const connectError = searchParams.get("connect_error");
-    if (connectError) {
+    const attachError = searchParams.get("attach_error");
+    if (attachError) {
       setError(
-        connectError === "save_failed"
-          ? "Connected to Google, but Handled could not save the account. Try again."
-          : "Could not connect Gmail account. Please try again.",
+        decodeURIComponent(attachError) || "Could not attach inbox. Please try again.",
       );
     }
   }, [searchParams, loadAccounts]);
-
-  const handleConnect = async () => {
-    setConnecting(true);
-    setError(null);
-    setSuccess(null);
-    const result = await startConnectGmailAccount();
-    if (!result.ok) {
-      setError(result.message);
-      setConnecting(false);
-    }
-  };
 
   const handleDisconnect = async (accountId: string) => {
     if (accounts.length <= 1) return;
@@ -77,11 +62,11 @@ export function ConnectedAccountsSettings() {
         method: "DELETE",
         headers: await protectedApiHeaders(),
       });
-      if (!res.ok) throw new Error("Could not disconnect account.");
+      if (!res.ok) throw new Error("Could not remove inbox.");
       setAccounts((prev) => prev.filter((a) => a.id !== accountId));
-      setSuccess("Account disconnected.");
+      setSuccess("Inbox removed.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Disconnect failed.");
+      setError(e instanceof Error ? e.message : "Remove failed.");
     } finally {
       setDisconnectingId(null);
     }
@@ -100,12 +85,12 @@ export function ConnectedAccountsSettings() {
       });
       const data = (await res.json()) as { account?: ConnectedGmailAccount; error?: string };
       if (!res.ok || !data.account) {
-        throw new Error("Could not rename account.");
+        throw new Error("Could not rename inbox.");
       }
       setAccounts((prev) =>
         prev.map((a) => (a.id === accountId ? data.account! : a)),
       );
-      setSuccess("Account label updated.");
+      setSuccess("Inbox label updated.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Rename failed.");
     }
@@ -113,17 +98,16 @@ export function ConnectedAccountsSettings() {
 
   return (
     <SettingsSection
-      title="Connected Accounts"
-      description="Link multiple Gmail inboxes to one Handled login."
+      title="Inbox sources"
+      description="Multiple Gmail inboxes, one Handled identity."
       className="scroll-mt-6 py-8"
     >
       <div id="connected-accounts" className="-mt-4" aria-hidden />
       <div className="space-y-4">
         <p className="text-sm leading-relaxed text-secondary">{HELPER_COPY}</p>
-        <p className="text-xs text-gray-400">{PLAN_NOTE}</p>
 
         {loading ? (
-          <p className="text-sm text-secondary">Loading accounts…</p>
+          <p className="text-sm text-secondary">Loading inboxes…</p>
         ) : (
           <div className="space-y-3">
             {accounts.map((account) => (
@@ -138,20 +122,13 @@ export function ConnectedAccountsSettings() {
             ))}
 
             {accounts.length === 0 ? (
-              <p className="text-sm text-secondary">No Gmail accounts connected yet.</p>
+              <p className="text-sm text-secondary">No inboxes attached yet.</p>
             ) : null}
 
-            <button
-              type="button"
-              onClick={() => void handleConnect()}
-              disabled={connecting}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-accent/30 hover:bg-accent-muted/30 disabled:opacity-60"
-            >
-              <span aria-hidden className="text-base leading-none text-accent">
-                +
-              </span>
-              {connecting ? "Opening Google…" : "Connect another Gmail account"}
-            </button>
+            <AttachInboxButton
+              variant="primary"
+              next="/settings?inbox_added=1#connected-accounts"
+            />
           </div>
         )}
 
@@ -249,7 +226,7 @@ function AccountRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
-          <span className="text-xs font-medium text-emerald-700">Connected</span>
+          <span className="text-xs font-medium text-emerald-700">Attached</span>
           {!editing ? (
             <button
               type="button"
@@ -266,7 +243,7 @@ function AccountRow({
               disabled={disconnecting}
               className="text-xs font-medium text-gray-500 transition-colors hover:text-red-600 disabled:opacity-50"
             >
-              {disconnecting ? "Disconnecting…" : "Disconnect"}
+              {disconnecting ? "Removing…" : "Remove"}
             </button>
           ) : null}
         </div>

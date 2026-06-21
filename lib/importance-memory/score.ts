@@ -3,6 +3,7 @@ import { inboxCategoryLearnPriority } from "@/lib/inbox-ai-categories";
 import type { ImportanceLevel, SenderImportanceMemory } from "@/lib/importance-memory/types";
 import { getSenderEmailOpenCount } from "@/lib/importance-memory/sender-opens";
 import { senderLinesMatch } from "@/lib/relationship-memory/match-sender";
+import { loadClientMemoryState } from "@/lib/memory-engine/client-cache";
 import { loadSenderCorrectionLearning } from "@/lib/sender-correction-learning";
 import { resolveSenderIdentity } from "@/lib/sender-identity";
 
@@ -35,6 +36,35 @@ export function computeSenderImportanceScore(input: {
   let score = 0;
   let eventCount = 0;
 
+  const identity = resolveSenderIdentity(senderLine);
+  const memory = loadClientMemoryState();
+  const senderMem = memory.senderMemory.find(
+    (m) =>
+      (identity.email && m.senderEmail === identity.email) ||
+      (identity.domain && m.senderDomain === identity.domain),
+  );
+  if (senderMem) {
+    eventCount += senderMem.correctionCount;
+    score += categoryScoreDelta(senderMem.preferredCategory, senderMem.correctionCount);
+    if (senderMem.preferredCategory === "worth_your_attention") {
+      score += senderMem.correctionCount * 2;
+    }
+  }
+
+  const correctionHist = memory.categoryCorrections.find(
+    (c) =>
+      (identity.email && c.senderEmail === identity.email) ||
+      (identity.domain && c.senderDomain === identity.domain),
+  );
+  if (correctionHist) {
+    if (correctionHist.userCategory === "worth_your_attention") {
+      score += correctionHist.correctionCount * 4;
+      eventCount += correctionHist.correctionCount;
+    }
+    score += categoryScoreDelta(correctionHist.userCategory, correctionHist.correctionCount);
+  }
+
+  // Legacy localStorage learning — merged until fully migrated
   const correction = loadSenderCorrectionLearning().find((r) => r.senderKey === ruleKey);
   if (correction) {
     if (correction.correctionsToNeedsAttention > 0) {

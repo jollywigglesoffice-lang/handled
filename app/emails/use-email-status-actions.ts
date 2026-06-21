@@ -15,28 +15,13 @@ import { applyDoneInboxEffects, revertDoneInboxEffects } from "@/lib/inbox-truth
 import { markEmailsRead, markEmailsUnread } from "@/lib/read-state/gmail-sync";
 import type { CompleteEmailExtras, EmailCompletionRecord } from "@/lib/email-completions/types";
 import { isActiveWaiting } from "@/lib/waiting-on/helpers";
+import { collectActionMemory } from "@/lib/memory-engine/collect";
+
+import { emailStatusCopy } from "@/lib/handled-action-copy";
 
 export const EMAIL_STATUS_COPY = {
-  en: {
-    markRead: "Mark read",
-    markUnread: "Mark unread",
-    doneWith: "Done with this",
-    undo: "Undo",
-    changeCategory: "Change category",
-    setRelationship: "Set relationship",
-    completedAs: (label: string) => `Completed · ${label}`,
-    undone: "Returned to inbox",
-  },
-  it: {
-    markRead: "Segna letta",
-    markUnread: "Segna da leggere",
-    doneWith: "Fatto con questa",
-    undo: "Annulla",
-    changeCategory: "Cambia categoria",
-    setRelationship: "Assegna relazione",
-    completedAs: (label: string) => `Completata · ${label}`,
-    undone: "Ripristinata in inbox",
-  },
+  en: emailStatusCopy("en"),
+  it: emailStatusCopy("it"),
 } as const;
 
 export type EmailStatusActionsInput = {
@@ -137,6 +122,15 @@ export function useEmailStatusActions({
           { locale },
         );
         applyDoneInboxEffects([{ id: emailId, accountId }], { actionId });
+        void collectActionMemory({
+          emailId,
+          accountId,
+          sender,
+          subject,
+          category,
+          actionId,
+          actionLabel,
+        });
         setShowDonePicker(false);
         if (!onCompleted) {
           notifyCompleted({ emailIds: [emailId], actionId, actionLabel, locale });

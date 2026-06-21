@@ -20,8 +20,8 @@ const KINDS: RelationshipKind[] = [
   "client",
   "team",
   "billing",
-  "newsletter",
-  "promotion",
+  "newsletters",
+  "promotions",
   "marketing",
   "unknown",
 ];

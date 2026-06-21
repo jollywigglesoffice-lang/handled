@@ -84,7 +84,7 @@ export function analyzeDailyWorkspace(
     suggestedCount:
       sections.find((s) => s.id === "suggested_actions")?.items.length ?? 0,
     ignorableCount: input.messages.filter(
-      (m) => m.category === "promotion" || m.category === "newsletter",
+      (m) => m.category === "promotions" || m.category === "newsletters",
     ).length,
   };
 

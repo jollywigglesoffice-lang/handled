@@ -285,7 +285,7 @@ export function parseCompletionLearningJson(raw: unknown): CompletionLearningSta
         category:
           typeof e.category === "string"
             ? (e.category as CompletionLearningEvent["category"])
-            : "needs_attention",
+            : "worth_your_attention",
         actionId: e.actionId as CompletionLearningEvent["actionId"],
         actionLabel: typeof e.actionLabel === "string" ? e.actionLabel : e.actionId,
         completedAt: typeof e.completedAt === "number" ? e.completedAt : Date.now(),

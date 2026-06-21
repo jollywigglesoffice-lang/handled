@@ -97,6 +97,68 @@ Email to reply to:
 ${input.email}`;
 }
 
+/** Smart Reply preset — 3 drafts: balanced default, 1–2 line short, formal professional. */
+export function buildSmartReplyPrompt(input: {
+  email: string;
+  languageLabel: string;
+  userName?: string;
+  identity?: UserIdentity;
+  contextBlock: string;
+  workflowMode?: WorkflowMode;
+  category?: InboxAiCategory;
+  brainContext?: string;
+  replyContext?: ReplyContextAnalysis;
+  draftMemoryBlock?: string;
+}): string {
+  const authorName = input.identity
+    ? resolveReplyAuthorName(input.identity, input.userName)
+    : input.userName?.trim() ?? "";
+  const identityBlock = input.identity
+    ? formatUserIdentityForPrompt(input.identity, input.replyContext, input.workflowMode)
+    : "";
+  const modeLine = input.workflowMode
+    ? workflowModeReplyDirective(input.workflowMode)
+    : "";
+  const categoryLine = input.category
+    ? `Inbox category: ${input.category.replace(/_/g, " ")}.`
+    : "";
+  const analysisBlock = input.replyContext
+    ? formatReplyContextForPrompt(
+        input.replyContext,
+        "balanced",
+        input.languageLabel,
+        input.workflowMode,
+      )
+    : "";
+
+  return `You are Handled — drafting Smart Reply options for ${authorName || "the user"}.
+
+${identityBlock ? `${identityBlock}\n\n` : ""}${analysisBlock}
+
+${categoryLine}
+${modeLine ? `${modeLine}\n` : ""}
+${input.draftMemoryBlock ? `${input.draftMemoryBlock}\n\n` : ""}${input.brainContext ? `${input.brainContext}\n\n` : ""}${input.contextBlock}
+
+Write exactly 3 reply drafts for user approval (never imply already sent):
+1. DEFAULT — balanced, natural, concise (2–4 sentences max unless complex)
+2. SHORT — 1–2 lines only, direct
+3. FORMAL — professional tone, still concise
+
+Rules:
+- Address the sender's actual question, request, or scheduling need
+- All three in ${input.languageLabel}
+- Meaningfully different — not the same sentence reworded
+- Sound human — avoid "Thank you for reaching out", "I hope this finds you well"
+- Write in first person as ${authorName || "the user"}
+- Drafts only — user copies into their mail client; Handled never auto-sends
+
+Return valid JSON only:
+{"replies":["default draft","short draft","formal draft"]}
+
+Email to reply to:
+${input.email}`;
+}
+
 export function buildReplyCorrectionPrompt(
   originalPrompt: string,
   failures: string[],

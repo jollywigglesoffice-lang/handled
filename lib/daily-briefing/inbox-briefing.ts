@@ -34,11 +34,11 @@ const BRIEFING_CATEGORIES: Array<{
   waitingOn?: boolean;
   responseReceived?: boolean;
 }> = [
-  { id: "needs_attention", category: "needs_attention" },
-  { id: "quick_reply", category: "quick_reply" },
-  { id: "response_received", responseReceived: true },
+  { id: "worth_your_attention", category: "worth_your_attention" },
   { id: "waiting_on", waitingOn: true },
-  { id: "promotion", category: "promotion" },
+  { id: "response_received", responseReceived: true },
+  { id: "good_to_know", category: "good_to_know" },
+  { id: "promotions", category: "promotions" },
 ];
 
 function buildGreeting(
@@ -61,17 +61,17 @@ function lineLabel(id: string, count: number, locale: "en" | "it"): string {
   const n = count;
   if (locale === "it") {
     switch (id) {
-      case "needs_attention":
+      case "worth_your_attention":
         return n === 1
           ? "1 email richiede attenzione"
           : `${n} email richiedono attenzione`;
-      case "quick_reply":
-        return n === 1 ? "1 risposta veloce" : `${n} risposte veloci`;
+      case "waiting_on":
+        return n === 1 ? "1 email in attesa" : `${n} email in attesa`;
       case "response_received":
         return n === 1 ? "1 risposta ricevuta" : `${n} risposte ricevute`;
-      case "waiting_on":
-        return n === 1 ? "1 voce in attesa" : `${n} voci in attesa`;
-      case "promotion":
+      case "good_to_know":
+        return n === 1 ? "1 da sapere" : `${n} da sapere`;
+      case "promotions":
         return n === 1 ? "1 promozione" : `${n} promozioni`;
       default:
         return `${n}`;
@@ -79,15 +79,15 @@ function lineLabel(id: string, count: number, locale: "en" | "it"): string {
   }
 
   switch (id) {
-    case "needs_attention":
+    case "worth_your_attention":
       return n === 1 ? "1 email needs attention" : `${n} emails need attention`;
-    case "quick_reply":
-      return n === 1 ? "1 quick reply" : `${n} quick replies`;
+    case "waiting_on":
+      return n === 1 ? "1 waiting on" : `${n} waiting on`;
     case "response_received":
       return n === 1 ? "1 response received" : `${n} responses received`;
-    case "waiting_on":
-      return n === 1 ? "1 waiting-on item" : `${n} waiting-on items`;
-    case "promotion":
+    case "good_to_know":
+      return n === 1 ? "1 good to know" : `${n} good to know`;
+    case "promotions":
       return n === 1 ? "1 promotion" : `${n} promotions`;
     default:
       return `${n}`;
@@ -137,13 +137,12 @@ export function buildInboxBriefingCard(input: {
     });
   }
 
-  const effortCounts: Record<InboxAiCategory, number> = {
-    needs_attention: counts.needs_attention ?? 0,
-    quick_reply: counts.quick_reply ?? 0,
-    fyi: 0,
-    handled: 0,
-    promotion: 0,
-    newsletter: 0,
+  const effortCounts: Record<string, number> = {
+    worth_your_attention: counts.worth_your_attention ?? 0,
+    waiting_on: waitingOnCount,
+    fyi: counts.good_to_know ?? 0,
+    promotion: counts.promotions ?? 0,
+    newsletter: counts.newsletters ?? 0,
   };
   const effortSeconds = estimateClearSeconds(effortCounts);
 

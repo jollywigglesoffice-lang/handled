@@ -15,8 +15,8 @@ export function defaultInboxUserRules(): InboxUserRule[] {
       },
       action: {
         type: "boost",
-        toCategory: "needs_attention",
-        whenCategories: ["promotion", "newsletter", "handled"],
+        toCategory: "worth_your_attention",
+        whenCategories: ["promotions", "newsletters", "good_to_know"],
       },
     },
     {
@@ -31,8 +31,8 @@ export function defaultInboxUserRules(): InboxUserRule[] {
       },
       action: {
         type: "boost",
-        toCategory: "needs_attention",
-        whenCategories: ["promotion", "newsletter", "handled"],
+        toCategory: "worth_your_attention",
+        whenCategories: ["promotions", "newsletters", "good_to_know"],
       },
     },
     {
@@ -42,7 +42,7 @@ export function defaultInboxUserRules(): InboxUserRule[] {
       phase: "pre",
       label: "Instagram updates → promotion",
       match: { type: "keywords_contains", value: "instagram, mail.instagram" },
-      action: { type: "force_category", category: "promotion" },
+      action: { type: "force_category", category: "promotions" },
     },
     {
       id: "preset-demote-tiktok",
@@ -51,31 +51,31 @@ export function defaultInboxUserRules(): InboxUserRule[] {
       phase: "pre",
       label: "TikTok → promotion",
       match: { type: "keywords_contains", value: "tiktok" },
-      action: { type: "force_category", category: "promotion" },
+      action: { type: "force_category", category: "promotions" },
     },
     {
-      id: "preset-handled-shopify-billing",
+      id: "preset-fyi-shopify-billing",
       enabled: true,
       priority: 180,
       phase: "pre",
-      label: "Shopify billing → handled",
+      label: "Shopify billing → good to know",
       match: {
         type: "keywords_contains",
         value: "shopify, billing@shopify, shopify billing",
       },
-      action: { type: "force_category", category: "handled" },
+      action: { type: "force_category", category: "good_to_know" },
     },
     {
       id: "preset-post-demote-needs-to-promo",
       enabled: true,
       priority: 100,
       phase: "post",
-      label: "Demote misfiled social from needs_attention",
+      label: "Demote misfiled social from worth_your_attention",
       match: { type: "sender_contains", value: "facebook" },
       action: {
         type: "demote",
-        toCategory: "promotion",
-        whenCategories: ["needs_attention"],
+        toCategory: "promotions",
+        whenCategories: ["worth_your_attention"],
       },
     },
   ];

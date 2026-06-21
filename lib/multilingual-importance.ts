@@ -22,7 +22,7 @@ export function detectPersonalImportance(
   const important = isPersonalPriorityContext(row);
   return {
     important,
-    suggestedCategory: important ? "needs_attention" : "handled",
+    suggestedCategory: important ? "worth_your_attention" : "good_to_know",
     confidence: important ? 0.84 : 0.5,
     reasons: important ? ["intelligence_priority_context"] : [],
   };

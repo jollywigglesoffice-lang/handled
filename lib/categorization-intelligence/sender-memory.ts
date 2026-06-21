@@ -49,12 +49,12 @@ export function applySenderMemory(
   for (const rule of rules) {
     if (!senderMatches(row, rule)) continue;
     const pri = inboxCategoryLearnPriority(rule.targetCategory);
-    if (pri >= inboxCategoryLearnPriority("needs_attention")) {
+    if (pri >= inboxCategoryLearnPriority("worth_your_attention")) {
       boost += 18 + pri * 4;
       reasonCodes.push("known_high_priority_sender");
       reasonLabels.push(`Known high-priority sender → ${rule.targetCategory.replace(/_/g, " ")}`);
       suggestedCategory = rule.targetCategory;
-    } else if (pri <= inboxCategoryLearnPriority("handled")) {
+    } else if (pri <= inboxCategoryLearnPriority("good_to_know")) {
       penalty += 12;
       reasonCodes.push("known_low_priority_sender");
       reasonLabels.push(`Known low-priority sender → ${rule.targetCategory.replace(/_/g, " ")}`);
@@ -73,13 +73,13 @@ export function applySenderMemory(
           : "relationship_healthcare",
     );
     reasonLabels.push(`Relationship: ${kind}`);
-    suggestedCategory = "needs_attention";
+    suggestedCategory = "worth_your_attention";
   }
   if (importance === "vip" || importance === "important" || kind === "vip_client") {
     boost += 16;
     reasonCodes.push("relationship_vip");
     reasonLabels.push("VIP / important contact");
-    suggestedCategory = "needs_attention";
+    suggestedCategory = "worth_your_attention";
   }
 
   return { boost, penalty, reasonCodes, reasonLabels, suggestedCategory };

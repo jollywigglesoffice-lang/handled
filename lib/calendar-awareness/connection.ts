@@ -1,12 +1,11 @@
+import { startGoogleOAuth } from "@/lib/auth/start-google-oauth";
 import type { CalendarConnectionStatus, FutureCalendarAvailability } from "@/lib/calendar-awareness/types";
 
 const STORAGE_KEY = "handled_calendar_connection_v1";
 
 export type CalendarConnectionState = {
   status: CalendarConnectionStatus;
-  /** ISO timestamp when user connected (future) */
   connectedAt?: string;
-  /** Google account email hint (future) */
   accountEmail?: string;
   lastError?: string;
 };
@@ -15,10 +14,6 @@ const DEFAULT_STATE: CalendarConnectionState = {
   status: "disconnected",
 };
 
-/**
- * Placeholder connection state — persisted locally until Google Calendar OAuth ships.
- * Server sync can replace this later without changing call sites.
- */
 export function readCalendarConnectionState(): CalendarConnectionState {
   if (typeof window === "undefined") return { ...DEFAULT_STATE };
   try {
@@ -41,33 +36,73 @@ export function writeCalendarConnectionState(state: CalendarConnectionState): vo
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+/** Server-verified connection — prefer over localStorage. */
+export async function fetchCalendarConnectionStatus(accountId?: string): Promise<{
+  calendarConnected: boolean;
+  accountEmail?: string | null;
+}> {
+  try {
+    const params = new URLSearchParams();
+    if (accountId) params.set("accountId", accountId);
+    const qs = params.toString();
+    const res = await fetch(`/api/calendar/status${qs ? `?${qs}` : ""}`, {
+      credentials: "include",
+    });
+    if (!res.ok) return { calendarConnected: false };
+    return (await res.json()) as { calendarConnected: boolean; accountEmail?: string | null };
+  } catch {
+    return { calendarConnected: false };
+  }
+}
+
 export function isCalendarConnected(): boolean {
   return readCalendarConnectionState().status === "connected";
 }
 
-/** Future: fetch free/busy from Google Calendar API */
+export function syncCalendarConnectionFromApi(connected: boolean, accountEmail?: string): void {
+  if (!connected) {
+    writeCalendarConnectionState({ status: "disconnected" });
+    return;
+  }
+  writeCalendarConnectionState({
+    status: "connected",
+    connectedAt: new Date().toISOString(),
+    accountEmail,
+  });
+}
+
+/** Re-authorize Google with calendar scopes — same flow as sign-in. */
+export async function connectGoogleCalendarViaOAuth(next?: string): Promise<ConnectCalendarResult> {
+  const redirectNext =
+    next ??
+    (typeof window !== "undefined"
+      ? `${window.location.pathname}${window.location.search}`
+      : "/emails");
+
+  writeCalendarConnectionState({ status: "connecting" });
+  const result = await startGoogleOAuth(redirectNext);
+  if (result.error) {
+    writeCalendarConnectionState({ status: "error", lastError: result.error });
+    return { ok: false, reason: "error", message: result.error };
+  }
+  return { ok: true, status: "connecting" };
+}
+
 export async function fetchFutureCalendarAvailability(
   _rangeStart: Date,
   _rangeEnd: Date,
 ): Promise<FutureCalendarAvailability | null> {
-  if (!isCalendarConnected()) return null;
-  // Placeholder — implement with Google Calendar API + user consent
+  const status = await fetchCalendarConnectionStatus();
+  if (!status.calendarConnected) return null;
   return null;
 }
 
 export type ConnectCalendarResult =
-  | { ok: true; status: "connected" }
+  | { ok: true; status: "connected" | "connecting" }
   | { ok: false; reason: "not_implemented" | "denied" | "error"; message: string };
 
-/**
- * Placeholder connect — returns not_implemented until OAuth is built.
- */
 export async function connectGoogleCalendarPlaceholder(): Promise<ConnectCalendarResult> {
-  return {
-    ok: false,
-    reason: "not_implemented",
-    message: "Google Calendar connection is coming soon. Scheduling detection works today.",
-  };
+  return connectGoogleCalendarViaOAuth("/settings#calendar");
 }
 
 export function disconnectGoogleCalendarPlaceholder(): void {

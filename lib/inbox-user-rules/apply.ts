@@ -25,7 +25,7 @@ export function applyUserRulesPre(
   });
 
   if (rule.action.type === "block") {
-    return { kind: "block", category: "handled", ruleId: rule.id, label: rule.label };
+    return { kind: "block", category: "good_to_know", ruleId: rule.id, label: rule.label };
   }
   if (rule.action.type === "force_category") {
     return {

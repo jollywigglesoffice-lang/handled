@@ -29,7 +29,7 @@ export function analyzeDecisionAssistance(
   input: AnalyzeDecisionAssistanceInput,
 ): DecisionAssistanceResult {
   const locale = input.locale ?? "en";
-  const category = (input.row.category ?? "needs_attention") as InboxAiCategory;
+  const category = (input.row.category ?? "worth_your_attention") as InboxAiCategory;
   const relationship = resolveSenderRelationship(
     input.row,
     category,

@@ -1,4 +1,5 @@
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { coerceLegacyInboxCategory } from "@/lib/inbox-ai-categories";
 import { resolveSenderIdentity } from "@/lib/sender-identity";
 import { suggestSenderAutoRuleMessage } from "@/lib/inbox-sender-onboarding";
 
@@ -75,11 +76,10 @@ export function recordSenderCategoryCorrection(input: {
   categoryCounts[input.chosenCategory] = (categoryCounts[input.chosenCategory] ?? 0) + 1;
 
   const bump =
-    input.chosenCategory === "needs_attention" &&
-    (input.guessedCategory === "handled" ||
-      input.guessedCategory === "fyi" ||
-      input.guessedCategory === "newsletter" ||
-      input.guessedCategory === "promotion")
+    input.chosenCategory === "worth_your_attention" &&
+    (coerceLegacyInboxCategory(input.guessedCategory) === "good_to_know" ||
+      input.guessedCategory === "newsletters" ||
+      input.guessedCategory === "promotions")
       ? 1
       : 0;
 
@@ -88,7 +88,7 @@ export function recordSenderCategoryCorrection(input: {
     displayLabel: existing?.displayLabel ?? displayLabelFromSender(input.sender),
     correctionsToNeedsAttention:
       (existing?.correctionsToNeedsAttention ?? 0) +
-      (bump || (input.chosenCategory === "needs_attention" ? 1 : 0)),
+      (bump || (input.chosenCategory === "worth_your_attention" ? 1 : 0)),
     categoryCounts,
     lastGuessedCategory: input.guessedCategory,
     lastChosenCategory: input.chosenCategory,
@@ -122,7 +122,7 @@ export function getSenderLearningSuggestion(
   return {
     senderKey: key,
     count: record.correctionsToNeedsAttention,
-    message: suggestSenderAutoRuleMessage(record.displayLabel, "needs_attention", locale),
+    message: suggestSenderAutoRuleMessage(record.displayLabel, "worth_your_attention", locale),
   };
 }
 

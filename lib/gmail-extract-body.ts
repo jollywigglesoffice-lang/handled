@@ -1,8 +1,10 @@
 /** Extract plain + HTML bodies from Gmail MIME payloads. */
 
+import { isLikelyHtml } from "@/lib/is-likely-html";
+
 export type GmailMimePart = {
   mimeType?: string;
-  body?: { data?: string; size?: number };
+  body?: { data?: string; attachmentId?: string; size?: number };
   parts?: GmailMimePart[];
 };
 
@@ -20,6 +22,30 @@ export function decodeBase64Url(data: string): string {
   }
 }
 
+function mimeBase(mimeType: string | undefined): string {
+  return (mimeType ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
+function classifyDecodedBody(mime: string, decoded: string): "html" | "plain" | null {
+  const text = decoded.trim();
+  if (!text) return null;
+  if (mime === "text/html" || mime === "text/xhtml") return "html";
+  if (mime === "text/plain") return "plain";
+  if (text.includes("<html") || text.includes("<!DOCTYPE") || isLikelyHtml(text)) return "html";
+  return "plain";
+}
+
+function pushDecoded(
+  mime: string,
+  decoded: string,
+  htmlChunks: string[],
+  plainChunks: string[],
+): void {
+  const kind = classifyDecodedBody(mime, decoded);
+  if (kind === "html") htmlChunks.push(decoded);
+  else if (kind === "plain") plainChunks.push(decoded);
+}
+
 function collectParts(
   part: GmailMimePart | undefined,
   htmlChunks: string[],
@@ -27,14 +53,9 @@ function collectParts(
 ): void {
   if (!part) return;
 
-  const mime = (part.mimeType ?? "").toLowerCase();
+  const mime = mimeBase(part.mimeType);
   if (part.body?.data) {
-    const decoded = decodeBase64Url(part.body.data);
-    if (mime === "text/html" && decoded.trim()) {
-      htmlChunks.push(decoded);
-    } else if (mime === "text/plain" && decoded.trim()) {
-      plainChunks.push(decoded);
-    }
+    pushDecoded(mime, decodeBase64Url(part.body.data), htmlChunks, plainChunks);
   }
 
   if (part.parts) {
@@ -52,16 +73,9 @@ export function extractEmailBodyFromPayload(payload: GmailMimePart | undefined):
     return { bodyHtml: "", bodyPlain: "" };
   }
 
-  const rootMime = (payload.mimeType ?? "").toLowerCase();
+  const rootMime = mimeBase(payload.mimeType);
   if (payload.body?.data) {
-    const decoded = decodeBase64Url(payload.body.data);
-    if (rootMime === "text/html") htmlChunks.push(decoded);
-    else if (rootMime === "text/plain") plainChunks.push(decoded);
-    else if (decoded.includes("<html") || decoded.includes("<!DOCTYPE")) {
-      htmlChunks.push(decoded);
-    } else {
-      plainChunks.push(decoded);
-    }
+    pushDecoded(rootMime, decodeBase64Url(payload.body.data), htmlChunks, plainChunks);
   }
 
   collectParts(payload, htmlChunks, plainChunks);
@@ -70,6 +84,94 @@ export function extractEmailBodyFromPayload(payload: GmailMimePart | undefined):
   const bodyPlain = plainChunks.sort((a, b) => b.length - a.length)[0] ?? "";
 
   return { bodyHtml, bodyPlain };
+}
+
+export type AttachmentBodyFetcher = (
+  attachmentId: string,
+) => Promise<string | null>;
+
+async function collectPartsAsync(
+  part: GmailMimePart | undefined,
+  htmlChunks: string[],
+  plainChunks: string[],
+  fetchAttachment: AttachmentBodyFetcher,
+): Promise<void> {
+  if (!part) return;
+
+  const mime = mimeBase(part.mimeType);
+  if (part.body?.data) {
+    pushDecoded(mime, decodeBase64Url(part.body.data), htmlChunks, plainChunks);
+  } else if (part.body?.attachmentId) {
+    const raw = await fetchAttachment(part.body.attachmentId);
+    if (raw) {
+      pushDecoded(mime, decodeBase64Url(raw), htmlChunks, plainChunks);
+    }
+  }
+
+  if (part.parts) {
+    for (const child of part.parts) {
+      await collectPartsAsync(child, htmlChunks, plainChunks, fetchAttachment);
+    }
+  }
+}
+
+/** Like extractEmailBodyFromPayload but resolves Gmail attachmentId body references. */
+export async function extractEmailBodyFromPayloadAsync(
+  payload: GmailMimePart | undefined,
+  fetchAttachment: AttachmentBodyFetcher,
+): Promise<ExtractedEmailBody> {
+  const htmlChunks: string[] = [];
+  const plainChunks: string[] = [];
+
+  if (!payload) {
+    return { bodyHtml: "", bodyPlain: "" };
+  }
+
+  const rootMime = mimeBase(payload.mimeType);
+  if (payload.body?.data) {
+    pushDecoded(rootMime, decodeBase64Url(payload.body.data), htmlChunks, plainChunks);
+  } else if (payload.body?.attachmentId) {
+    const raw = await fetchAttachment(payload.body.attachmentId);
+    if (raw) {
+      pushDecoded(rootMime, decodeBase64Url(raw), htmlChunks, plainChunks);
+    }
+  }
+
+  await collectPartsAsync(payload, htmlChunks, plainChunks, fetchAttachment);
+
+  const bodyHtml = htmlChunks.sort((a, b) => b.length - a.length)[0] ?? "";
+  const bodyPlain = plainChunks.sort((a, b) => b.length - a.length)[0] ?? "";
+
+  return { bodyHtml, bodyPlain };
+}
+
+/** Resolve displayable plain text + HTML with snippet fallback — never returns empty body when snippet exists. */
+export function resolveEmailDisplayBody(input: {
+  bodyPlain: string;
+  bodyHtml: string;
+  snippet: string;
+}): { bodyText: string; bodyHtml: string } {
+  const plain = input.bodyPlain.trim();
+  const html = input.bodyHtml.trim();
+  const snippet = input.snippet.trim();
+
+  let bodyText = "";
+  if (plain && !isLikelyHtml(plain)) {
+    bodyText = plain;
+  } else if (html) {
+    bodyText = htmlToPlainText(html);
+  } else if (plain) {
+    bodyText = plain;
+  }
+
+  if (!bodyText.trim()) {
+    bodyText = snippet;
+  }
+
+  const resolvedHtml =
+    html || (plain && isLikelyHtml(plain) ? plain : "");
+
+  return { bodyText, bodyHtml: resolvedHtml };
 }
 
 /** Rough plain text from HTML for reply context when Gmail has no text/plain part. */

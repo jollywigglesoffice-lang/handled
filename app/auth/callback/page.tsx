@@ -2,8 +2,16 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { calmLoadingMessages } from "@/lib/calm-system-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { saveGoogleProviderToken } from "@/lib/google-provider-token";
+import { completeAttachInboxFromCallback } from "@/lib/gmail/connect-account-client";
+
+const LOADING_EN = calmLoadingMessages("en");
+
+function defaultLoadingStatus(): string {
+  return LOADING_EN[0] ?? "Just a moment…";
+}
 
 function parseHashTokens(): { access_token: string; refresh_token: string } | null {
   if (typeof window === "undefined") return null;
@@ -19,23 +27,32 @@ function parseHashTokens(): { access_token: string; refresh_token: string } | nu
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [status, setStatus] = useState("Signing you in…");
+  const [status, setStatus] = useState(defaultLoadingStatus);
 
   useEffect(() => {
     let cancelled = false;
 
     async function finishAuth() {
       try {
+        const attach = searchParams.get("attach");
+        const isAttachFlow = attach === "true" || attach === "1";
+        const nextParam = searchParams.get("next");
+        const next =
+          nextParam?.startsWith("/")
+            ? nextParam
+            : isAttachFlow
+              ? "/emails?inbox_added=1"
+              : "/emails";
+
         const code = searchParams.get("code");
 
-        // PKCE ?code= is exchanged in proxy (sets httpOnly cookies for SSR).
-        if (code) {
-          setStatus("Completing sign-in…");
+        if (code && !isAttachFlow) {
+          setStatus(LOADING_EN[0] ?? defaultLoadingStatus());
           await new Promise((r) => setTimeout(r, 150));
-        } else {
+        } else if (!code) {
           const fromHash = parseHashTokens();
           if (fromHash) {
-            setStatus("Completing sign-in…");
+            setStatus(LOADING_EN[0] ?? defaultLoadingStatus());
             const { error } = await supabaseBrowser.auth.setSession({
               access_token: fromHash.access_token,
               refresh_token: fromHash.refresh_token,
@@ -45,8 +62,8 @@ function AuthCallbackContent() {
               if (!cancelled) router.replace("/login?error=oauth");
               return;
             }
-          } else {
-            setStatus("Completing sign-in…");
+          } else if (!isAttachFlow) {
+            setStatus(LOADING_EN[0] ?? defaultLoadingStatus());
             await new Promise((r) => setTimeout(r, 100));
             const { data, error } = await supabaseBrowser.auth.getSession();
             if (error) {
@@ -60,7 +77,30 @@ function AuthCallbackContent() {
                 return;
               }
             }
+          } else {
+            await new Promise((r) => setTimeout(r, 150));
           }
+        }
+
+        if (isAttachFlow) {
+          setStatus("Bringing your inbox into focus…");
+          const result = await completeAttachInboxFromCallback(next);
+          if (!cancelled) {
+            if (typeof window !== "undefined") {
+              window.history.replaceState(null, "", "/auth/callback");
+            }
+            if (!result.ok) {
+              router.replace(
+                `/emails?attach_error=${encodeURIComponent(result.message ?? "attach_failed")}`,
+              );
+              return;
+            }
+            const dest = next.includes("inbox_added")
+              ? next
+              : `${next}${next.includes("?") ? "&" : "?"}inbox_added=1`;
+            router.replace(dest);
+          }
+          return;
         }
 
         const {
@@ -90,11 +130,17 @@ function AuthCallbackContent() {
         }
 
         if (!cancelled) {
-          router.replace("/emails");
+          router.replace(next);
         }
       } catch (e) {
         console.error("[auth/callback] unexpected", e);
-        if (!cancelled) router.replace("/login?error=oauth");
+        const attach = searchParams.get("attach");
+        const isAttachFlow = attach === "true" || attach === "1";
+        if (!cancelled) {
+          router.replace(
+            isAttachFlow ? "/emails?attach_error=unexpected" : "/login?error=oauth",
+          );
+        }
       }
     }
 
@@ -116,7 +162,7 @@ export default function AuthCallbackPage() {
     <Suspense
       fallback={
         <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] px-4">
-          <p className="text-sm text-gray-500">Signing you in…</p>
+          <p className="text-sm text-gray-500">{defaultLoadingStatus()}</p>
         </main>
       }
     >

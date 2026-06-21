@@ -74,7 +74,7 @@ export function analyzeTimelineIntelligence(
     RESOLVED.test(hay) &&
     !awaitingUser &&
     escalation.score < 20 &&
-    row.category === "handled";
+    row.category === "good_to_know";
 
   const conversationStatus = resolveConversationStatus({
     progression,

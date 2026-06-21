@@ -21,15 +21,15 @@ const CLUTTER_STEP_MS = 720;
 
 const INITIAL_COUNTS = {
   attention: 12,
-  quick: 8,
-  fyi: 14,
-  wait: 22,
+  good_to_know: 14,
+  promotions: 22,
+  waiting_on: 8,
 };
 
 const FINAL_COUNTS = {
   inbox: 0,
-  waiting: 3,
-  completed: 41,
+  waiting_on: 3,
+  done: 41,
 };
 
 const PROCESSING_EMAILS = [
@@ -55,9 +55,9 @@ const PROCESSING_EMAILS = [
 
 const CATEGORIES = [
   { key: "attention", label: "Worth your attention", color: "text-violet-700" },
-  { key: "quick", label: "Quick replies", color: "text-teal-700" },
-  { key: "fyi", label: "Good to know", color: "text-slate-600" },
-  { key: "wait", label: "Can wait", color: "text-gray-500" },
+  { key: "good_to_know", label: "Good to know", color: "text-slate-600" },
+  { key: "promotions", label: "Promotions", color: "text-amber-700" },
+  { key: "waiting_on", label: "Waiting on", color: "text-indigo-700" },
 ] as const;
 
 function phaseAtElapsed(ms: number): JourneyPhase {
@@ -103,11 +103,11 @@ function emptyingCounts(ms: number) {
   const ease = 1 - (1 - progress) ** 2;
   return {
     attention: Math.round(INITIAL_COUNTS.attention * (1 - ease)),
-    quick: Math.round(INITIAL_COUNTS.quick * (1 - ease)),
-    fyi: Math.round(INITIAL_COUNTS.fyi * (1 - ease)),
-    wait: Math.round(INITIAL_COUNTS.wait * (1 - ease)),
-    completed: Math.round(FINAL_COUNTS.completed * ease * 0.7),
-    waiting: Math.round(FINAL_COUNTS.waiting * ease),
+    good_to_know: Math.round(INITIAL_COUNTS.good_to_know * (1 - ease)),
+    promotions: Math.round(INITIAL_COUNTS.promotions * (1 - ease)),
+    waiting_on: Math.round(INITIAL_COUNTS.waiting_on * (1 - ease)),
+    done: Math.round(FINAL_COUNTS.done * ease * 0.7),
+    waiting_on_final: Math.round(FINAL_COUNTS.waiting_on * ease),
   };
 }
 
@@ -146,17 +146,17 @@ export function InboxZeroJourney() {
       : phase === "emptying"
         ? {
             attention: emptying.attention,
-            quick: emptying.quick,
-            fyi: emptying.fyi,
-            wait: emptying.wait,
+            good_to_know: emptying.good_to_know,
+            promotions: emptying.promotions,
+            waiting_on: emptying.waiting_on_final,
           }
         : phase === "inbox_zero"
-          ? { attention: 0, quick: 0, fyi: 0, wait: 0 }
+          ? { attention: 0, good_to_know: 0, promotions: 0, waiting_on: 0 }
           : {
               attention: Math.max(0, INITIAL_COUNTS.attention - procIdx * 3),
-              quick: Math.max(0, INITIAL_COUNTS.quick - procIdx * 2),
-              fyi: Math.max(0, INITIAL_COUNTS.fyi - procIdx * 4),
-              wait: Math.max(0, INITIAL_COUNTS.wait - procIdx * 5),
+              good_to_know: Math.max(0, INITIAL_COUNTS.good_to_know - procIdx * 4),
+              promotions: Math.max(0, INITIAL_COUNTS.promotions - procIdx * 5),
+              waiting_on: Math.max(0, INITIAL_COUNTS.waiting_on - procIdx * 2),
             };
 
   const isInboxZero = phase === "inbox_zero";
@@ -260,7 +260,7 @@ export function InboxZeroJourney() {
               <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-white px-4 py-3 text-sm text-gray-500 sm:px-5 sm:py-3.5">
                 <span>Clearing inbox…</span>
                 <span className="tabular-nums">
-                  {emptying.completed} completed · {emptying.waiting} waiting
+                  {emptying.done} completed · {emptying.waiting_on_final} waiting
                 </span>
               </div>
             ) : (
@@ -307,8 +307,8 @@ function InboxZeroPayoff({
       <MentalClutterDrain stepIndex={stepIndex} />
 
       <ul className="mt-6 w-full max-w-xs space-y-2.5 text-center sm:max-w-sm sm:space-y-3">
-        <PayoffLine value={FINAL_COUNTS.completed} label="completed" />
-        <PayoffLine value={FINAL_COUNTS.waiting} label="waiting on" />
+        <PayoffLine value={FINAL_COUNTS.done} label="completed" />
+        <PayoffLine value={FINAL_COUNTS.waiting_on} label="waiting on" />
         {stepIndex >= CLUTTER_LEVELS.length ? (
           <PayoffLine value={0} label="mental clutter" highlight />
         ) : null}

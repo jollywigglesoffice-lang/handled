@@ -10,8 +10,8 @@ export type AttentionLocale = "en" | "it";
 
 export type AttentionSnapshot = {
   needsAttention: number;
-  quickReply: number;
-  handled: number;
+  waitingOn: number;
+  goodToKnow: number;
   newsletter: number;
   promotion: number;
   clutter: number;
@@ -34,14 +34,14 @@ export function pickFocusReassurance(
 export { loadingRhythmMessages };
 
 export function notUrgentSectionReassurance(
-  category: "newsletter" | "promotion" | "clutter",
+  category: "newsletters" | "promotions" | "clutter",
   count: number,
   locale: AttentionLocale,
 ): string {
   if (count === 0) {
     return calmTimeSensitiveHere(locale);
   }
-  if (category === "newsletter") {
+  if (category === "newsletters") {
     return calmCanLikelyWait(locale);
   }
   return calmTimeSensitiveHere(locale);
@@ -54,7 +54,7 @@ export function calmSectionCountLabel(
   locale: AttentionLocale,
 ): string {
   if (count === 0) return "";
-  if (category === "newsletter" || category === "promotion") {
+  if (category === "newsletters" || category === "promotions") {
     return String(count);
   }
   if (count <= 9) return String(count);

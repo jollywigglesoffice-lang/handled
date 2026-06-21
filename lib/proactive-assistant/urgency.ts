@@ -30,7 +30,7 @@ export function scoreProactiveUrgency(input: {
   if (input.daysSinceMessage >= 5) score += 8;
   if (input.daysSinceMessage >= 3) score += 4;
 
-  if (input.category === "promotion" || input.category === "newsletter") {
+  if (input.category === "promotions" || input.category === "newsletters") {
     score = Math.min(score, 35);
   }
 

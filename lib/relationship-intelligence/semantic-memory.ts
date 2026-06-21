@@ -108,10 +108,10 @@ export function semanticForcedCategory(
   if (!profile) return null;
   if (profile.importance === "ignore") return null;
   if (["school", "family", "healthcare", "vip_client"].includes(profile.kind)) {
-    return "needs_attention";
+    return "worth_your_attention";
   }
   if (profile.importance === "vip" || profile.importance === "important") {
-    return "needs_attention";
+    return "worth_your_attention";
   }
   return null;
 }

@@ -65,8 +65,8 @@ export function CompletionActionsSettings() {
           Completion actions
         </h2>
         <p className="mt-1.5 text-sm leading-relaxed text-gray-600">
-          When you tap Done with this, pick what you did — Replied, Saved for reference, or your
-          own shortcuts. Handled learns from these over time (suggestions coming later).
+          When you tap Handled, pick what fits — Replied, Put away, or your own shortcuts.
+          Handled learns from these over time (suggestions coming later).
         </p>
       </div>
 

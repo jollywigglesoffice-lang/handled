@@ -30,7 +30,7 @@ const COPY = {
     search: "Search completed…",
     all: "All",
     empty: "Nothing completed yet",
-    emptyHint: "When you tap Done with this on an email, it lands here.",
+    emptyHint: "When you mark an email as Handled, it lands here.",
     back: "Back to inbox",
   },
   it: {
@@ -39,7 +39,7 @@ const COPY = {
     search: "Cerca nelle completate…",
     all: "Tutte",
     empty: "Nessuna email completata",
-    emptyHint: "Quando tocchi Fatto con questa, l'email compare qui.",
+    emptyHint: "Quando segni un'email come Gestita, compare qui.",
     back: "Torna all'inbox",
   },
 } as const;

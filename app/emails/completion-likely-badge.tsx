@@ -8,6 +8,7 @@ import {
   qualifiesForInboxBadge,
   suggestCompletionAction,
 } from "@/lib/completion-learning/suggest";
+import type { EmailActionState } from "@/lib/action-intelligence/types";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 
 type CompletionLikelyBadgeProps = {
@@ -16,6 +17,7 @@ type CompletionLikelyBadgeProps = {
   subject: string;
   category: InboxAiCategory;
   locale: "en" | "it";
+  actionState?: EmailActionState;
 };
 
 const COPY = {
@@ -29,6 +31,7 @@ export function CompletionLikelyBadge({
   subject,
   category,
   locale,
+  actionState,
 }: CompletionLikelyBadgeProps) {
   const { learning } = useEmailCompletions();
   const { catalog } = useCompletionActions();
@@ -36,6 +39,7 @@ export function CompletionLikelyBadge({
   const t = COPY[locale];
 
   const suggestion = useMemo(() => {
+    if (actionState === "passive") return null;
     const raw = suggestCompletionAction(
       learning,
       { sender, subject, category },
@@ -43,7 +47,7 @@ export function CompletionLikelyBadge({
     );
     if (!raw || !qualifiesForInboxBadge(raw)) return null;
     return raw;
-  }, [learning, sender, subject, category, catalog, locale]);
+  }, [learning, sender, subject, category, catalog, locale, actionState]);
 
   useEffect(() => {
     if (!suggestion || shownRef.current) return;

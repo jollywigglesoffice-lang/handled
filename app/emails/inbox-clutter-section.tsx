@@ -43,21 +43,21 @@ function ClutterBatchGroup({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-white/80">
+    <div>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50/80"
+        className="flex w-full items-start justify-between gap-3 py-2 text-left transition-colors hover:bg-gray-50/50"
         aria-expanded={open}
       >
         <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-800">{batch.label}</p>
-          <p className="mt-0.5 text-xs text-gray-500">{batch.reassurance}</p>
+          <p className="text-sm font-medium text-gray-700">{batch.label}</p>
+          <p className="mt-0.5 text-xs text-gray-400">{batch.reassurance}</p>
         </div>
-        <span className="shrink-0 text-xs text-gray-400">{open ? "Hide" : "Show"}</span>
+        <span className="shrink-0 text-[11px] text-gray-300">{open ? "Hide" : "Show"}</span>
       </button>
       {open ? (
-        <div className="space-y-3 border-t border-gray-50 px-3 pb-3 pt-2">
+        <div className="pb-2">
           {batch.messages.map((message) => (
             <GmailInboxCard
               key={message.id}
@@ -113,18 +113,18 @@ export function InboxClutterSection({
         : `${messages.length} low-priority updates — grouped for you`;
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-gray-50/50 p-5">
+    <section className="border-t border-gray-100 pt-6">
       <button
         type="button"
         onClick={() => setSectionOpen((c) => !c)}
         className="flex w-full items-center justify-between gap-3 text-left"
       >
         <div>
-          <p className="text-sm font-medium text-gray-800">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-400">
             {locale === "it" ? "Aggiornamenti che possono aspettare" : "Updates that can wait"}
           </p>
-          <p className="mt-0.5 text-xs text-gray-500">{summary}</p>
-          <p className="mt-1 text-xs text-gray-400">{reassurance}</p>
+          <p className="mt-1 text-sm text-gray-500">{summary}</p>
+          <p className="mt-0.5 text-[11px] text-gray-300">{reassurance}</p>
           {onOpenPromotionsTab ? (
             <button
               type="button"
@@ -140,11 +140,11 @@ export function InboxClutterSection({
             </button>
           ) : null}
         </div>
-        <span className="text-xs text-gray-400">{sectionOpen ? "Hide" : "Show"}</span>
+        <span className="text-[11px] text-gray-300">{sectionOpen ? "Hide" : "Show"}</span>
       </button>
 
       {sectionOpen ? (
-        <div className="mt-4 space-y-2">
+        <div className="mt-3 divide-y divide-gray-100/80">
           {batches.map((batch) => (
             <ClutterBatchGroup
               key={batch.id}

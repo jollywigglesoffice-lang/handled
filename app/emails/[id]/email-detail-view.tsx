@@ -1,14 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCompletionWorkflow } from "@/app/completion-workflow-context";
 import { useInboxCategories } from "@/app/inbox-categories-context";
 import { EmailStatusBar } from "@/app/components/email-status-bar";
+import { PassiveAwarenessLine } from "@/app/components/passive-awareness-line";
 import { IntentChips } from "@/app/components/intent-chips";
+import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
 import { EmailActions } from "./email-actions";
 import { EmailBody } from "./email-body";
+import { SmartReplyPanel } from "@/app/emails/smart-reply-panel";
+import { EmailSchedulePanel } from "@/app/components/email-schedule-panel";
+import { EmailSoftSchedulingHint } from "@/app/components/email-soft-scheduling-hint";
 import { EmailDetailInsights } from "./email-detail-insights";
 import { RelationshipBadge } from "@/app/emails/relationship-badge";
 import { SenderRelationshipMemoryCard } from "@/app/emails/sender-relationship-memory";
@@ -37,17 +42,24 @@ import { retrieveBrainUsageDto } from "@/lib/knowledge/retrieve";
 import { buildGlancePresentation } from "@/lib/glance-clarity";
 import { recordSenderEmailOpen } from "@/lib/importance-memory";
 import {
+  collectEmailOpened,
+  collectEmailViewedWithoutAction,
+} from "@/lib/memory-engine/collect";
+import {
   getIntelligenceVerbosity,
   recordEmailEngagement,
   showExplicitNextStepLabel,
 } from "@/lib/intelligence-quiet";
-import { buildSituationBundle, buildSituationSummary } from "@/lib/situational-understanding";
+import { buildExtractiveSummary, buildSituationBundle } from "@/lib/situational-understanding";
 import {
   inboxReturnDestinationLabel,
   inboxReturnPath,
   loadInboxReturnContext,
   queueInboxScrollRestore,
 } from "@/lib/inbox-return-context";
+import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
+import type { CategoryApplyScope } from "@/lib/category-correction";
+import { gmailForwardComposeUrl } from "@/lib/gmail-forward-url";
 
 const DETAIL_RETURN_DELAY_MS = 650;
 
@@ -68,6 +80,8 @@ export type EmailDetailPayload = FakeEmail & {
   internalDateMs?: number;
   needsCalendarContext?: boolean;
   schedulingIntentDetected?: boolean;
+  calendarIntentLevel?: import("@/lib/calendar-awareness/types").CalendarIntentLevel;
+  accountId?: string;
   actionIntelligence?: ActionIntelligenceResult;
   timelineIntelligence?: TimelineIntelligenceResult;
   proactiveAssistant?: ProactiveAssistantResult;
@@ -89,6 +103,13 @@ export function EmailDetailView({
   const [replyDraftOverride, setReplyDraftOverride] = useState(
     email.unsubscribeReplyDraft ?? "",
   );
+  const [detailCategory, setDetailCategory] = useState<InboxAiCategory>(
+    email.inboxCategory ?? "worth_your_attention",
+  );
+  const [showCategoryPanel, setShowCategoryPanel] = useState(false);
+  const [categoryFeedback, setCategoryFeedback] = useState<string | null>(null);
+  const guessedCategoryRef = useRef(email.inboxCategory ?? "worth_your_attention");
+  const userActedRef = useRef(false);
   const ui = useUiCopy();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -104,11 +125,29 @@ export function EmailDetailView({
   useEffect(() => {
     recordEmailEngagement();
     recordSenderEmailOpen(email.sender);
-  }, [email.id, email.sender]);
+    void collectEmailOpened({
+      emailId: email.id,
+      accountId,
+      sender: email.sender,
+      subject: email.subject,
+      aiCategory: guessedCategoryRef.current,
+    });
+
+    return () => {
+      if (userActedRef.current) return;
+      void collectEmailViewedWithoutAction({
+        emailId: email.id,
+        accountId,
+        sender: email.sender,
+        subject: email.subject,
+        aiCategory: guessedCategoryRef.current,
+      });
+    };
+  }, [email.id, email.sender, email.subject, accountId]);
 
   const verbosity = useMemo(() => getIntelligenceVerbosity(), [email.id]);
 
-  const category = email.inboxCategory ?? "needs_attention";
+  const category = detailCategory;
   const haystack = `${email.sender} ${email.subject} ${email.summary} ${email.bodyPlain ?? ""}`;
 
   const situation = useMemo(() => {
@@ -134,15 +173,15 @@ export function EmailDetailView({
 
   const summary =
     email.aiSummary?.trim() ||
-    buildSituationSummary(
-      { sender: email.sender, subject: email.subject, snippet: email.summary },
+    buildExtractiveSummary(
+      { sender: email.sender, subject: email.subject, snippet: email.summary, bodyPlain: email.bodyPlain },
       category,
       { category, locale, relationship: email.relationship },
     );
 
   const displaySummary =
     summary &&
-    !/needs attention|likely needs|scheduling request detected|ai detected|handled suggests|no summary available/i.test(
+    !/needs attention|likely needs|scheduling request|trying to schedule|needs confirmation|needs you to|is asking|ai detected|handled suggests|no summary available/i.test(
       summary,
     )
       ? summary
@@ -194,8 +233,13 @@ export function EmailDetailView({
   }, [email, category, locale]);
 
   const ambientLines = useMemo(
-    () => mergeAmbientContextLines(continuity.lines, anticipatory.contextLines, 1),
-    [continuity.lines, anticipatory.contextLines],
+    () =>
+      mergeAmbientContextLines(
+        situation.interpretation ? [situation.interpretation, ...continuity.lines] : continuity.lines,
+        anticipatory.contextLines,
+        2,
+      ),
+    [continuity.lines, anticipatory.contextLines, situation.interpretation],
   );
 
   const rawNextStep = anticipatory.likelyNextStep ?? situation.nextStep;
@@ -222,8 +266,52 @@ export function EmailDetailView({
     ],
   );
 
-  const shouldPrefetch =
-    showActions && (email.replyRecommended ?? true) && category !== "handled";
+  const shouldPrefetch = showActions;
+
+  const forwardHref = useMemo(
+    () =>
+      gmailForwardComposeUrl({
+        subject: email.subject,
+        body: email.bodyPlain ?? email.body,
+        sender: email.sender,
+      }),
+    [email.subject, email.bodyPlain, email.body, email.sender],
+  );
+
+  const handleCategoryApply = useCallback(
+    async (chosen: InboxAiCategory, scope: CategoryApplyScope) => {
+      userActedRef.current = true;
+      setDetailCategory(chosen);
+      setShowCategoryPanel(false);
+      try {
+        const result = await submitCategoryFeedback({
+          emailId: email.id,
+          sender: email.sender,
+          subject: email.subject,
+          snippet: email.summary,
+          guessedCategory: guessedCategoryRef.current,
+          chosenCategory: chosen,
+          scope,
+          accountId,
+        });
+        guessedCategoryRef.current = chosen;
+        setCategoryFeedback(result.message);
+        if (scope === "this_email") {
+          window.dispatchEvent(new Event("handled-email-overrides-changed"));
+        } else {
+          window.dispatchEvent(new Event("handled-inbox-rules-changed"));
+          window.dispatchEvent(new Event("handled-sender-preferences-changed"));
+          window.dispatchEvent(new Event("handled-inbox-refresh-requested"));
+        }
+      } catch (error) {
+        setCategoryFeedback(
+          error instanceof Error ? error.message : "Could not save category.",
+        );
+      }
+      window.setTimeout(() => setCategoryFeedback(null), 4000);
+    },
+    [email.id, email.sender, email.subject, email.summary, accountId],
+  );
 
   const backHref = inboxReturnPath(returnContext);
   const backLabel = useMemo(() => {
@@ -234,6 +322,7 @@ export function EmailDetailView({
 
   const handleCompleted = useCallback(
     ({ actionId, actionLabel }: { actionId: CompletionActionId; actionLabel: string }) => {
+      userActedRef.current = true;
       const returningTo = inboxReturnDestinationLabel(returnContext, category, locale, catalog);
       notifyCompleted({
         emailIds: [email.id],
@@ -283,8 +372,37 @@ export function EmailDetailView({
             category={category}
             locale={locale}
             variant="detail"
+            actionable={email.actionIntelligence?.actionable}
+            actionState={email.actionIntelligence?.actionState}
+            forwardHref={forwardHref}
+            onOpenChangeCategory={() => setShowCategoryPanel((v) => !v)}
             onCompleted={handleCompleted}
           />
+
+          {email.actionIntelligence?.actionState === "passive" ? (
+            <PassiveAwarenessLine locale={locale} />
+          ) : null}
+
+          {showCategoryPanel ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <CategoryCorrectionPanel
+                compact
+                target={{
+                  id: email.id,
+                  sender: email.sender,
+                  subject: email.subject,
+                  snippet: email.summary,
+                  guessedCategory: guessedCategoryRef.current,
+                }}
+                onApply={(chosen, scope) => void handleCategoryApply(chosen, scope)}
+                onDismiss={() => setShowCategoryPanel(false)}
+              />
+            </div>
+          ) : null}
+
+          {categoryFeedback ? (
+            <p className="text-xs font-medium text-emerald-700">{categoryFeedback}</p>
+          ) : null}
 
           <p className="text-sm text-gray-500">{email.sender}</p>
 
@@ -328,12 +446,41 @@ export function EmailDetailView({
         </article>
 
         {showActions ? (
-          <section className="mt-6">
+          <section className="mt-6 space-y-6">
+            {email.calendarIntentLevel === "SCHEDULE_REQUIRED" ? (
+              <EmailSchedulePanel
+                embedded
+                emailId={email.id}
+                sender={email.sender}
+                subject={email.subject}
+                locale={locale}
+                accountId={accountId ?? email.accountId}
+                onDraftReply={(text) => setReplyDraftOverride(text)}
+              />
+            ) : email.calendarIntentLevel === "SOFT_SCHEDULING" ? (
+              <EmailSoftSchedulingHint locale={locale} />
+            ) : null}
+            <SmartReplyPanel
+              emailId={email.id}
+              accountId={accountId ?? email.accountId}
+              sender={email.sender}
+              subject={email.subject}
+              snippet={email.summary}
+              emailContent={email.replyContext ?? email.bodyPlain ?? email.body}
+              category={category}
+              locale={locale}
+              forceOffer
+              embedded
+              initialDraft={replyDraftOverride || undefined}
+              onDismiss={() => {}}
+            />
+            <div>
             <h2 className="mb-3 text-xs font-medium text-gray-400">
-              {locale === "it" ? "Bozza di risposta" : "Draft reply"}
+              {locale === "it" ? "Compositore avanzato" : "Advanced composer"}
             </h2>
             <EmailActions
               calmLayout
+              alwaysOfferReply
               anticipatoryPrefetch
               emailId={email.id}
               emailContent={email.replyContext ?? email.body}
@@ -341,13 +488,14 @@ export function EmailDetailView({
               subject={email.subject}
               snippet={email.summary}
               suggestedReply={replyDraftOverride || email.suggestedReply}
-              inboxCategory={email.inboxCategory}
+              inboxCategory={category}
               replyRecommended={email.replyRecommended ?? true}
               replySuppressedReason={email.replySuppressedReason}
               suggestedTriageAction={email.suggestedTriageAction}
               followUpAnalysis={email.followUpAnalysis}
               relationship={email.relationship}
             />
+            </div>
           </section>
         ) : null}
 

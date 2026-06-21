@@ -85,17 +85,17 @@ export function detectMessageBriefingSignals(
   );
 
   const promotionUnsubscribe =
-    category === "promotion" &&
+    category === "promotions" &&
     (Boolean(m.hasUnsubscribeSignal) || /unsubscribe|opt.?out/i.test(hay));
 
   const opportunity =
-    category === "needs_attention" && OPPORTUNITY.test(hay);
+    category === "worth_your_attention" && OPPORTUNITY.test(hay);
 
   const needsReply =
     Boolean(options?.needsReply) &&
-    category !== "promotion" &&
-    category !== "newsletter" &&
-    category !== "handled";
+    category !== "promotions" &&
+    category !== "newsletters" &&
+    category !== "good_to_know";
 
   return {
     emailId: m.id,
@@ -110,6 +110,6 @@ export function detectMessageBriefingSignals(
     opportunity: opportunity && OPPORTUNITY.test(hay),
     promotionUnsubscribe,
     vipInactiveDays: options?.vipInactiveDays,
-    handledYesterday: category === "handled" && isYesterday(msForMessage(m)),
+    handledYesterday: category === "good_to_know" && isYesterday(msForMessage(m)),
   };
 }

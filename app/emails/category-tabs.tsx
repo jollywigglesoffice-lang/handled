@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useInboxCategories } from "@/app/inbox-categories-context";
-import { inboxCategoryTitle, type InboxAiCategory } from "@/lib/inbox-category-catalog";
+import { CANONICAL_CATEGORY_ORDER } from "@/lib/inbox-ai-categories";
+import { inboxModeTitle, type InboxModeLocale } from "@/lib/inbox-modes";
+import type { InboxAiCategory } from "@/lib/inbox-category-catalog";
 
 export type CategoryTab = InboxAiCategory | "all";
 
@@ -10,8 +11,7 @@ type CategoryTabsProps = {
   active: CategoryTab;
   counts: Record<string, number>;
   total: number;
-  locale: "en" | "it";
-  waitingCount: number;
+  locale: InboxModeLocale;
   completedCount: number;
   onChange: (tab: CategoryTab) => void;
 };
@@ -21,52 +21,41 @@ export function CategoryTabs({
   counts,
   total,
   locale,
-  waitingCount,
   completedCount,
   onChange,
 }: CategoryTabsProps) {
   const { catalog } = useInboxCategories();
-  const allLabel = locale === "it" ? "Tutte" : "All";
-  const waitingLabel = locale === "it" ? "In attesa" : "Waiting On";
-  const completedLabel = locale === "it" ? "Completate" : "Completed";
+  const allLabel = locale === "it" ? "Tutto" : "All";
+
+  const tabOrder = CANONICAL_CATEGORY_ORDER.filter((id) =>
+    catalog.allIds.includes(id),
+  );
 
   return (
     <nav
-      aria-label={locale === "it" ? "Categorie" : "Categories"}
-      className="-mx-1 flex flex-nowrap items-center gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      aria-label={locale === "it" ? "Categorie inbox" : "Inbox categories"}
+      className="-mx-1 flex flex-nowrap items-end gap-4 overflow-x-auto border-b border-gray-100 px-1 pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <TabPill
+      <ModeTab
         label={allLabel}
         count={total}
         active={active === "all"}
         onClick={() => onChange("all")}
       />
-      {catalog.tabOrder.map((category) => (
-        <TabPill
+      {tabOrder.map((category) => (
+        <ModeTab
           key={category}
-          label={inboxCategoryTitle(category, locale, catalog)}
+          label={inboxModeTitle(category, locale, catalog)}
           count={counts[category] ?? 0}
           active={active === category}
           onClick={() => onChange(category)}
         />
       ))}
-      <ViewLinkPill
-        href="/emails/waiting"
-        label={waitingLabel}
-        count={waitingCount}
-        active={false}
-      />
-      <ViewLinkPill
-        href="/emails/completed"
-        label={completedLabel}
-        count={completedCount}
-        active={false}
-      />
     </nav>
   );
 }
 
-function TabPill({
+function ModeTab({
   label,
   count,
   active,
@@ -82,58 +71,31 @@ function TabPill({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={pillClass(active)}
+      className={`group relative shrink-0 pb-2.5 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
+        active
+          ? "font-medium text-gray-900"
+          : "font-normal text-gray-400 hover:text-gray-600"
+      }`}
     >
-      <PillContent label={label} count={count} active={active} />
+      <span className="inline-flex items-center gap-1.5">
+        {label}
+        {count > 0 ? (
+          <span
+            className={`tabular-nums text-xs ${
+              active ? "text-gray-400" : "text-gray-300 group-hover:text-gray-400"
+            }`}
+          >
+            {count}
+          </span>
+        ) : null}
+      </span>
+      {active ? (
+        <span
+          className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-gray-900"
+          aria-hidden
+        />
+      ) : null}
     </button>
   );
 }
 
-function ViewLinkPill({
-  href,
-  label,
-  count,
-  active,
-}: {
-  href: string;
-  label: string;
-  count: number;
-  active: boolean;
-}) {
-  return (
-    <Link href={href} className={pillClass(active)} aria-current={active ? "page" : undefined}>
-      <PillContent label={label} count={count} active={active} />
-    </Link>
-  );
-}
-
-function PillContent({
-  label,
-  count,
-  active,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-}) {
-  return (
-    <>
-      <span>{label}</span>
-      <span
-        className={`min-w-4 rounded-full px-1 text-center text-xs tabular-nums transition ${
-          active ? "bg-white/20 text-white" : "text-gray-400 group-hover:text-accent"
-        }`}
-      >
-        {count}
-      </span>
-    </>
-  );
-}
-
-function pillClass(active: boolean): string {
-  return `group inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-    active
-      ? "bg-[#9733ff] text-white shadow-sm shadow-accent/20"
-      : "bg-gray-50 text-gray-600 hover:bg-accent-muted hover:text-accent"
-  }`;
-}

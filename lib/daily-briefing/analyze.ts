@@ -45,7 +45,7 @@ export function analyzeDailyBriefing(
     meetings: 0,
     payments: 0,
     opportunities: 0,
-    promotionsUnsubscribe: 0,
+    promotionUnsubscribe: 0,
   };
 
   if (!input.messages.length) {
@@ -117,7 +117,7 @@ export function analyzeDailyBriefing(
     meetings: signals.filter((s) => s.meeting).length,
     payments: signals.filter((s) => s.payment).length,
     opportunities: signals.filter((s) => s.opportunity).length,
-    promotionsUnsubscribe: signals.filter((s) => s.promotionUnsubscribe).length,
+    promotionUnsubscribe: signals.filter((s) => s.promotionUnsubscribe).length,
   };
 
   const highlights = buildBriefingHighlights(stats, locale);

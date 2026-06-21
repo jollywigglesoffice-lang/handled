@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { saveGoogleProviderToken } from "@/lib/google-provider-token";
-import { getOAuthRedirectOrigin } from "@/lib/auth/app-origin";
+import { isBetaMode } from "@/lib/beta-mode";
+import { GoogleSignInButton, WelcomeLanding } from "@/app/components/welcome-landing";
+import { startGoogleOAuth } from "@/lib/auth/start-google-oauth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -56,31 +57,27 @@ export default function LoginPage() {
     setOauthLoading(true);
 
     try {
-      const redirectTo = `${getOAuthRedirectOrigin()}/auth/callback?next=${encodeURIComponent(next)}`;
-
-      const { error } = await supabaseBrowser.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo,
-          scopes:
-            "https://www.googleapis.com/auth/gmail.modify openid email profile",
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
-        },
-      });
-
-      if (error) {
-        console.error("Google OAuth error", error);
-        setAuthError(error.message);
-      }
+      const { error } = await startGoogleOAuth(next);
+      if (error) setAuthError(error);
     } catch (error) {
       console.error("Google OAuth failed", error);
       setAuthError("Could not start Google sign-in. Please try again.");
     } finally {
       setOauthLoading(false);
     }
+  }
+
+  if (isBetaMode()) {
+    return (
+      <WelcomeLanding>
+        {authError ? (
+          <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {authError}
+          </p>
+        ) : null}
+        <GoogleSignInButton onClick={() => void handleGoogleSignIn()} loading={oauthLoading} />
+      </WelcomeLanding>
+    );
   }
 
   async function handleAuthSubmit() {
@@ -188,16 +185,24 @@ export default function LoginPage() {
             Handled
           </p>
           <h1 className="mt-1 text-2xl font-semibold text-gray-900">
-            {authMode === "login" ? "Sign in to continue" : "Create your account"}
+            {isBetaMode()
+              ? "Get through email faster"
+              : authMode === "login"
+                ? "Sign in to continue"
+                : "Create your account"}
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-gray-500">
-            Save your replies, preferences, usage, and Pro access across devices.
+            {isBetaMode()
+              ? "Sign in with Google and your inbox loads immediately."
+              : "Save your replies, preferences, usage, and Pro access across devices."}
           </p>
         </div>
 
+        {!isBetaMode() ? (
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800">
           🔒 Handled helps draft replies, but never sends emails without your approval.
         </div>
+        ) : null}
 
         {authNotice && (
           <div className="rounded-xl border border-accent/20 bg-accent-muted px-4 py-3 text-sm font-semibold leading-relaxed text-accent">
@@ -240,6 +245,7 @@ export default function LoginPage() {
             {oauthLoading ? "Redirecting…" : "Continue with Google"}
           </button>
 
+          {!isBetaMode() ? (
           <div className="relative py-1">
             <div className="absolute inset-0 flex items-center" aria-hidden="true">
               <div className="w-full border-t border-gray-200" />
@@ -248,8 +254,10 @@ export default function LoginPage() {
               <span className="bg-white px-2 font-medium text-gray-400">or</span>
             </div>
           </div>
+          ) : null}
         </div>
 
+        {!isBetaMode() ? (
         <div className="space-y-2">
           <input
             type="email"
@@ -336,6 +344,7 @@ export default function LoginPage() {
               : "Already have an account? Sign in"}
           </button>
         </div>
+        ) : null}
       </section>
     </main>
   );

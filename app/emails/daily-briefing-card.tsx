@@ -16,6 +16,7 @@ import {
   saveVisitSnapshot,
 } from "@/lib/daily-briefing/visit-snapshot";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { calmEmptyMessages } from "@/lib/calm-system-copy";
 import { formatDuration } from "@/lib/inbox-zero/estimate";
 import { captureInboxReturnFromOpen } from "@/lib/inbox-return-context";
 
@@ -35,7 +36,7 @@ const COPY = {
     startInboxZero: "Start Inbox Zero",
     quickReplies: "Quick replies",
     clearPromotions: "Clear promotions",
-    allClear: "You're all caught up.",
+    allClear: calmEmptyMessages("en")[2]!,
   },
   it: {
     whatChanged: "Cosa è cambiato",
@@ -43,7 +44,7 @@ const COPY = {
     startInboxZero: "Avvia Inbox Zero",
     quickReplies: "Risposte veloci",
     clearPromotions: "Svuota promozioni",
-    allClear: "Sei in pari.",
+    allClear: calmEmptyMessages("it")[2]!,
   },
 } as const;
 
@@ -122,8 +123,7 @@ export function DailyBriefingCard({
   ]);
 
   const hasWork =
-    counts.needs_attention > 0 ||
-    counts.quick_reply > 0 ||
+    counts.worth_your_attention > 0 ||
     waitingResponseRecords.length > 0 ||
     waitingOpenRecords.length > 0;
 
@@ -142,7 +142,7 @@ export function DailyBriefingCard({
     );
   }
 
-  const showActions = hasWork || counts.promotion > 0;
+  const showActions = hasWork || counts.promotions > 0;
 
   return (
     <section className="rounded-2xl border border-[#E2E8F0] bg-[#FAFBFC] px-5 py-5 sm:px-6">
@@ -217,10 +217,12 @@ export function DailyBriefingCard({
           >
             {t.startInboxZero}
           </button>
-          {counts.quick_reply > 0 ? (
-            <BriefingAction onClick={onHandleQuickReplies}>{t.quickReplies}</BriefingAction>
+          {counts.worth_your_attention > 0 ? (
+            <BriefingAction onClick={onHandleQuickReplies}>
+              {locale === "it" ? "Gestisci priorità" : "Handle priorities"}
+            </BriefingAction>
           ) : null}
-          {counts.promotion > 0 ? (
+          {counts.promotions > 0 ? (
             <BriefingAction onClick={onClearPromotions}>{t.clearPromotions}</BriefingAction>
           ) : null}
         </div>

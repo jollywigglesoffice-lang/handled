@@ -143,7 +143,7 @@ export function buildWorkspaceItemsForMessage(
     followUp?.state === "follow_up_recommended" ||
     followUp?.state === "user_commitment_pending" ||
     followUp?.state === "pending_payment" ||
-    (replyNeed.recommended && m.category !== "promotion" && m.category !== "newsletter")
+    (replyNeed.recommended && m.category !== "promotions" && m.category !== "newsletters")
   ) {
     if (priorityScore >= FOCUS_MIN_SCORE) {
       let kind: WorkspaceItemKind = "reply";
@@ -170,7 +170,7 @@ export function buildWorkspaceItemsForMessage(
     }
   }
 
-  if (m.category === "promotion" && m.hasUnsubscribeSignal) {
+  if (m.category === "promotions" && m.hasUnsubscribeSignal) {
     items.push(
       item(
         m,
@@ -185,7 +185,7 @@ export function buildWorkspaceItemsForMessage(
     );
   }
 
-  if (m.category === "promotion" || m.category === "newsletter") {
+  if (m.category === "promotions" || m.category === "newsletters") {
     if (priorityScore < 35) {
       items.push(
         item(

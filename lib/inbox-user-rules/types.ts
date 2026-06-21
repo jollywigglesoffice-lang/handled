@@ -55,7 +55,7 @@ export type InboxRuleAction =
 
 export type UserRulePreResult =
   | { kind: "force"; category: InboxAiCategory; ruleId: string; label?: string }
-  | { kind: "block"; category: "handled"; ruleId: string; label?: string }
+  | { kind: "block"; category: "good_to_know"; ruleId: string; label?: string }
   | null;
 
 export type UserRulePostResult = {

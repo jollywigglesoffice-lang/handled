@@ -91,7 +91,7 @@ export function UnsubscribeIntelligenceCard({
             sender,
             subject,
             snippet,
-            guessedCategory: inboxCategory ?? "promotion",
+            guessedCategory: inboxCategory ?? "promotions",
           },
           action,
         );

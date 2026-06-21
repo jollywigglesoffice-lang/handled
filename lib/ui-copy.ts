@@ -1,4 +1,9 @@
 import type { AppUiLanguage } from "@/app/user-preferences-context";
+import {
+  calmEmptyMessages,
+  calmLoadingMessages,
+  calmRetryLabel,
+} from "@/lib/calm-system-copy";
 
 export type UiLocale = "en" | "it" | "es" | "fr" | "de";
 
@@ -236,6 +241,7 @@ type UiCopy = {
     settingsButton: string;
     quickTopLine: string;
     heroTitle: string;
+    inboxTagline: string;
     heroDescription: string;
     allCaughtUp: string;
     everythingHandledEmpty: string;
@@ -258,21 +264,21 @@ const en: UiCopy = {
   },
   calm: {
     errors: {
-      title: "Something didn't come through",
-      tryAgain: "Try again",
+      title: "Something got away from us",
+      tryAgain: calmRetryLabel("en"),
       showDetails: "Technical details",
     },
     empty: {
-      manageable: "Everything looks manageable right now.",
+      manageable: calmEmptyMessages("en")[2]!,
       clearedNoise: "The rest is set aside for later.",
-      noUnresolved: "No unresolved conversations at the moment.",
-      nothingOverdue: "Nothing important appears overdue.",
+      noUnresolved: calmEmptyMessages("en")[0]!,
+      nothingOverdue: calmEmptyMessages("en")[2]!,
       noBody: "The message body wasn't available — the thread is still here.",
       noTriageNotes: "Nothing extra to add for this one.",
     },
     loading: {
       openingEmail: "Opening this for you…",
-      checkingInbox: "Checking for updates…",
+      checkingInbox: "Listening for new messages…",
     },
   },
   sections: {
@@ -488,7 +494,7 @@ const en: UiCopy = {
     onboardingLine2:
       "Generate a reply, edit it, and copy it into your email app.",
     dismiss: "Dismiss",
-    organizingInbox: "Preparing your inbox…",
+    organizingInbox: calmLoadingMessages("en")[0]!,
     todayTitle: "Today",
     attentionCountSingle: "conversation may need you",
     attentionCountPlural: "conversations may need you",
@@ -496,23 +502,20 @@ const en: UiCopy = {
     brandTag: "Handled",
     settingsButton: "Settings",
     quickTopLine: "A calmer read on your inbox",
-    heroTitle: "Your inbox. Handled.",
+    heroTitle: "Your inbox… Handled",
+    inboxTagline: "Everything is here. Handled quietly helps you focus.",
     heroDescription:
       "See what may need you, what is already quiet, and what can stay out of sight for now.",
-    allCaughtUp: "Everything looks manageable right now.",
+    allCaughtUp: calmEmptyMessages("en")[2]!,
     everythingHandledEmpty: "The rest is set aside for later.",
     comeBackLater: "New mail will show up when it arrives.",
-    loadingMicroMessages: [
-      "Preparing your inbox…",
-      "Looking for what actually matters…",
-      "Getting things organized…",
-    ],
-    inboxLoadingTitle: "Preparing your inbox…",
-    emptyGmailInbox: "Your Gmail inbox is quiet — nothing to sort right now.",
-    inboxErrorTitle: "Handled couldn't load your inbox",
-    connectGmailTitle: "Connect Gmail when you're ready",
+    loadingMicroMessages: calmLoadingMessages("en"),
+    inboxLoadingTitle: calmLoadingMessages("en")[0]!,
+    emptyGmailInbox: calmEmptyMessages("en")[1]!,
+    inboxErrorTitle: "Your inbox isn't reachable just now",
+    connectGmailTitle: "Add your first inbox",
     connectGmailBody:
-      "Sign in with Google so Handled can read your inbox calmly — read-only, nothing sends without you.",
+      "Sign in with Google once. After that, attach more inboxes anytime — no extra logins.",
     handledSectionEmpty: "Nothing queued here — suggestions appear when they help.",
     handledToday: "Today",
     completedSuffix: "completed",
@@ -525,21 +528,21 @@ const it: UiCopy = {
   },
   calm: {
     errors: {
-      title: "Qualcosa non e arrivato",
-      tryAgain: "Riprova",
+      title: "Qualcosa ci è sfuggito",
+      tryAgain: calmRetryLabel("it"),
       showDetails: "Dettagli tecnici",
     },
     empty: {
-      manageable: "Tutto sembra gestibile adesso.",
+      manageable: calmEmptyMessages("it")[2]!,
       clearedNoise: "Il resto è messo da parte per dopo.",
-      noUnresolved: "Nessuna conversazione irrisolta al momento.",
-      nothingOverdue: "Niente di importante sembra in ritardo.",
+      noUnresolved: calmEmptyMessages("it")[0]!,
+      nothingOverdue: calmEmptyMessages("it")[2]!,
       noBody: "Il testo non era disponibile — il thread resta qui.",
       noTriageNotes: "Niente da aggiungere per questa.",
     },
     loading: {
       openingEmail: "La sto aprendo per te…",
-      checkingInbox: "Controllo gli aggiornamenti…",
+      checkingInbox: "Ascolto i nuovi messaggi…",
     },
   },
   sections: {
@@ -765,7 +768,7 @@ const it: UiCopy = {
     onboardingLine2:
       "Genera una risposta, modificala e copiala nella tua app email.",
     dismiss: "Chiudi",
-    organizingInbox: "Preparo la tua inbox…",
+    organizingInbox: calmLoadingMessages("it")[0]!,
     todayTitle: "Oggi",
     attentionCountSingle: "conversazione potrebbe richiederti",
     attentionCountPlural: "conversazioni potrebbero richiederti",
@@ -773,23 +776,20 @@ const it: UiCopy = {
     brandTag: "Handled",
     settingsButton: "Impostazioni",
     quickTopLine: "Gestisci le email in pochi secondi",
-    heroTitle: "La tua inbox. Gestita.",
+    heroTitle: "La tua inbox… Gestita",
+    inboxTagline: "Tutto è qui. Handled ti aiuta a focalizzarti, con calma.",
     heroDescription:
       "Uno spazio calmo per vedere cosa richiede attenzione, cosa e gia stato gestito e cosa puo restare fuori vista.",
-    allCaughtUp: "Tutto sembra gestibile adesso.",
+    allCaughtUp: calmEmptyMessages("it")[2]!,
     everythingHandledEmpty: "Il resto è messo da parte per dopo.",
     comeBackLater: "Le nuove email compariranno quando arrivano.",
-    loadingMicroMessages: [
-      "Preparo la tua inbox…",
-      "Cerco cio che conta davvero…",
-      "Metto tutto in ordine…",
-    ],
-    inboxLoadingTitle: "Preparo la tua inbox…",
-    emptyGmailInbox: "La tua Gmail e tranquilla — niente da ordinare ora.",
-    inboxErrorTitle: "Handled non ha caricato la inbox",
-    connectGmailTitle: "Collega Gmail quando vuoi",
+    loadingMicroMessages: calmLoadingMessages("it"),
+    inboxLoadingTitle: calmLoadingMessages("it")[0]!,
+    emptyGmailInbox: calmEmptyMessages("it")[1]!,
+    inboxErrorTitle: "La inbox non è raggiungibile adesso",
+    connectGmailTitle: "Aggiungi la prima inbox",
     connectGmailBody:
-      "Accedi con Google cosi Handled legge la inbox con calma — solo lettura, nulla parte senza di te.",
+      "Accedi con Google una volta. Poi allega altre inbox quando vuoi — senza altri login.",
     handledSectionEmpty:
       "Niente in coda — i suggerimenti compaiono quando servono.",
     handledToday: "Oggi",

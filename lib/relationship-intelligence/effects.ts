@@ -27,11 +27,11 @@ export function shouldHideForRelationship(
   const profileMode = getWorkflowModeProfile(mode);
   if (!profileMode.hidePromotionsInList) return false;
   return (
-    profile.kind === "newsletter" ||
-    profile.kind === "promotion" ||
+    profile.kind === "newsletters" ||
+    profile.kind === "promotions" ||
     profile.kind === "marketing" ||
-    category === "newsletter" ||
-    category === "promotion"
+    category === "newsletters" ||
+    category === "promotions"
   );
 }
 
@@ -43,33 +43,33 @@ export function applyRelationshipToCategory(
   if (!profile) return category;
 
   if (profile.importance === "ignore") {
-    if (category !== "needs_attention") return "handled";
+    if (category !== "worth_your_attention") return "good_to_know";
   }
 
   if (profile.importance === "vip" || profile.kind === "vip_client") {
-    if (category === "handled" || category === "promotion" || category === "newsletter") {
-      return "needs_attention";
+    if (category === "good_to_know" || category === "promotions" || category === "newsletters") {
+      return "worth_your_attention";
     }
   }
 
   if (profile.kind === "family" || profile.kind === "school" || profile.kind === "healthcare") {
     if (
-      category === "promotion" ||
-      category === "newsletter" ||
-      category === "handled"
+      category === "promotions" ||
+      category === "newsletters" ||
+      category === "good_to_know"
     ) {
-      return "needs_attention";
+      return "worth_your_attention";
     }
   }
 
   if (profile.importance === "important") {
-    if (category === "handled" || category === "promotion" || category === "newsletter") {
-      return "needs_attention";
+    if (category === "good_to_know" || category === "promotions" || category === "newsletters") {
+      return "worth_your_attention";
     }
   }
 
-  if (profile.kind === "team" && category === "handled") {
-    return "quick_reply";
+  if (profile.kind === "team" && category === "good_to_know") {
+    return "worth_your_attention";
   }
 
   return category;
@@ -96,9 +96,9 @@ export function relationshipReplyDirective(
     team: "Relationship: teammate — collaborative, direct, friendly-professional.",
     billing:
       "Relationship: billing — factual and brief unless they asked a question.",
-    newsletter:
+    newsletters:
       "Relationship: newsletter — only reply if they asked something; otherwise minimal.",
-    promotion: "Relationship: promotional — do not sound eager; brief or skip reply.",
+    promotions: "Relationship: promotional — do not sound eager; brief or skip reply.",
     marketing: "Relationship: marketing — neutral, brief.",
   };
 

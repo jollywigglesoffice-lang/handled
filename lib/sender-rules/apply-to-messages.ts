@@ -31,7 +31,10 @@ export function applySenderRuleToMessages<T extends InboxMessageForSenderApply>(
   const next = messages.map((m) => {
     if (!senderMatchesPreference({ sender: m.sender }, pref)) return m;
     // The email the user acted on may move; other manually-set emails may not.
-    if (m.categorySource === "manual_override" && m.id !== options?.triggerEmailId) {
+    if (
+      (m.categorySource === "manual_override" || m.categorySource === "memory_rule") &&
+      m.id !== options?.triggerEmailId
+    ) {
       return m;
     }
     if (m.category === category) return m;

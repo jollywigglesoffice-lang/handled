@@ -5,24 +5,56 @@ import {
   toEnrichmentMeta,
 } from "@/lib/email-detail-enrichment";
 import { gmailGetMessageFull, gmailGetMessageMetadata } from "@/lib/gmail-api";
+import { resolveEmailDisplayBody } from "@/lib/gmail-extract-body";
 
 type GmailMessageFull = Awaited<ReturnType<typeof gmailGetMessageFull>>;
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 import { assessReplyNeed } from "@/lib/reply-necessity";
 import { heuristicEmailSummary } from "@/lib/email-summary";
-import { isLikelyHtml } from "@/lib/is-likely-html";
 import type { InboxSectionTitle } from "@/lib/fake-emails";
 import { parseWorkflowMode, type WorkflowMode } from "@/lib/workflow-mode";
 
 function legacySectionForCategory(category: InboxAiCategory): InboxSectionTitle {
-  if (category === "needs_attention" || category === "quick_reply") {
+  if (category === "worth_your_attention") {
     return "Needs Your Attention";
   }
-  if (category === "promotion" || category === "newsletter") {
+  if (category === "promotions" || category === "newsletters") {
     return "Hidden Inbox";
   }
   return "Handled For You";
+}
+
+/** Guarantee subject, sender, and body or snippet for every email detail response. */
+export function ensureMinimumEmailDetail(
+  email: EmailDetailPayload,
+): EmailDetailPayload {
+  const sender = email.sender?.trim() || "Unknown sender";
+  const subject = email.subject?.trim() || "(No subject)";
+  const snippet = email.summary?.trim() ?? "";
+  const { bodyText, bodyHtml } = resolveEmailDisplayBody({
+    bodyPlain: email.bodyPlain ?? email.body ?? "",
+    bodyHtml: email.bodyHtml ?? "",
+    snippet,
+  });
+
+  return {
+    ...email,
+    sender,
+    subject,
+    body: bodyText,
+    bodyPlain: bodyText,
+    bodyHtml: bodyHtml || email.bodyHtml,
+    summary: snippet || email.summary,
+  };
+}
+
+export function emailDetailHasDisplayContent(email: EmailDetailPayload): boolean {
+  const sender = email.sender?.trim();
+  const subject = email.subject?.trim();
+  const body = (email.bodyPlain ?? email.body ?? "").trim();
+  const snippet = email.summary?.trim();
+  return Boolean(sender && subject && (body || snippet));
 }
 
 export async function buildEmailDetailFromGmailMessage(
@@ -33,8 +65,11 @@ export async function buildEmailDetailFromGmailMessage(
 ): Promise<EmailDetailPayload> {
   const bodyHtml = msg.bodyHtml?.trim() ?? "";
   const bodyPlain = msg.bodyText?.trim() ?? "";
-  const displayPlain =
-    bodyPlain && !isLikelyHtml(bodyPlain) ? bodyPlain : msg.snippet || "";
+  const { bodyText: displayPlain, bodyHtml: displayHtml } = resolveEmailDisplayBody({
+    bodyPlain,
+    bodyHtml,
+    snippet: msg.snippet ?? "",
+  });
 
   const meta = toEnrichmentMeta({
     id: msg.id,
@@ -48,7 +83,7 @@ export async function buildEmailDetailFromGmailMessage(
 
   const intel = await enrichEmailDetailIntelligence(meta, userId, workflowMode, {
     displayPlain,
-    bodyHtml,
+    bodyHtml: displayHtml,
     listUnsubscribe: msg.listUnsubscribe,
     listUnsubscribePost: msg.listUnsubscribePost,
     locale: "en",
@@ -70,7 +105,7 @@ export async function buildEmailDetailFromGmailMessage(
     workflowMode,
   });
 
-  return {
+  return ensureMinimumEmailDetail({
     id: msg.id,
     section: legacySectionForCategory(intel.category),
     sender: msg.sender,
@@ -85,6 +120,7 @@ export async function buildEmailDetailFromGmailMessage(
     needsCalendarContext: intel.calendarAwareness?.needsCalendarContext ?? false,
     schedulingIntentDetected:
       intel.calendarAwareness?.schedulingIntent?.detected ?? false,
+    calendarIntentLevel: intel.calendarAwareness?.calendarIntentLevel ?? "NO_TIME_CONTEXT",
     actionIntelligence: intel.actionIntelligence,
     timelineIntelligence: intel.timelineIntelligence,
     proactiveAssistant: intel.proactiveAssistant,
@@ -92,7 +128,7 @@ export async function buildEmailDetailFromGmailMessage(
     enrichmentWarnings: intel.enrichmentWarnings,
     body: displayPlain,
     bodyPlain: displayPlain,
-    bodyHtml: bodyHtml || undefined,
+    bodyHtml: displayHtml || undefined,
     suggestedReply: "",
     replyContext: buildReplyEmailContext({
       sender: msg.sender,
@@ -107,7 +143,7 @@ export async function buildEmailDetailFromGmailMessage(
     listUnsubscribePost: msg.listUnsubscribePost,
     unsubscribeAnalysis: intel.unsubscribeAnalysis,
     unsubscribeReplyDraft: intel.unsubscribeAnalysis?.suggestedReplyText ?? undefined,
-  };
+  });
 }
 
 export async function buildEmailDetailFromGmailMetadata(
@@ -133,7 +169,7 @@ export async function buildEmailDetailFromGmailMetadata(
   });
   const aiSummary = intel.aiSummary || heuristicEmailSummary(enrichmentMeta, category);
 
-  return {
+  return ensureMinimumEmailDetail({
     id: meta.id,
     section: legacySectionForCategory(category),
     sender: meta.sender,
@@ -160,7 +196,7 @@ export async function buildEmailDetailFromGmailMetadata(
       body: meta.snippet,
       snippet: meta.snippet,
     }),
-  };
+  });
 }
 
 export function resolveEmailDetailWorkflowMode(

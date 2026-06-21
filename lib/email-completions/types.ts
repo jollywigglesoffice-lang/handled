@@ -16,6 +16,8 @@ export type EmailCompletionRecord = {
   threadId?: string;
   /** Who the user is waiting on (waiting_on_someone). */
   waitingOn?: string;
+  /** Post-action workflow — not an inbox category. */
+  workflowState?: "waiting_on";
   /** waiting → response_received while unresolved; cleared on resolve. */
   waitingStatus?: "waiting" | "response_received";
   /** Detected reply in the same thread. */

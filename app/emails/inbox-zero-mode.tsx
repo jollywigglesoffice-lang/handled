@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
-import { CompletionActionPicker } from "@/app/emails/completion-action-picker";
+import { DoneWithThisPicker } from "@/app/emails/done-with-this-picker";
 import type { GmailCardMessage } from "@/app/emails/gmail-inbox-card";
+import { handledActionCopy } from "@/lib/handled-action-copy";
+import type { CompleteEmailExtras } from "@/lib/email-completions/types";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import {
@@ -36,6 +38,7 @@ type InboxZeroModeProps = {
     category: InboxAiCategory,
     actionId: CompletionActionId,
     actionLabel: string,
+    extras?: CompleteEmailExtras,
   ) => void;
   onRecategorizeEmail: (
     id: string,
@@ -76,8 +79,8 @@ const COPY: Record<"en" | "it", Copy> = {
     stepOf: (a: number, b: number) => `${a} of ${b}`,
     open: "Open",
     skip: "Skip for now",
-    doneWith: "Done with this",
-    changeCategory: "Change category",
+    doneWith: handledActionCopy("en").handled,
+    changeCategory: handledActionCopy("en").moveTo,
     complete: "Complete",
     next: "Next",
     clear: (n: number) => `Clear ${n} promotion${n === 1 ? "" : "s"}`,
@@ -96,8 +99,8 @@ const COPY: Record<"en" | "it", Copy> = {
     stepOf: (a: number, b: number) => `${a} di ${b}`,
     open: "Apri",
     skip: "Salta per ora",
-    doneWith: "Fatto con questa",
-    changeCategory: "Cambia categoria",
+    doneWith: handledActionCopy("it").handled,
+    changeCategory: handledActionCopy("it").moveTo,
     complete: "Fatto",
     next: "Avanti",
     clear: (n: number) => `Svuota ${n} promozion${n === 1 ? "e" : "i"}`,
@@ -143,9 +146,9 @@ export function InboxZeroMode({
   const current = steps[index];
 
   const completeEmail = useCallback(
-    (actionId: CompletionActionId, actionLabel: string) => {
+    (actionId: CompletionActionId, actionLabel: string, extras?: CompleteEmailExtras) => {
       if (!current || current.kind !== "email") return;
-      onCompleteEmail(current.message.id, current.category, actionId, actionLabel);
+      onCompleteEmail(current.message.id, current.category, actionId, actionLabel, extras);
       setProcessed((n) => n + 1);
       setTimeSaved((s) => s + secondsForCategory(current.category));
       advance();
@@ -174,7 +177,7 @@ export function InboxZeroMode({
     const ids = current.emails.map((m) => m.id);
     onClearPromotions(ids);
     setProcessed((n) => n + ids.length);
-    setTimeSaved((s) => s + ids.length * secondsForCategory("promotion"));
+    setTimeSaved((s) => s + ids.length * secondsForCategory("promotions"));
     advance();
   }, [current, onClearPromotions, advance]);
 
@@ -267,7 +270,7 @@ function EmailStep({
   category: InboxAiCategory;
   locale: "en" | "it";
   t: Copy;
-  onComplete: (actionId: CompletionActionId, actionLabel: string) => void;
+  onComplete: (actionId: CompletionActionId, actionLabel: string, extras?: CompleteEmailExtras) => void;
   onRecategorize: (
     id: string,
     chosen: InboxAiCategory,
@@ -297,13 +300,12 @@ function EmailStep({
       </div>
 
       {view === "done_picker" ? (
-        <CompletionActionPicker
+        <DoneWithThisPicker
           locale={locale}
-          onSelect={(id, label) => {
-            onComplete(id, label);
+          onSelect={(id, label, extras) => {
+            onComplete(id, label, extras);
             setView("actions");
           }}
-          showCreate={false}
         />
       ) : null}
 

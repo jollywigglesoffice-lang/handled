@@ -32,7 +32,7 @@ export function toEmailDetailPayload(raw: EmailDetailApiShape): EmailDetailPaylo
     body: bodyPlain,
     bodyHtml: raw.bodyHtml,
     suggestedReply: raw.suggestedReply ?? "",
-    inboxCategory: raw.inboxCategory ?? "needs_attention",
+    inboxCategory: raw.inboxCategory ?? "worth_your_attention",
     listUnsubscribe: raw.listUnsubscribe,
     listUnsubscribePost: raw.listUnsubscribePost,
     replyContext: buildReplyEmailContext({

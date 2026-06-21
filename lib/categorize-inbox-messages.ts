@@ -5,6 +5,9 @@ import {
   type InboxCategoryCatalog,
 } from "@/lib/inbox-category-catalog";
 import {
+  coerceLegacyInboxCategory,
+  enforceCanonicalInboxCategory,
+  isSystemInboxCategory,
   type CategorySource,
   type InboxAiCategory,
   parseInboxAiCategory,
@@ -209,8 +212,8 @@ function clamp01(n: unknown): number | undefined {
 }
 
 /**
- * Last-resort deterministic triage — needs_attention ONLY when human conversation is likely.
- * Never returns needs_attention as a blind default.
+ * Last-resort deterministic triage — worth_your_attention ONLY when human conversation is likely.
+ * Never returns worth_your_attention as a blind default.
  */
 export function intelligentFallbackCategory(row: GmailInboxRow): {
   category: InboxAiCategory;
@@ -241,14 +244,14 @@ export function intelligentFallbackCategory(row: GmailInboxRow): {
       hay,
     )
   ) {
-    return { category: "newsletter", confidence: 0.65 };
+    return { category: "newsletters", confidence: 0.65 };
   }
   if (
     /%\s*off|\d+%\s*off|limited time|flash sale|shop now|order now|add to cart|free shipping|promo code|black friday|sponsored|act now/i.test(
       hay,
     )
   ) {
-    return { category: "promotion", confidence: 0.65 };
+    return { category: "promotions", confidence: 0.65 };
   }
   if (
     /order confirmed|payment received|receipt|tracking number|your shipment|has shipped|invoice|charged|subscription renewed|amount due/i.test(
@@ -256,21 +259,30 @@ export function intelligentFallbackCategory(row: GmailInboxRow): {
     ) &&
     !mustNotAutoHandleRow(row)
   ) {
-    return { category: "fyi", confidence: 0.7 };
+    return { category: "good_to_know", confidence: 0.7 };
   }
   if (
     /\b(thanks|thank you|sounds good|confirmed|received|\+1|lgtm)\b/i.test(hay) &&
     hay.length < 400
   ) {
-    return { category: "quick_reply", confidence: 0.6 };
+    return { category: "worth_your_attention", confidence: 0.6 };
+  }
+
+  if (
+    /following up|follow.?up|haven't heard|haven't received|still waiting|waiting to hear|any update on|checking in on|just circling back/i.test(
+      hay,
+    ) &&
+    looksLikeHumanConversation(row)
+  ) {
+    return { category: "worth_your_attention", confidence: 0.58 };
   }
 
   const scores = computeInboxRuleScores(row);
   const max = Math.max(scores.promotion, scores.newsletter, scores.handled);
   if (max > 0) {
-    if (scores.handled >= max) return { category: "handled", confidence: 0.55 };
-    if (scores.promotion >= max) return { category: "promotion", confidence: 0.55 };
-    if (scores.newsletter >= max) return { category: "newsletter", confidence: 0.55 };
+    if (scores.handled >= max) return { category: "good_to_know", confidence: 0.55 };
+    if (scores.promotion >= max) return { category: "promotions", confidence: 0.55 };
+    if (scores.newsletter >= max) return { category: "newsletters", confidence: 0.55 };
   }
 
   if (looksLikeHumanConversation(row)) {
@@ -278,16 +290,16 @@ export function intelligentFallbackCategory(row: GmailInboxRow): {
       /\b(thanks|thank you|sounds good|got it|confirmed)\b/i.test(hay) &&
       hay.length < 500
     ) {
-      return { category: "quick_reply", confidence: 0.58 };
+      return { category: "worth_your_attention", confidence: 0.58 };
     }
-    return { category: "needs_attention", confidence: 0.55 };
+    return { category: "worth_your_attention", confidence: 0.55 };
   }
 
   if (isCommercialBulk(row)) {
-    return { category: "promotion", confidence: 0.5 };
+    return { category: "promotions", confidence: 0.5 };
   }
 
-  return { category: "needs_attention", confidence: 0.48 };
+  return { category: "worth_your_attention", confidence: 0.48 };
 }
 
 function finalizeRow(
@@ -317,12 +329,12 @@ function finalizeRow(
     coerced = intelligence.suggestedCategory;
   }
 
-  if (intelligence?.blockLowPriorityCategories && !intelligence.forcePromotional && (coerced === "handled" || coerced === "fyi" || coerced === "promotion" || coerced === "newsletter")) {
+  if (intelligence?.blockLowPriorityCategories && !intelligence.forcePromotional && (coerced === "good_to_know" || coerced === "promotions" || coerced === "newsletters")) {
     coerced = intelligence.suggestedCategory;
   }
 
-  if (intelligence?.forceNeedsAttention && !intelligence?.forcePromotional && (coerced === "handled" || coerced === "fyi" || coerced === "promotion" || coerced === "newsletter")) {
-    coerced = "needs_attention";
+  if (intelligence?.forceNeedsAttention && !intelligence?.forcePromotional && (coerced === "good_to_know" || coerced === "promotions" || coerced === "newsletters")) {
+    coerced = "worth_your_attention";
   }
 
   if (relationship) {
@@ -352,7 +364,7 @@ function finalizeRow(
   });
 
   let finalConfidence = coerced !== category ? Math.max(c, 0.75) : c;
-  if (intelligence?.forceNeedsAttention && coerced === "needs_attention") {
+  if (intelligence?.forceNeedsAttention && coerced === "worth_your_attention") {
     finalConfidence = Math.max(finalConfidence, intelligence.confidence);
   }
   if (intelligence && (reasonLabels.includes("Mixed personal and marketing signals") || reasons.includes("ambiguous_unknown_sender"))) {
@@ -378,10 +390,9 @@ function correctUrgentAiLabel(
   if (hasHighPriorityIntent(row)) {
     const intent = analyzeEmailIntent(row);
     if (
-      category === "handled" ||
-      category === "fyi" ||
-      category === "promotion" ||
-      category === "newsletter"
+      category === "good_to_know" ||
+      category === "promotions" ||
+      category === "newsletters"
     ) {
       return {
         category: intent.suggestedCategory,
@@ -392,7 +403,7 @@ function correctUrgentAiLabel(
     return { category, source: "ai", confidenceMul: 1 };
   }
 
-  if (category !== "needs_attention" && category !== "quick_reply") {
+  if (category !== "worth_your_attention") {
     return { category, source: "ai", confidenceMul: 1 };
   }
 
@@ -406,9 +417,9 @@ function correctUrgentAiLabel(
     return { category: lean, source: "ai_coerced", confidenceMul: 0.92 };
   }
 
-  if (category === "needs_attention" && !looksLikeHumanConversation(row)) {
+  if (category === "worth_your_attention" && !looksLikeHumanConversation(row)) {
     const fb = intelligentFallbackCategory(row);
-    if ((fb.category === "handled" || fb.category === "fyi") && hasHighPriorityIntent(row)) {
+    if (fb.category === "good_to_know" && hasHighPriorityIntent(row)) {
       return {
         category: analyzeEmailIntent(row).suggestedCategory,
         source: "ai_coerced",
@@ -431,33 +442,24 @@ function buildAmbiguousAiPrompt(
 
   return `You triage a real personal + work inbox. Messages may be in English, Italian, or mixed (EN/IT). These did NOT match deterministic rules.
 
-Use system categories: needs_attention, quick_reply, fyi, newsletter, promotion, handled${personalPromptBlock ? " — plus the personal category ids listed below when they clearly fit." : ""}
+Use EXACTLY ONE category per email from this list ONLY (use these exact keys):
+- worth_your_attention — Worth your attention: requires action, response, or decision
+- good_to_know — Good to know: informational, no action required
+- promotions — Promotions: marketing, ads, sales content
+- newsletters — Newsletters: recurring or subscription-based content
+${personalPromptBlock ? "Plus personal category ids listed below when they clearly fit — still exactly one category." : ""}
 ${personalSection}
 
-CULTURAL / PERSONAL PRIORITY (overrides business-startup bias):
-- School / teachers / parents (scuola, insegnante, colloquio, maestra, genitori, PTA, Alexandria-style school names) → needs_attention
-- Family, kids, childcare → needs_attention
-- Healthcare (ospedale, pediatra, appuntamento medico, hospital, pediatric) → needs_attention
-- Scheduling that needs a human decision (riunione, appuntamento, conferma, meeting) → needs_attention or quick_reply if only a short ack is needed
-- Payments/confirmations about school, health, or family → needs_attention (not fyi)
-
-COMMERCIAL (only when clearly bulk/marketing):
-- promotion — marketing, sales, discounts, social app notifications
-- newsletter — digests, list mail, unsubscribe footers
-
-FYI (important to see, but no reply needed):
-- fyi — automated transactional confirmations the user would want to notice: order/shipping/delivery confirmations (es. "conferma spedizione", "il tuo ordine è stato spedito"), payment receipts, invoices, booking/appointment confirmations, account/security alerts. NO personal/school/health context and NO reply expected.
-
-LOW-RISK DEFAULT:
-- handled — already-quiet, low-information automated noise that needs no notice
-- quick_reply — short acknowledgment suffices
-
-SAFETY: When unsure between fyi/handled and needs_attention for a plausible human/school/health sender, choose needs_attention. Missing important family or school mail is worse than a false positive.
-
-NEVER use fyi or handled for: school mail, teacher/parent messages, Italian urgency words (urgente, colloquio), or a named person writing about appointments.
+RULES:
+- Each email gets exactly ONE category — never multiple or overlapping labels
+- NEVER use removed keys: waiting, waiting_on, done, quick_reply, handled, fyi, promotion, newsletter, needs_attention, attention, focus, passive
+- waiting_on and done are workflow states, NOT categories — never output them
+- Normalize drift: attention → worth_your_attention
+- School / teachers / parents / healthcare / scheduling → worth_your_attention
+- When unsure between good_to_know and worth_your_attention for a human sender, choose worth_your_attention
 
 Return JSON only:
-{"classifications":[{"index":0,"category":"needs_attention","confidence":0.85},...]}
+{"classifications":[{"index":0,"category":"worth_your_attention","confidence":0.85},...]}
 
 Exactly ${batchSize} items, indices 0..${batchSize - 1}.`;
 }
@@ -474,7 +476,14 @@ function parseAiBatchIntoMap(
   for (let i = 0; i < list.length; i++) {
     const item = list[i];
     const rawCat = typeof item.category === "string" ? item.category : "";
-    const cat = parseInboxAiCategory(rawCat, personalIds);
+    let cat = parseInboxAiCategory(rawCat, personalIds);
+    if (!cat) {
+      const coerced = coerceLegacyInboxCategory(rawCat);
+      cat = isSystemInboxCategory(coerced) ? coerced : null;
+    }
+    if (cat && isSystemInboxCategory(cat)) {
+      cat = enforceCanonicalInboxCategory(cat);
+    }
     if (!cat) continue;
     const conf = clamp01(item.confidence) ?? 0.72;
 
@@ -651,6 +660,8 @@ async function openAiClassifyChunked(
 
 export type CategorizeInboxOptions = {
   userRules?: InboxUserRule[];
+  /** Behavioral memory — evaluated before sender rules and AI. */
+  memoryRules?: InboxUserRule[];
   /** Learned sender rules — evaluated before keyword userRules. */
   senderRules?: InboxUserRule[];
   /** Per-email manual overrides — highest priority, skips AI and rules. */
@@ -671,6 +682,12 @@ function applyUserPostIfNeeded(
   senderRelationships: SenderRelationship[],
   intelligence?: CategorizationIntelligenceResult,
 ): GmailInboxRowCategorized {
+  // Manual overrides and sender rules must never be altered by post rules,
+  // workflow demotion, or intelligence heuristics.
+  if (isUserLockedCategorySource(source)) {
+    return finalizeRow(row, rowIndex, category, source, confidence, undefined, intelligence);
+  }
+
   const post = applyUserRulesPost(row, category, userRules);
   const afterUser = post
     ? { category: post.category, source: "user_rule" as const, confidence: 0.94 }
@@ -712,16 +729,21 @@ export async function categorizeGmailInboxRows(
     return [];
   }
 
+  const memoryRules = options?.memoryRules ?? [];
   const senderRules = options?.senderRules ?? [];
   const userRules = options?.userRules ?? [];
   const emailOverrides = options?.emailOverrides ?? {};
   const senderRelationships = options?.senderRelationships ?? [];
-  const allUserRules = [...senderRules, ...userRules];
+  const allUserRules = [...memoryRules, ...senderRules, ...userRules];
   const workflowMode = options?.workflowMode ?? "assist";
   const catalog = options?.categoryCatalog ?? EMPTY_CATEGORY_CATALOG;
   const apiKey = getAiApiKey();
   logAiKeyStatus("categorize-inbox");
-  const resolutionCtx: CategoryResolutionContext = { emailOverrides, senderRules };
+  const resolutionCtx: CategoryResolutionContext = {
+    emailOverrides,
+    memoryRules,
+    senderRules,
+  };
   const ambiguousIndices: number[] = [];
   const out: GmailInboxRowCategorized[] = new Array(rows.length) as GmailInboxRowCategorized[];
 
@@ -782,7 +804,7 @@ export async function categorizeGmailInboxRows(
       out[i] = applyUserPostIfNeeded(
         row,
         i,
-        "handled",
+        "good_to_know",
         preSource,
         0.99,
         allUserRules,
@@ -980,7 +1002,9 @@ function applyFinalResolutionPass(
         category: result.category,
         categorySource: result.source,
         categoryConfidence:
-          result.source === "manual_override" || result.source === "sender_rule"
+          result.source === "manual_override" ||
+          result.source === "sender_rule" ||
+          result.source === "memory_rule"
             ? 1
             : categorized.categoryConfidence,
       };

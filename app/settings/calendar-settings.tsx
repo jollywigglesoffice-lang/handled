@@ -1,48 +1,52 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
 import {
   CALENDAR_SAFETY_RULES,
-  connectGoogleCalendarPlaceholder,
+  connectGoogleCalendarViaOAuth,
   disconnectGoogleCalendarPlaceholder,
-  readCalendarConnectionState,
+  fetchCalendarConnectionStatus,
+  syncCalendarConnectionFromApi,
   type CalendarConnectionState,
 } from "@/lib/calendar-awareness";
 
 export function CalendarSettings({ embedded = false }: { embedded?: boolean }) {
-  const [connection, setConnection] = useState<CalendarConnectionState>(() =>
-    readCalendarConnectionState(),
-  );
+  const [connection, setConnection] = useState<CalendarConnectionState>({
+    status: "disconnected",
+  });
   const [status, setStatus] = useState<SaveStatusState>("idle");
   const [message, setMessage] = useState("");
+  const [checking, setChecking] = useState(true);
 
-  const refresh = useCallback(() => {
-    setConnection(readCalendarConnectionState());
+  const refresh = useCallback(async () => {
+    setChecking(true);
+    const api = await fetchCalendarConnectionStatus();
+    syncCalendarConnectionFromApi(api.calendarConnected, api.accountEmail ?? undefined);
+    setConnection({
+      status: api.calendarConnected ? "connected" : "disconnected",
+      accountEmail: api.accountEmail ?? undefined,
+      connectedAt: api.calendarConnected ? new Date().toISOString() : undefined,
+    });
+    setChecking(false);
   }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   async function handleConnect() {
     setStatus("saving");
-    setMessage("Checking Google Calendar…");
-    const result = await connectGoogleCalendarPlaceholder();
-    refresh();
-    if (result.ok) {
-      setStatus("synced");
-      setMessage("Google Calendar connected.");
-    } else {
-      setStatus("idle");
-      setMessage(result.message);
-    }
-    window.setTimeout(() => setStatus("idle"), 3000);
+    setMessage("Redirecting to Google…");
+    await connectGoogleCalendarViaOAuth("/settings#calendar");
   }
 
   function handleDisconnect() {
     disconnectGoogleCalendarPlaceholder();
-    refresh();
-    setMessage("Calendar disconnected.");
+    void refresh();
+    setMessage("Calendar disconnected locally — sign in again to restore access.");
     setStatus("saved");
-    window.setTimeout(() => setStatus("idle"), 2000);
+    window.setTimeout(() => setStatus("idle"), 3000);
   }
 
   const connected = connection.status === "connected";
@@ -56,20 +60,20 @@ export function CalendarSettings({ embedded = false }: { embedded?: boolean }) {
         <>
           <h2 className="text-lg font-semibold text-gray-900">Google Calendar</h2>
           <p className="mt-2 text-sm leading-relaxed text-gray-500">
-            Draft availability replies from your calendar — you always approve before sending.
+            Handled only suggests meeting times from your real Google Calendar — never guessed slots.
+            You always approve before sending.
           </p>
         </>
       ) : (
         <p className="text-sm text-secondary">
-          Calendar connection coming soon. Scheduling hints already work in your inbox.
+          Calendar uses your Gmail connection — scheduling works inline in email.
         </p>
       )}
 
-      {!embedded ? (
-        <div className="mt-4 rounded-xl border border-sky-100 bg-sky-50/60 p-4">
-          <p className="text-sm font-semibold text-sky-900">Coming soon</p>
-          <p className="mt-1 text-xs leading-relaxed text-sky-800">
-            OAuth connection to Google Calendar is in development.
+      {!embedded && !connected && !checking ? (
+        <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50/80 p-4">
+          <p className="text-sm text-gray-700">
+            Connect Google Calendar to schedule directly from email. Handled never shows placeholder availability.
           </p>
         </div>
       ) : null}
@@ -82,7 +86,7 @@ export function CalendarSettings({ embedded = false }: { embedded?: boolean }) {
               : "bg-gray-100 text-gray-600"
           }`}
         >
-          {connected ? "Connected" : "Not connected"}
+          {checking ? "Checking…" : connected ? "Connected" : "Not connected"}
         </span>
         {connection.accountEmail ? (
           <span className="text-xs text-gray-500">{connection.accountEmail}</span>
@@ -92,7 +96,7 @@ export function CalendarSettings({ embedded = false }: { embedded?: boolean }) {
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={connected}
+          disabled={connected || checking}
           onClick={() => void handleConnect()}
           className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -107,34 +111,18 @@ export function CalendarSettings({ embedded = false }: { embedded?: boolean }) {
             Disconnect
           </button>
         ) : null}
-        <Link
-          href="/settings"
-          className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Handled Brain
-        </Link>
       </div>
 
       <SaveStatus status={status} className="mt-3 block" />
       {message ? <p className="mt-2 text-xs text-gray-600">{message}</p> : null}
 
       {!embedded ? (
-        <>
-          <div className="mt-6 rounded-xl border border-amber-100 bg-amber-50/80 p-4">
-            <p className="text-sm font-semibold text-amber-900">Safety</p>
-            <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-amber-950/90">
-              {CALENDAR_SAFETY_RULES}
-            </p>
-          </div>
-
-          <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs text-gray-600">
-            <p className="font-medium text-gray-800">Future behavior</p>
-            <p className="mt-1 leading-relaxed">
-              When someone asks about availability, Handled suggests draft times — you edit and
-              send. No automatic invites.
-            </p>
-          </div>
-        </>
+        <div className="mt-6 rounded-xl border border-amber-100 bg-amber-50/80 p-4">
+          <p className="text-sm font-semibold text-amber-900">Safety</p>
+          <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-amber-950/90">
+            {CALENDAR_SAFETY_RULES}
+          </p>
+        </div>
       ) : null}
     </section>
   );

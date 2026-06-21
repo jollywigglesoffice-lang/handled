@@ -27,18 +27,18 @@ function detectFromDomain(domain: string): RelationshipKind | null {
   if (!d) return null;
   if (SCHOOL.test(d) || d.endsWith(".edu")) return "school";
   if (HEALTHCARE.test(d)) return "healthcare";
-  if (/noreply|no-reply|newsletter|mail\.|email\./i.test(d)) return "newsletter";
+  if (/noreply|no-reply|newsletter|mail\.|email\./i.test(d)) return "newsletters";
   if (MARKETING.test(`x@${d}`)) return "marketing";
   return null;
 }
 
 function detectFromContent(hay: string, category: InboxAiCategory): RelationshipKind | null {
-  if (category === "promotion") return "promotion";
-  if (category === "newsletter") return "newsletter";
+  if (category === "promotions") return "promotions";
+  if (category === "newsletters") return "newsletters";
   if (SCHOOL.test(hay)) return "school";
   if (HEALTHCARE.test(hay)) return "healthcare";
   if (BILLING.test(hay) && !/\?|can you|please confirm/i.test(hay)) return "billing";
-  if (NEWSLETTER.test(hay)) return "newsletter";
+  if (NEWSLETTER.test(hay)) return "newsletters";
   if (MARKETING.test(hay)) return "marketing";
   if (/enterprise|corporate|partnership|pricing for \d+/i.test(hay)) return "vip_client";
   if (/support@|help@|care@/i.test(hay)) return "client";
@@ -76,7 +76,7 @@ export function detectRelationshipFromMessage(
     fromDomain ??
     fromContent ??
     fromDisplay ??
-    (category === "needs_attention" && email && !email.includes("noreply")
+    (category === "worth_your_attention" && email && !email.includes("noreply")
       ? "client"
       : null);
 
@@ -87,7 +87,7 @@ export function detectRelationshipFromMessage(
       ? "vip"
       : kind === "family" || kind === "school" || kind === "healthcare"
         ? "important"
-        : kind === "newsletter" || kind === "promotion" || kind === "marketing"
+        : kind === "newsletters" || kind === "promotions" || kind === "marketing"
           ? "ignore"
           : "normal";
 

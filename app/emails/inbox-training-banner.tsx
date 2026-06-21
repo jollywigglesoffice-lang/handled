@@ -29,8 +29,8 @@ export function InboxTrainingBanner({ messages, onCategoryChange }: InboxTrainin
 
   const sample = useMemo(() => {
     if (messages.length === 0) return null;
-    const promo = messages.find((m) => m.category === "promotion" || m.category === "newsletter");
-    const attention = messages.find((m) => m.category === "needs_attention");
+    const promo = messages.find((m) => m.category === "promotions" || m.category === "newsletters");
+    const attention = messages.find((m) => m.category === "worth_your_attention");
     return promo ?? attention ?? messages[0];
   }, [messages]);
 

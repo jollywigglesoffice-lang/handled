@@ -5,6 +5,7 @@ import {
   calmOpenThreads,
   type CalmLocale,
 } from "@/lib/calm-confidence";
+import { calmLoadingMessages } from "@/lib/calm-system-copy";
 import { pickInboxReliefMessage } from "@/lib/micro-relief";
 
 export type RhythmLocale = AttentionLocale;
@@ -25,7 +26,7 @@ export function getDayPhase(now = new Date()): DayPhase {
 }
 
 function conversationCount(snapshot: AttentionSnapshot): number {
-  return snapshot.needsAttention + snapshot.quickReply;
+  return snapshot.needsAttention + snapshot.waitingOn;
 }
 
 const EN = {
@@ -53,21 +54,9 @@ const EN = {
     footer: "New messages will show up when they arrive.",
   },
   loading: {
-    morning: [
-      "Preparing your day…",
-      "Seeing what matters first…",
-      "Getting things organized…",
-    ],
-    afternoon: [
-      "Checking what still needs you…",
-      "Keeping things organized…",
-      "Almost ready…",
-    ],
-    evening: [
-      "A last calm look…",
-      "Sorting what can wait…",
-      "Almost ready…",
-    ],
+    morning: calmLoadingMessages("en"),
+    afternoon: calmLoadingMessages("en"),
+    evening: calmLoadingMessages("en"),
   },
 } as const;
 
@@ -96,21 +85,9 @@ const IT = {
     footer: "I nuovi messaggi arriveranno quando arrivano.",
   },
   loading: {
-    morning: [
-      "Preparo la giornata…",
-      "Vedo cosa conta prima…",
-      "Metto tutto in ordine…",
-    ],
-    afternoon: [
-      "Controllo cosa serve ancora…",
-      "Tengo tutto in ordine…",
-      "Quasi pronto…",
-    ],
-    evening: [
-      "Un ultimo sguardo calmo…",
-      "Ordino cosa può aspettare…",
-      "Quasi pronto…",
-    ],
+    morning: calmLoadingMessages("it"),
+    afternoon: calmLoadingMessages("it"),
+    evening: calmLoadingMessages("it"),
   },
 } as const;
 
@@ -123,7 +100,7 @@ function rhythmStorageKey(
   snapshot: AttentionSnapshot,
   kind: "subline" | "completion",
 ): string {
-  return `handled:rhythm:${kind}:${phase}:${snapshot.needsAttention}:${snapshot.quickReply}`;
+  return `handled:rhythm:${kind}:${phase}:${snapshot.needsAttention}:${snapshot.waitingOn}`;
 }
 
 function rememberOnce(key: string): boolean {
@@ -145,14 +122,20 @@ export function dailyOrientationHeadline(
 ): string {
   const t = copy(locale);
   const loc = locale as CalmLocale;
-  const { needsAttention, quickReply } = snapshot;
+  const { needsAttention, waitingOn } = snapshot;
   const conversations = conversationCount(snapshot);
 
   if (conversations === 0) {
     return calmNothingPressing(phase, loc);
   }
-  if (needsAttention === 0 && quickReply > 0) {
-    return t.quickOnly(quickReply);
+  if (needsAttention === 0 && waitingOn > 0) {
+    return waitingOn === 1
+      ? locale === "it"
+        ? "1 email in attesa di risposta."
+        : "1 email waiting on a reply."
+      : locale === "it"
+        ? `${waitingOn} email in attesa di risposta.`
+        : `${waitingOn} emails waiting on a reply.`;
   }
   if (needsAttention <= 4) {
     return calmFewNeedYou(needsAttention, loc);
@@ -174,7 +157,7 @@ export function dailyRhythmSubline(
 ): string | null {
   const relief = pickInboxReliefMessage({
     attentionCount: snapshot.needsAttention,
-    handledCount: snapshot.handled,
+    handledCount: snapshot.goodToKnow,
     totalVisible: snapshot.totalVisible,
     locale,
   });
@@ -184,14 +167,14 @@ export function dailyRhythmSubline(
   if (!rememberOnce(key)) return null;
 
   const t = copy(locale);
-  const { needsAttention, clutter, handled } = snapshot;
+  const { needsAttention, clutter, goodToKnow } = snapshot;
 
   if (needsAttention === 0 && clutter >= 3) {
     return locale === "it"
       ? "Il resto è aggiornamenti che possono aspettare."
       : "The rest is updates that can wait.";
   }
-  if (handled >= 4 && needsAttention <= 2) {
+  if (goodToKnow >= 4 && needsAttention <= 2) {
     return locale === "it"
       ? "Il resto è stato messo da parte."
       : "The rest has been set aside.";

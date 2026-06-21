@@ -4,6 +4,7 @@ import {
   type InboxCategoryCatalog,
 } from "@/lib/inbox-category-catalog";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { calmEmptyMessages } from "@/lib/calm-system-copy";
 
 export type EmptyStateLocale = "en" | "it";
 
@@ -20,18 +21,8 @@ export function categoryEmptyMessage(
  * Rotated naturally so the inbox never repeats the same phrase every time.
  */
 const COMPLETION_TITLES: Record<EmptyStateLocale, string[]> = {
-  en: [
-    "Everything important looks under control.",
-    "Nothing urgent appears unresolved.",
-    "You're caught up enough for now.",
-    "Handled cleared the noise.",
-  ],
-  it: [
-    "Tutto l'importante sembra sotto controllo.",
-    "Niente di urgente sembra irrisolto.",
-    "Per ora sei a posto.",
-    "Handled ha tolto il rumore.",
-  ],
+  en: [...calmEmptyMessages("en"), "Handled cleared the noise."],
+  it: [...calmEmptyMessages("it"), "Handled ha tolto il rumore."],
 };
 
 const COMPLETION_SUBTITLES: Record<EmptyStateLocale, string[]> = {

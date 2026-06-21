@@ -77,7 +77,7 @@ export async function POST(request: Request) {
   }
 
   const sender = body.sender?.trim();
-  const category = normalizeInboxAiCategory(body.category ?? "needs_attention");
+  const category = normalizeInboxAiCategory(body.category ?? "worth_your_attention");
   const action = body.action ?? "correct_category";
   const scope: CategoryApplyScope = body.scope ?? (body.alwaysForSender ? "sender" : "this_email");
 

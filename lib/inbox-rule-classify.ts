@@ -1,5 +1,6 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import { coerceLegacyInboxCategory } from "@/lib/inbox-ai-categories";
 import {
   analyzeEmailIntent,
   hasHighPriorityIntent,
@@ -19,7 +20,7 @@ export const RULE_LOCK_SCORE = 2;
 /** Score to assign via rules without AI (soft lock). */
 export const RULE_SOFT_SCORE = 1;
 
-/** Minimum commercial signal to nudge AI away from needs_attention. */
+/** Minimum commercial signal to nudge AI away from worth_your_attention. */
 export const RULE_LEAN_SCORE = 1.5;
 
 export type InboxRuleScores = {
@@ -189,13 +190,13 @@ function pickWinnerFromScores(
   if (max < RULE_SOFT_SCORE) return null;
 
   if (handled >= max && handled >= promotion && handled >= newsletter) {
-    return "handled";
+    return "good_to_know";
   }
   if (promotion >= max && promotion > newsletter) {
-    return "promotion";
+    return "promotions";
   }
   if (newsletter >= max && newsletter > promotion) {
-    return "newsletter";
+    return "newsletters";
   }
   if (promotion >= RULE_SOFT_SCORE && newsletter >= RULE_SOFT_SCORE) {
     const hay = `${row.subject} ${row.snippet ?? ""}`.toLowerCase();
@@ -203,11 +204,11 @@ function pickWinnerFromScores(
       /\bsale\b|\bdiscount\b|\b\d{1,2}%\s*off\b|\blimited\s+time\b|\bfree\s+shipping\b|\bpromo\s+code\b|\bshop\s+now\b/i.test(
         hay,
       );
-    return commerceHeavy ? "promotion" : "newsletter";
+    return commerceHeavy ? "promotions" : "newsletters";
   }
-  if (promotion >= RULE_SOFT_SCORE) return "promotion";
-  if (newsletter >= RULE_SOFT_SCORE) return "newsletter";
-  if (handled >= RULE_SOFT_SCORE) return "handled";
+  if (promotion >= RULE_SOFT_SCORE) return "promotions";
+  if (newsletter >= RULE_SOFT_SCORE) return "newsletters";
+  if (handled >= RULE_SOFT_SCORE) return "good_to_know";
   return null;
 }
 
@@ -236,14 +237,14 @@ export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
   const scores = computeInboxRuleScores(row);
 
   if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row) && !mustNotAutoHandle(row)) {
-    return { category: "fyi", confidence: 0.9, scores, matchType: "hard" };
+    return { category: "good_to_know", confidence: 0.9, scores, matchType: "hard" };
   }
 
   if (isCommercialBulk(row) && !hasUrgentHumanSignal(row)) {
     const cat =
       scores.newsletter > scores.promotion && scores.newsletter >= RULE_SOFT_SCORE
-        ? "newsletter"
-        : "promotion";
+        ? "newsletters"
+        : "promotions";
     return {
       category: cat,
       confidence: scoreToConfidence(Math.max(scores.promotion, scores.newsletter)),
@@ -253,14 +254,14 @@ export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
   }
 
   if (isBillingLikely(row) && !mustNotAutoHandle(row)) {
-    return { category: "fyi", confidence: 0.93, scores, matchType: "hard" };
+    return { category: "good_to_know", confidence: 0.93, scores, matchType: "hard" };
   }
 
   const { promotion, newsletter, handled } = scores;
 
   if (handled >= RULE_LOCK_SCORE && handled >= promotion && handled >= newsletter && !mustNotAutoHandle(row)) {
     return {
-      category: "handled",
+      category: "good_to_know",
       confidence: scoreToConfidence(handled),
       scores,
       matchType: "hard",
@@ -269,7 +270,7 @@ export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
 
   if (promotion >= RULE_LOCK_SCORE && promotion > newsletter) {
     return {
-      category: "promotion",
+      category: "promotions",
       confidence: scoreToConfidence(promotion),
       scores,
       matchType: "hard",
@@ -278,7 +279,7 @@ export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
 
   if (newsletter >= RULE_LOCK_SCORE && newsletter > promotion) {
     return {
-      category: "newsletter",
+      category: "newsletters",
       confidence: scoreToConfidence(newsletter),
       scores,
       matchType: "hard",
@@ -291,7 +292,7 @@ export function ruleClassify(row: GmailInboxRow): RuleClassifyResult | null {
       /\bsale\b|\bdiscount\b|\b\d{1,2}%\s*off\b|\blimited\s+time\b|\bfree\s+shipping\b|\bpromo\s+code\b|\bshop\s+now\b/i.test(
         hay,
       );
-    const cat: InboxAiCategory = commerceHeavy ? "promotion" : "newsletter";
+    const cat: InboxAiCategory = commerceHeavy ? "promotions" : "newsletters";
     return {
       category: cat,
       confidence: scoreToConfidence(Math.max(promotion, newsletter)) * 0.92,
@@ -342,22 +343,22 @@ export function hardPostAiCategory(row: GmailInboxRow): InboxAiCategory | null {
   if (mustNotAutoHandle(row)) {
     return analyzeEmailIntent(row).suggestedCategory;
   }
-  if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row)) return "fyi";
+  if (isTransactionalFyi(row) && !hasUrgentHumanSignal(row)) return "good_to_know";
   if (isCommercialBulk(row) && !hasUrgentHumanSignal(row)) {
     const scores = computeInboxRuleScores(row);
-    return scores.newsletter > scores.promotion ? "newsletter" : "promotion";
+    return scores.newsletter > scores.promotion ? "newsletters" : "promotions";
   }
-  if (isBillingLikely(row) && !mustNotAutoHandle(row)) return "fyi";
+  if (isBillingLikely(row) && !mustNotAutoHandle(row)) return "good_to_know";
 
   const scores = computeInboxRuleScores(row);
   const hay = emailHaystack(row);
 
   if (BILLING_VENDOR.test(row.sender) && /invoice|receipt|billing|charged|payment|subscription|renewed|amount due|summary/i.test(hay)) {
-    return "fyi";
+    return "good_to_know";
   }
 
   if (KNOWN_BULK_PLATFORM.test(row.sender.toLowerCase()) && !isBillingLikely(row)) {
-    return "promotion";
+    return "promotions";
   }
 
   return pickWinnerFromScores(scores, row);
@@ -368,27 +369,27 @@ export function looksLikeHumanConversation(row: GmailInboxRow): boolean {
   return hasUrgentHumanSignal(row);
 }
 
-/** Demote misfiled needs_attention when no real urgency. */
+/** Demote misfiled worth_your_attention when no real urgency. */
 export function coerceNeedsAttentionCategory(
   row: GmailInboxRow,
   category: InboxAiCategory,
 ): InboxAiCategory {
+  category = coerceLegacyInboxCategory(category);
   if (hasHighPriorityIntent(row)) {
     const intent = analyzeEmailIntent(row);
     if (
-      category === "handled" ||
-      category === "fyi" ||
-      category === "promotion" ||
-      category === "newsletter"
+      category === "good_to_know" ||
+      category === "promotions" ||
+      category === "newsletters"
     ) {
       return intent.suggestedCategory;
     }
     if (intent.kinds.includes("pricing_inquiry") || intent.kinds.includes("sales_lead")) {
-      return "needs_attention";
+      return "worth_your_attention";
     }
   }
 
-  if (category !== "needs_attention" && category !== "quick_reply") {
+  if (category !== "worth_your_attention") {
     return category;
   }
   if (mustNotAutoHandle(row)) {
@@ -406,7 +407,7 @@ export function coerceNeedsAttentionCategory(
   if (hard) return hard;
   const lean = commercialLeanCategory(row);
   if (lean) return lean;
-  if (isCommercialBulk(row)) return "promotion";
-  if (mustNotAutoHandle(row)) return "needs_attention";
-  return "handled";
+  if (isCommercialBulk(row)) return "promotions";
+  if (mustNotAutoHandle(row)) return "worth_your_attention";
+  return "good_to_know";
 }

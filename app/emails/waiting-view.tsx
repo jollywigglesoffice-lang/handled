@@ -42,6 +42,10 @@ const COPY = {
 } as const;
 
 export function WaitingView() {
+  return <WaitingViewContent />;
+}
+
+function WaitingViewContent() {
   const { completions, activeWaitingRecords, waitingOpenRecords, waitingResponseRecords } =
     useEmailCompletions();
   const { metadata } = useWaitingOnMetadata();

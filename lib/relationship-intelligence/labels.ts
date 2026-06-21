@@ -9,8 +9,8 @@ export const RELATIONSHIP_KIND_OPTIONS: RelationshipKind[] = [
   "client",
   "team",
   "billing",
-  "newsletter",
-  "promotion",
+  "newsletters",
+  "promotions",
   "marketing",
   "unknown",
 ];
@@ -26,7 +26,7 @@ export const MANUAL_RELATIONSHIP_PRESETS: Array<{
   { id: "school", kind: "school", importance: "important", label: "School" },
   { id: "important", kind: "unknown", importance: "important", label: "Client" },
   { id: "ignore", kind: "unknown", importance: "ignore", label: "Marketing" },
-  { id: "promotion", kind: "promotion", importance: "ignore", label: "Promotion" },
+  { id: "promotions", kind: "promotions", importance: "ignore", label: "Promotion" },
 ];
 
 export function kindToDisplayLabel(kind: RelationshipKind): RelationshipLabel {
@@ -39,8 +39,8 @@ export function kindToDisplayLabel(kind: RelationshipKind): RelationshipLabel {
     client: "Client",
     team: "Team",
     billing: "Billing",
-    newsletter: "Newsletter",
-    promotion: "Promotion",
+    newsletters: "Newsletter",
+    promotions: "Promotion",
     marketing: "Marketing",
     unknown: "Client",
   };
@@ -53,7 +53,7 @@ export function relationshipLabelTone(
 ): "warm" | "professional" | "calm" | "muted" {
   if (kind === "family" || kind === "friends") return "warm";
   if (kind === "vip_client" || kind === "client" || kind === "team") return "professional";
-  if (kind === "newsletter" || kind === "promotion" || kind === "marketing") return "muted";
+  if (kind === "newsletters" || kind === "promotions" || kind === "marketing") return "muted";
   if (importance === "ignore") return "muted";
   return "calm";
 }

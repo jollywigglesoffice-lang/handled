@@ -4,6 +4,8 @@ import { AUTH_DEBUG_ENABLED } from "@/lib/auth/debug-log";
 import { resolveApiAuth, type ResolvedApiAuth } from "@/lib/auth/resolve-api-auth";
 import type { ServerAuthSession } from "@/lib/auth/server-session";
 import { getFreshGoogleAccessToken } from "@/lib/google/google-access-token";
+import { getConnectedGmailAccount } from "@/lib/google/connected-accounts";
+import type { InboxLoadFailureReason } from "@/lib/inbox-load/types";
 
 export type ApiAuthResult =
   | { ok: true; auth: ServerAuthSession | ResolvedApiAuth }
@@ -11,7 +13,7 @@ export type ApiAuthResult =
 
 export type GoogleTokenResult =
   | { ok: true; accessToken: string }
-  | { ok: false; response: NextResponse };
+  | { ok: false; response: NextResponse; failureReason: InboxLoadFailureReason };
 
 /** Validated session from cookies and/or Authorization Bearer. */
 export async function requireApiAuth(
@@ -21,14 +23,15 @@ export async function requireApiAuth(
   if (!supabase) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Server misconfigured" }, { status: 500 }),
+      response: NextResponse.json({ error: "server_unavailable", failureReason: "server_unavailable" }, { status: 500 }),
     };
   }
 
   const { auth, debug } = await resolveApiAuth(request, supabase);
   if (!auth) {
     const body: Record<string, unknown> = {
-      error: "Unauthorized",
+      error: "auth_error",
+      failureReason: "auth_error",
       authRequired: true,
     };
     if (AUTH_DEBUG_ENABLED) {
@@ -56,23 +59,70 @@ export async function requireGoogleProviderToken(
 ): Promise<GoogleTokenResult> {
   const userId = auth.user?.id;
   const accountId = extra?.accountId ?? null;
+  const strictAccount = Boolean(accountId);
+
+  if (userId && accountId) {
+    const account = await getConnectedGmailAccount(userId, accountId);
+    if (!account) {
+      console.error("[requireGoogleProviderToken] invalid accountId", {
+        accountId,
+        userId,
+      });
+      return {
+        ok: false,
+        failureReason: "missing_account",
+        response: NextResponse.json(
+          {
+            error: "missing_account",
+            failureReason: "missing_account",
+            accountId,
+            reason: "account_not_connected",
+            ...extra,
+          },
+          { status: 400 },
+        ),
+      };
+    }
+  }
 
   if (userId) {
-    const fresh = await getFreshGoogleAccessToken(userId, { accountId });
+    const fresh = await getFreshGoogleAccessToken(userId, { accountId, strictAccount });
     if (fresh) {
       return { ok: true, accessToken: fresh };
+    }
+    if (strictAccount) {
+      console.error("[requireGoogleProviderToken] token lookup failed for account", {
+        accountId,
+        userId,
+      });
+      return {
+        ok: false,
+        failureReason: "auth_error",
+        response: NextResponse.json(
+          {
+            error: "auth_error",
+            failureReason: "auth_error",
+            authRequired: true,
+            reason: "account_token_unavailable",
+            accountId,
+            ...extra,
+          },
+          { status: 403 },
+        ),
+      };
     }
   }
 
   // Compatibility fallback: token from the session cookie or the
   // X-Handled-Provider-Token header. Not the source of truth — used only until
   // the user reconnects and we have a stored refresh token.
-  if (auth.providerToken) {
+  if (!strictAccount && auth.providerToken) {
     return { ok: true, accessToken: auth.providerToken };
   }
 
   const body: Record<string, unknown> = {
-    error: "missing_google_token",
+    error: "missing_account",
+    failureReason: "missing_account",
     authRequired: true,
     reason: "connect_gmail",
     ...extra,
@@ -82,6 +132,7 @@ export async function requireGoogleProviderToken(
   }
   return {
     ok: false,
+    failureReason: "missing_account",
     response: NextResponse.json(body, { status: 403 }),
   };
 }

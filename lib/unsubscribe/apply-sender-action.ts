@@ -17,7 +17,7 @@ export async function applyUnsubscribeSenderAction(
     return { message: "No changes — you'll keep receiving these emails." };
   }
 
-  const target: InboxAiCategory = action === "promotions" ? "promotion" : "handled";
+  const target: InboxAiCategory = action === "promotions" ? "promotions" : "good_to_know";
   const result = await submitCategoryFeedback({
     ...input,
     chosenCategory: target,

@@ -4,6 +4,7 @@ import {
   impliedActionsToLabels,
   pickPrimaryLabel,
 } from "@/lib/action-intelligence/labels";
+import { resolveEmailActionState } from "@/lib/action-intelligence/resolve-action-state";
 import { buildSafeReminders } from "@/lib/action-intelligence/safe-reminders";
 import { suggestNextAction } from "@/lib/action-intelligence/suggest-next-action";
 import { extractTaskAwareness } from "@/lib/action-intelligence/task-awareness";
@@ -23,27 +24,41 @@ export function analyzeActionIntelligence(
     snippet: input.row.snippet ?? "",
   };
   const implied = detectImpliedActions(row, input.extraBody);
-  const actionable = isActionableEmail(implied, input.category);
+  const heuristicActionable = isActionableEmail(implied, input.category, row, input.extraBody);
   const labels = impliedActionsToLabels(implied);
-  const primaryLabel = actionable ? pickPrimaryLabel(labels) : null;
   const taskAwareness = extractTaskAwareness(row, input.extraBody);
-  const suggestedNextAction = actionable
-    ? suggestNextAction({ primaryLabel, implied, taskAwareness, locale })
-    : null;
-  const safeReminders = actionable
-    ? buildSafeReminders({ implied, taskAwareness, locale })
-    : [];
+  const haystack = `${row.sender} ${row.subject} ${row.snippet} ${input.extraBody ?? ""}`.toLowerCase();
 
   const confidence = Math.min(
     0.96,
     0.55 +
       implied.length * 0.06 +
       taskAwareness.length * 0.05 +
-      (primaryLabel ? 0.1 : 0),
+      (labels.length > 0 ? 0.1 : 0),
   );
+
+  const actionState = resolveEmailActionState({
+    row,
+    extraBody: input.extraBody,
+    category: input.category,
+    implied,
+    heuristicActionable,
+    confidence,
+  });
+
+  const actionable = actionState === "actionable";
+  const showActionHints = actionState === "actionable" || actionState === "waiting_response";
+  const primaryLabel = showActionHints ? pickPrimaryLabel(labels) : null;
+  const suggestedNextAction = showActionHints
+    ? suggestNextAction({ primaryLabel, implied, taskAwareness, locale, haystack })
+    : null;
+  const safeReminders = showActionHints
+    ? buildSafeReminders({ implied, taskAwareness, locale })
+    : [];
 
   return {
     actionable,
+    actionState,
     impliedActions: implied,
     labels,
     primaryLabel,
@@ -59,6 +74,7 @@ export function summarizeActionIntelligence(
 ): ActionIntelligenceSummary {
   return {
     actionable: result.actionable,
+    actionState: result.actionState,
     primaryLabel: result.primaryLabel,
     suggestedNextAction: result.suggestedNextAction,
   };

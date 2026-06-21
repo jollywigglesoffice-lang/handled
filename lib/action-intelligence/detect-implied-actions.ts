@@ -1,15 +1,15 @@
-import { needsCalendarContextForMessage } from "@/lib/calendar-awareness";
 import { analyzeEmailIntent } from "@/lib/email-intent";
+import {
+  hasExplicitActionTrigger,
+  hasExplicitDeadline,
+  hasExplicitQuestion,
+  hasExplicitRequest,
+  hasExplicitSchedulingRequest,
+  isAnnouncementEmail,
+  rowHaystack,
+} from "@/lib/explicit-email-signals";
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import type { ImpliedActionKind } from "@/lib/action-intelligence/types";
-
-function haystack(
-  row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
-  extraBody?: string,
-): string {
-  const base = `${row.sender} ${row.subject} ${row.snippet ?? ""}`.toLowerCase();
-  return extraBody ? `${base} ${extraBody.toLowerCase()}` : base;
-}
 
 const SEND_FILE =
   /\b(send (?:me )?(?:the |a )?(?:file|document|attachment|pdf|spreadsheet|deck)|attach(?:ed|ment)?|please (?:send|share) (?:the |a )?|invia(?:re)? (?:il |la )?(?:file|documento|allegato)|allega(?:re)?)\b/i;
@@ -25,9 +25,6 @@ const WAITING_ON_YOU =
 
 const PAYMENT =
   /\b(invoice|payment due|amount due|pay(?:ment)? request|billing statement|fattura|pagamento|bolletta|scadenza pagamento|wire transfer)\b/i;
-
-const DEADLINE =
-  /\b(deadline|due (?:by|on|before)|by (?:eod|cob|tomorrow|friday|monday|end of (?:day|week))|entro (?:venerdì|lunedì|domani)|scadenza|time.?sensitive)\b/i;
 
 const REMINDER =
   /\b(reminder|friendly reminder|just a reminder|promemoria|ti ricordo)\b/i;
@@ -48,41 +45,47 @@ export function detectImpliedActions(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
   extraBody?: string,
 ): ImpliedActionKind[] {
-  const hay = haystack(row, extraBody);
+  const hay = rowHaystack(row, extraBody);
   const kinds = new Set<ImpliedActionKind>();
-  const intent = analyzeEmailIntent(row as GmailInboxRow);
 
-  if (intent.requiresReply || intent.kinds.includes("direct_question")) {
+  if (isAnnouncementEmail(hay)) {
+    return [];
+  }
+
+  if (hasExplicitQuestion(hay) || (hasExplicitRequest(hay) && /\?/.test(hay))) {
+    kinds.add("reply_needed");
+  } else if (hasExplicitRequest(hay) && WAITING_ON_YOU.test(hay)) {
     kinds.add("reply_needed");
   }
-  if (intent.kinds.includes("decision_required")) {
+
+  const intent = analyzeEmailIntent(row as GmailInboxRow);
+  if (intent.kinds.includes("decision_required") && hasExplicitRequest(hay)) {
     kinds.add("approval");
     kinds.add("review");
   }
-  if (intent.kinds.includes("deadline") || intent.kinds.includes("urgent_request")) {
+  if ((intent.kinds.includes("deadline") || hasExplicitDeadline(hay)) && hasExplicitDeadline(hay)) {
     kinds.add("deadline");
   }
-  if (intent.kinds.includes("urgent_request")) {
+  if (intent.kinds.includes("urgent_request") && URGENT.test(hay)) {
     kinds.add("urgent");
   }
-  if (intent.kinds.includes("scheduling") || needsCalendarContextForMessage(row, extraBody)) {
+  if (hasExplicitSchedulingRequest(hay)) {
     kinds.add("scheduling");
     kinds.add("meeting");
   }
 
-  if (SEND_FILE.test(hay)) kinds.add("send_file");
+  if (SEND_FILE.test(hay) && hasExplicitRequest(hay)) kinds.add("send_file");
   if (FOLLOW_UP.test(hay)) kinds.add("follow_up");
   if (WAITING_ON_THEM.test(hay)) kinds.add("waiting_on_them");
   if (WAITING_ON_YOU.test(hay)) kinds.add("waiting_on_you");
   if (PAYMENT.test(hay)) kinds.add("payment");
-  if (DEADLINE.test(hay)) kinds.add("deadline");
-  if (REMINDER.test(hay)) kinds.add("reminder");
+  if (REMINDER.test(hay) && hasExplicitRequest(hay)) kinds.add("reminder");
   if (APPROVAL.test(hay)) kinds.add("approval");
-  if (REVIEW.test(hay)) kinds.add("review");
+  if (REVIEW.test(hay) && hasExplicitRequest(hay)) kinds.add("review");
   if (CONFIRM_MEETING.test(hay)) kinds.add("meeting");
-  if (URGENT.test(hay)) kinds.add("urgent");
+  if (URGENT.test(hay) && hasExplicitDeadline(hay)) kinds.add("urgent");
 
-  if (kinds.has("waiting_on_you") && !kinds.has("reply_needed")) {
+  if (kinds.has("waiting_on_you") && !kinds.has("reply_needed") && hasExplicitRequest(hay)) {
     kinds.add("reply_needed");
   }
 
@@ -92,8 +95,13 @@ export function detectImpliedActions(
 export function isActionableEmail(
   implied: ImpliedActionKind[],
   category?: string,
+  row?: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
+  extraBody?: string,
 ): boolean {
-  if (category === "promotion" || category === "newsletter") {
+  if (implied.length === 0) return false;
+  if (row && !hasExplicitActionTrigger(row, extraBody)) return false;
+
+  if (category === "promotions" || category === "newsletters") {
     return implied.some(
       (k) =>
         k === "payment" ||
@@ -102,5 +110,5 @@ export function isActionableEmail(
         k === "approval",
     );
   }
-  return implied.length > 0;
+  return true;
 }

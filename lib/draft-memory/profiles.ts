@@ -92,7 +92,7 @@ export const PROFILE_PRESETS: ProfilePreset[] = [
   },
   {
     id: "balanced",
-    relationshipKinds: ["unknown", "newsletter", "promotion", "marketing"],
+    relationshipKinds: ["unknown", "newsletters", "promotions", "marketing"],
     dimensions: {
       tone: "neutral",
       formality: "balanced",

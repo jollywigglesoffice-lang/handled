@@ -11,7 +11,7 @@ export function suggestSenderAutoRuleMessage(
   locale: "en" | "it" = "en",
 ): string {
   const dest = inboxCategorySectionTitle(category, locale);
-  if (category === "needs_attention") {
+  if (category === "worth_your_attention") {
     return locale === "it"
       ? `Prioritizzare sempre le email da ${senderLabel}? Le metterò in ${dest}.`
       : `Always prioritize emails from ${senderLabel}? I'll put them in ${dest}.`;

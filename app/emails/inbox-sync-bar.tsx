@@ -1,21 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useUiCopy } from "@/app/use-ui-copy";
+import { useEffect, useMemo, useState } from "react";
+import {
+  calmInboxFreshnessLabel,
+  calmRefreshInboxLabel,
+  calmTransitionMessages,
+} from "@/lib/calm-system-copy";
 import { INBOX_AUTO_REFRESH_MS } from "@/lib/inbox-load/constants";
 import { inboxLoadUserMessage } from "@/lib/inbox-load/user-messages";
-
-function formatRelativeSync(iso: string | null): string {
-  if (!iso) return "Not synced yet";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "Unknown";
-  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
-  if (sec < 15) return "Just now";
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-}
 
 type InboxSyncBarProps = {
   lastSyncedAt: string | null;
@@ -36,13 +28,26 @@ export function InboxSyncBar({
   locale = "en",
   onRefresh,
 }: InboxSyncBarProps) {
-  const ui = useUiCopy();
   const [, tick] = useState(0);
+  const transitions = useMemo(() => calmTransitionMessages(locale), [locale]);
+  const [transitionIndex, setTransitionIndex] = useState(0);
 
   useEffect(() => {
     const id = window.setInterval(() => tick((n) => n + 1), 30_000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!isRefreshing) return;
+    const id = window.setInterval(() => {
+      setTransitionIndex((i) => (i + 1) % transitions.length);
+    }, 2800);
+    return () => window.clearInterval(id);
+  }, [isRefreshing, transitions.length]);
+
+  const statusLabel = isRefreshing
+    ? transitions[transitionIndex] ?? inboxLoadUserMessage("reconnecting", locale)
+    : calmInboxFreshnessLabel(lastSyncedAt, locale);
 
   return (
     <div className="-mt-2 space-y-2">
@@ -53,14 +58,10 @@ export function InboxSyncBar({
           ) : (
             <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
           )}
-          <span>
-            {isRefreshing
-              ? inboxLoadUserMessage("reconnecting", locale)
-              : `Last synced ${formatRelativeSync(lastSyncedAt)}`}
-          </span>
+          <span>{statusLabel}</span>
           {autoRefreshEnabled && !isRefreshing ? (
             <span className="text-xs text-gray-400">
-              · auto every {AUTO_REFRESH_MINUTES} min
+              · {locale === "it" ? `ogni ${AUTO_REFRESH_MINUTES} min` : `every ${AUTO_REFRESH_MINUTES} min`}
             </span>
           ) : null}
         </div>
@@ -70,7 +71,7 @@ export function InboxSyncBar({
           disabled={isRefreshing}
           className="text-xs font-medium text-accent transition hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Refresh inbox
+          {calmRefreshInboxLabel(locale)}
         </button>
       </div>
       {rateLimitNotice ? (

@@ -416,7 +416,7 @@ export function EmailCompletionsProvider({ children }: { children: React.ReactNo
           actionLabel: "No action needed",
           sender: "",
           subject: "",
-          category: "needs_attention",
+          category: "worth_your_attention",
         },
       ]);
     },

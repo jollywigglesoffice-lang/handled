@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     snippet: m.snippet ?? "",
     date: m.date ?? "",
     internalDateMs: m.internalDateMs ?? 0,
-    category: normalizeInboxAiCategory(m.category ?? "needs_attention"),
+    category: normalizeInboxAiCategory(m.category ?? "worth_your_attention"),
   }));
 
   const rulesCtx = await loadCategorizationContext(session.user.id, request);
