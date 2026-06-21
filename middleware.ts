@@ -82,46 +82,6 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  const oauthCode = request.nextUrl.searchParams.get("code");
-  if (pathname === "/auth/callback" && oauthCode) {
-    const attach = request.nextUrl.searchParams.get("attach");
-    const nextParam = request.nextUrl.searchParams.get("next");
-    const isAttach = attach === "true";
-
-    const redirectPath = isAttach
-      ? `/auth/callback?attach=1&next=${encodeURIComponent(
-          nextParam?.startsWith("/") ? nextParam : "/emails?inbox_added=1",
-        )}`
-      : nextParam?.startsWith("/")
-        ? nextParam
-        : "/emails";
-
-    const redirectResponse = NextResponse.redirect(new URL(redirectPath, request.url));
-    const oauthSupabase = createSupabaseMiddlewareClient(request, redirectResponse);
-    if (!oauthSupabase) {
-      const fail = isAttach ? "/emails?attach_error=oauth" : "/login?error=oauth";
-      return NextResponse.redirect(new URL(fail, request.url));
-    }
-    const { data, error } = await oauthSupabase.auth.exchangeCodeForSession(oauthCode);
-    if (error) {
-      console.error("[middleware] exchangeCodeForSession", error);
-      const fail = isAttach ? "/emails?attach_error=oauth" : "/login?error=oauth";
-      return NextResponse.redirect(new URL(fail, request.url));
-    }
-
-    if (!isAttach) {
-      try {
-        const { persistGoogleTokensFromSession } = await import(
-          "@/lib/google/google-access-token"
-        );
-        await persistGoogleTokensFromSession(data.session);
-      } catch (persistError) {
-        console.error("[middleware] persist Google tokens failed", persistError);
-      }
-    }
-    return redirectResponse;
-  }
-
   const {
     data: { user },
     error: userError,

@@ -46,10 +46,19 @@ function AuthCallbackContent() {
 
         const code = searchParams.get("code");
 
-        if (code && !isAttachFlow) {
+        if (code) {
           setStatus(LOADING_EN[0] ?? defaultLoadingStatus());
-          await new Promise((r) => setTimeout(r, 150));
-        } else if (!code) {
+          const { error } = await supabaseBrowser.auth.exchangeCodeForSession(code);
+          if (error) {
+            console.error("[auth/callback] exchangeCodeForSession", error);
+            if (!cancelled) {
+              router.replace(
+                isAttachFlow ? "/emails?attach_error=oauth" : "/login?error=oauth",
+              );
+            }
+            return;
+          }
+        } else if (!isAttachFlow) {
           const fromHash = parseHashTokens();
           if (fromHash) {
             setStatus(LOADING_EN[0] ?? defaultLoadingStatus());
@@ -62,7 +71,7 @@ function AuthCallbackContent() {
               if (!cancelled) router.replace("/login?error=oauth");
               return;
             }
-          } else if (!isAttachFlow) {
+          } else {
             setStatus(LOADING_EN[0] ?? defaultLoadingStatus());
             await new Promise((r) => setTimeout(r, 100));
             const { data, error } = await supabaseBrowser.auth.getSession();
@@ -77,9 +86,9 @@ function AuthCallbackContent() {
                 return;
               }
             }
-          } else {
-            await new Promise((r) => setTimeout(r, 150));
           }
+        } else {
+          await new Promise((r) => setTimeout(r, 150));
         }
 
         if (isAttachFlow) {
@@ -114,6 +123,15 @@ function AuthCallbackContent() {
 
         if (session.provider_token) {
           saveGoogleProviderToken(session.provider_token);
+        }
+
+        try {
+          await fetch("/api/auth/persist-google-tokens", {
+            method: "POST",
+            credentials: "include",
+          });
+        } catch (persistError) {
+          console.error("[auth/callback] persist Google tokens failed", persistError);
         }
 
         await fetch("/api/create-user", {
