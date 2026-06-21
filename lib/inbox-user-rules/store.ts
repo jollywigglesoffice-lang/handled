@@ -16,6 +16,7 @@ import {
   parseRulesJson,
   type InboxRulesStorageMode,
 } from "@/lib/inbox-user-rules/storage";
+import { safeArray } from "@/lib/safe-array";
 
 function rowToAction(
   actionType: InboxRuleActionType,
@@ -149,7 +150,7 @@ async function loadFromInboxRulesTable(userId: string): Promise<{
     return { rules: [], error: error.message };
   }
 
-  const rules = (data ?? [])
+  const rules = safeArray(data)
     .map((row) => dbRowToUserRule(row as InboxRuleRowDb))
     .filter((r): r is InboxUserRule => r !== null);
 
@@ -171,8 +172,9 @@ async function saveToInboxRulesTable(
     return { ok: false, error: listError.message };
   }
 
-  const keepIds = new Set(rules.map((r) => r.id));
-  const toDelete = (existing ?? [])
+  const safeRules = safeArray(rules);
+  const keepIds = new Set(safeRules.map((r) => r.id));
+  const toDelete = safeArray(existing)
     .map((r) => r.id as string)
     .filter((id) => !keepIds.has(id));
 
@@ -183,8 +185,8 @@ async function saveToInboxRulesTable(
     }
   }
 
-  if (rules.length > 0) {
-    const rows = rules.map((r) => userRuleToDbInsert(userId, r));
+  if (safeRules.length > 0) {
+    const rows = safeRules.map((r) => userRuleToDbInsert(userId, r));
     const { error: upsertError } = await supabase.from("inbox_rules").upsert(rows, {
       onConflict: "id",
     });
@@ -237,7 +239,7 @@ export async function loadAllInboxUserRulesForUser(userId: string): Promise<Load
 /** Active rules for categorization. */
 export async function loadInboxUserRulesForUser(userId: string): Promise<InboxUserRule[]> {
   const { rules } = await loadAllInboxUserRulesForUser(userId);
-  return rules.filter((r) => r.enabled);
+  return safeArray(rules).filter((r) => r.enabled);
 }
 
 export type SaveRulesResult =
@@ -251,7 +253,7 @@ export async function saveInboxUserRulesForUser(
   userId: string,
   rules: InboxUserRule[],
 ): Promise<SaveRulesResult> {
-  const normalized = ensureUuidRuleIds(rules);
+  const normalized = ensureUuidRuleIds(safeArray(rules));
 
   const jsonResult = await saveToUsersJson(userId, normalized);
   const tableResult = await saveToInboxRulesTable(userId, normalized);
@@ -291,7 +293,7 @@ export async function seedInboxUserRulesForUser(
   userId: string,
 ): Promise<{ ok: true; rules: InboxUserRule[] } | { ok: false; error: string }> {
   const { rules: existing } = await loadAllInboxUserRulesForUser(userId);
-  if (existing.length > 0) {
+  if (safeArray(existing).length > 0) {
     return { ok: true, rules: existing };
   }
   const { defaultInboxUserRules } = await import("@/lib/inbox-user-rules/presets");

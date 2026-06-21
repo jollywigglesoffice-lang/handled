@@ -1,6 +1,7 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
 import { haystackMatchesAnyKeyword } from "@/lib/inbox-user-rules/keyword-match";
 import type { InboxRuleMatch, InboxUserRule } from "@/lib/inbox-user-rules/types";
+import { safeArray } from "@/lib/safe-array";
 
 function normalizePattern(value: string): string {
   return value.trim().toLowerCase();
@@ -50,15 +51,18 @@ export function ruleMatchesRow(row: GmailInboxRow, match: InboxRuleMatch): boole
   }
 }
 
-export function sortRulesForPhase(rules: InboxUserRule[], phase: InboxUserRule["phase"]): InboxUserRule[] {
-  return rules
+export function sortRulesForPhase(
+  rules: InboxUserRule[] | null | undefined,
+  phase: InboxUserRule["phase"],
+): InboxUserRule[] {
+  return safeArray(rules)
     .filter((r) => r.enabled && r.phase === phase)
     .sort((a, b) => b.priority - a.priority);
 }
 
 export function findFirstMatchingRule(
   row: GmailInboxRow,
-  rules: InboxUserRule[],
+  rules: InboxUserRule[] | null | undefined,
   phase: InboxUserRule["phase"],
 ): InboxUserRule | null {
   for (const rule of sortRulesForPhase(rules, phase)) {

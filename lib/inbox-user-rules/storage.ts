@@ -1,4 +1,5 @@
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
+import { safeArray } from "@/lib/safe-array";
 
 export type InboxRulesStorageMode = "inbox_rules_table" | "users_json_column" | "none";
 
@@ -29,8 +30,8 @@ export function isUsersJsonColumnMissingError(message: string): boolean {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function ensureUuidRuleIds(rules: InboxUserRule[]): InboxUserRule[] {
-  return rules.map((rule) => {
+export function ensureUuidRuleIds(rules: InboxUserRule[] | null | undefined): InboxUserRule[] {
+  return safeArray(rules).map((rule) => {
     if (UUID_RE.test(rule.id)) return rule;
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
       return { ...rule, id: crypto.randomUUID() };

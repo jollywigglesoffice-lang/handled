@@ -21,6 +21,7 @@ import {
   inferPreferenceHints,
   preferenceKeywords,
 } from "@/lib/memory-engine/preferences";
+import { safeArray } from "@/lib/safe-array";
 
 function isTableMissing(message: string): boolean {
   return /could not find the table|PGRST205|column .* does not exist/i.test(message);
@@ -152,7 +153,7 @@ async function computeReplyLikelihood(
   let replyCount = 0;
   let passiveCount = 0;
   let total = 0;
-  for (const row of data) {
+  for (const row of safeArray(data)) {
     const actionId = String((row as Record<string, unknown>).action_id ?? "");
     const count = Number((row as Record<string, unknown>).sample_count ?? 1);
     total += count;
@@ -214,13 +215,13 @@ export async function loadMemoryEngineForUser(userId: string): Promise<MemoryEng
   }
 
   return {
-    senderMemory: (senderRes.data ?? [])
+    senderMemory: safeArray(senderRes.data)
       .map((r) => rowToSenderMemory(r as Record<string, unknown>))
       .sort((a, b) => b.trustScore - a.trustScore),
     categoryCorrections: aggregateCorrectionHistory(
-      (correctionRes.data ?? []) as Array<Record<string, unknown>>,
+      safeArray(correctionRes.data) as Array<Record<string, unknown>>,
     ),
-    categoryPatterns: (patternRes.data ?? []).map((r) => ({
+    categoryPatterns: safeArray(patternRes.data).map((r) => ({
       senderDomain: String((r as Record<string, unknown>).sender_domain ?? ""),
       subjectKeyword: String((r as Record<string, unknown>).subject_keyword ?? ""),
       category: normalizeInboxAiCategory(
@@ -229,7 +230,7 @@ export async function loadMemoryEngineForUser(userId: string): Promise<MemoryEng
       correctionCount: Number((r as Record<string, unknown>).correction_count ?? 1),
       confidence: Number((r as Record<string, unknown>).confidence ?? 0.5),
     })),
-    actionMemory: (actionRes.data ?? []).map((r) => ({
+    actionMemory: safeArray(actionRes.data).map((r) => ({
       senderEmail: (r as Record<string, unknown>).sender_email
         ? String((r as Record<string, unknown>).sender_email)
         : null,

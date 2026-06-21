@@ -51,13 +51,14 @@ import {
 } from "@/lib/final-category-resolution";
 import { applyWorkflowModeToCategory } from "@/lib/workflow-mode-effects";
 import type { WorkflowMode } from "@/lib/workflow-mode";
+import { safeArray } from "@/lib/safe-array";
 
 function mustNotAutoHandleRow(row: GmailInboxRow): boolean {
   return mustNotAutoHandle(row);
 }
 
-function senderRulesForIntelligence(rules: InboxUserRule[]) {
-  return rules
+function senderRulesForIntelligence(rules: InboxUserRule[] | null | undefined) {
+  return safeArray(rules)
     .filter((r) => r.action.type === "force_category")
     .map((r) => {
       if (r.action.type !== "force_category") return null;
@@ -722,18 +723,19 @@ function applyUserPostIfNeeded(
  * → multilingual importance → system rules → AI → fallback → post-rules.
  */
 export async function categorizeGmailInboxRows(
-  rows: GmailInboxRow[],
+  rows: GmailInboxRow[] | null | undefined,
   options?: CategorizeInboxOptions,
 ): Promise<GmailInboxRowCategorized[]> {
-  if (rows.length === 0) {
+  const safeRows = safeArray(rows);
+  if (safeRows.length === 0) {
     return [];
   }
 
-  const memoryRules = options?.memoryRules ?? [];
-  const senderRules = options?.senderRules ?? [];
-  const userRules = options?.userRules ?? [];
+  const memoryRules = safeArray(options?.memoryRules);
+  const senderRules = safeArray(options?.senderRules);
+  const userRules = safeArray(options?.userRules);
   const emailOverrides = options?.emailOverrides ?? {};
-  const senderRelationships = options?.senderRelationships ?? [];
+  const senderRelationships = safeArray(options?.senderRelationships);
   const allUserRules = [...memoryRules, ...senderRules, ...userRules];
   const workflowMode = options?.workflowMode ?? "assist";
   const catalog = options?.categoryCatalog ?? EMPTY_CATEGORY_CATALOG;
@@ -745,10 +747,10 @@ export async function categorizeGmailInboxRows(
     senderRules,
   };
   const ambiguousIndices: number[] = [];
-  const out: GmailInboxRowCategorized[] = new Array(rows.length) as GmailInboxRowCategorized[];
+  const out: GmailInboxRowCategorized[] = new Array(safeRows.length) as GmailInboxRowCategorized[];
 
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  for (let i = 0; i < safeRows.length; i++) {
+    const row = safeRows[i];
 
     if (mustSkipAiCategorization(row, resolutionCtx)) {
       const resolved = resolveFinalCategory({
@@ -882,10 +884,10 @@ export async function categorizeGmailInboxRows(
   }
 
   if (ambiguousIndices.length === 0) {
-    return applyFinalResolutionPass(out, rows, resolutionCtx);
+    return applyFinalResolutionPass(out, safeRows, resolutionCtx);
   }
 
-  const ambiguousRows = ambiguousIndices.map((i) => rows[i]);
+  const ambiguousRows = ambiguousIndices.map((i) => safeRows[i]);
 
   const classifyAmbiguousRow = (
     row: GmailInboxRow,
@@ -943,9 +945,9 @@ export async function categorizeGmailInboxRows(
     warnFallback("OPENAI_API_KEY missing");
     for (let j = 0; j < ambiguousIndices.length; j++) {
       const i = ambiguousIndices[j];
-      out[i] = classifyAmbiguousRow(rows[i], i, undefined);
+      out[i] = classifyAmbiguousRow(safeRows[i], i, undefined);
     }
-    return applyFinalResolutionPass(out, rows, resolutionCtx);
+    return applyFinalResolutionPass(out, safeRows, resolutionCtx);
   }
 
   const aiMap = await openAiClassifyChunked(ambiguousRows, apiKey, catalog);
@@ -956,27 +958,30 @@ export async function categorizeGmailInboxRows(
 
   for (let j = 0; j < ambiguousIndices.length; j++) {
     const i = ambiguousIndices[j];
-    if (mustSkipAiCategorization(rows[i], resolutionCtx)) {
-      const resolved = resolveFinalCategory({ row: rows[i], context: resolutionCtx });
+    if (mustSkipAiCategorization(safeRows[i], resolutionCtx)) {
+      const resolved = resolveFinalCategory({ row: safeRows[i], context: resolutionCtx });
       logCategoryResolution(resolved.audit);
-      out[i] = finalizeRow(rows[i], i, resolved.category, resolved.source, 1);
+      out[i] = finalizeRow(safeRows[i], i, resolved.category, resolved.source, 1);
       continue;
     }
     const got = aiMap.get(j);
-    out[i] = classifyAmbiguousRow(rows[i], i, got);
+    out[i] = classifyAmbiguousRow(safeRows[i], i, got);
   }
 
-  return applyFinalResolutionPass(out, rows, resolutionCtx);
+  return applyFinalResolutionPass(out, safeRows, resolutionCtx);
 }
 
 /** Last gate: user overrides and sender rules always win over any pipeline/AI output. */
 function applyFinalResolutionPass(
-  out: GmailInboxRowCategorized[],
-  rows: GmailInboxRow[],
+  out: GmailInboxRowCategorized[] | null | undefined,
+  rows: GmailInboxRow[] | null | undefined,
   context: CategoryResolutionContext,
 ): GmailInboxRowCategorized[] {
-  const resolved = out.map((categorized, index) => {
-    const row = rows[index];
+  const safeOut = safeArray(out);
+  const safeRows = safeArray(rows);
+  const resolved = safeOut.map((categorized, index) => {
+    const row = safeRows[index];
+    if (!row) return categorized;
     const pipelineSource = categorized.categorySource;
     const isAiLike =
       pipelineSource === "ai" ||

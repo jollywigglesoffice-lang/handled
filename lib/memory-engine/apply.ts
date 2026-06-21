@@ -142,14 +142,14 @@ function rulesWithPrefix(rules: InboxUserRule[] | null | undefined, prefix: stri
 
 export function lookupSenderMemoryCategory(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
-  memoryRules: InboxUserRule[],
+  memoryRules: InboxUserRule[] | null | undefined,
 ): InboxAiCategory | null {
   return lookupMemoryCategory(row, rulesWithPrefix(memoryRules, "memory-sender-"));
 }
 
 export function lookupCorrectionHistoryCategory(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
-  memoryRules: InboxUserRule[],
+  memoryRules: InboxUserRule[] | null | undefined,
 ): InboxAiCategory | null {
   return lookupMemoryCategory(row, rulesWithPrefix(memoryRules, "memory-correction-"));
 }

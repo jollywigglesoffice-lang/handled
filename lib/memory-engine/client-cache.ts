@@ -60,11 +60,12 @@ function upsertSenderLocal(
   state: ClientMemoryState,
   input: { sender: string; category: InboxAiCategory },
 ): ClientMemoryState {
+  const safe = normalizeMemoryEngineSnapshot(state);
   const identity = resolveSenderIdentity(input.sender);
   const email = identity.email || null;
   const domain = identity.domain || null;
 
-  const existing = state.senderMemory.find(
+  const existing = safe.senderMemory.find(
     (m) => m.senderEmail === email && m.senderDomain === domain,
   );
 
@@ -83,10 +84,10 @@ function upsertSenderLocal(
   };
 
   return {
-    ...state,
+    ...safe,
     senderMemory: [
       record,
-      ...state.senderMemory.filter(
+      ...safe.senderMemory.filter(
         (m) => !(m.senderEmail === email && m.senderDomain === domain),
       ),
     ].slice(0, 200),
@@ -97,10 +98,11 @@ function upsertPatternLocal(
   state: ClientMemoryState,
   input: { sender: string; subject: string; category: InboxAiCategory },
 ): ClientMemoryState {
+  const safe = normalizeMemoryEngineSnapshot(state);
   const domain = resolveSenderIdentity(input.sender).domain;
-  if (!domain) return state;
+  if (!domain) return safe;
 
-  let patterns = [...state.categoryPatterns];
+  let patterns = [...safe.categoryPatterns];
   for (const keyword of extractTopicKeywords(input.subject)) {
     const idx = patterns.findIndex(
       (p) => p.senderDomain === domain && p.subjectKeyword === keyword,
@@ -130,7 +132,7 @@ function upsertPatternLocal(
     .sort((a, b) => b.correctionCount - a.correctionCount)
     .slice(0, 100);
 
-  return { ...state, categoryPatterns: patterns };
+  return { ...safe, categoryPatterns: patterns };
 }
 
 function upsertCorrectionHistoryLocal(
@@ -141,11 +143,12 @@ function upsertCorrectionHistoryLocal(
     userCategory: InboxAiCategory;
   },
 ): ClientMemoryState {
+  const safe = normalizeMemoryEngineSnapshot(state);
   const identity = resolveSenderIdentity(input.sender);
   const email = identity.email || null;
   const domain = identity.domain || null;
 
-  const existing = state.categoryCorrections.find(
+  const existing = safe.categoryCorrections.find(
     (c) => c.senderEmail === email && c.senderDomain === domain,
   );
 
@@ -162,7 +165,7 @@ function upsertCorrectionHistoryLocal(
 
   const corrections = [
     record,
-    ...state.categoryCorrections.filter(
+    ...safe.categoryCorrections.filter(
       (c) => !(c.senderEmail === email && c.senderDomain === domain),
     ),
   ]
@@ -170,20 +173,21 @@ function upsertCorrectionHistoryLocal(
     .sort((a, b) => b.correctionCount - a.correctionCount)
     .slice(0, 200);
 
-  return { ...state, categoryCorrections: corrections };
+  return { ...safe, categoryCorrections: corrections };
 }
 
 function upsertPreferencePatternsLocal(
   state: ClientMemoryState,
   input: { sender: string; subject: string; category: InboxAiCategory },
 ): ClientMemoryState {
+  const safe = normalizeMemoryEngineSnapshot(state);
   const domain = resolveSenderIdentity(input.sender).domain;
-  if (!domain) return state;
+  if (!domain) return safe;
 
   const keywords = preferenceKeywords(inferPreferenceHints(input.subject, input.sender));
-  if (!keywords.length) return state;
+  if (!keywords.length) return safe;
 
-  let patterns = [...state.categoryPatterns];
+  let patterns = [...safe.categoryPatterns];
   for (const keyword of keywords) {
     const idx = patterns.findIndex(
       (p) => p.senderDomain === domain && p.subjectKeyword === keyword,
@@ -213,7 +217,7 @@ function upsertPreferencePatternsLocal(
     .sort((a, b) => b.correctionCount - a.correctionCount)
     .slice(0, 100);
 
-  return { ...state, categoryPatterns: patterns };
+  return { ...safe, categoryPatterns: patterns };
 }
 
 /** Record correction locally — applies on next inbox render without waiting for server. */
@@ -245,13 +249,14 @@ export function recordClientMemoryCorrection(input: {
     });
   }
   saveClientMemoryState(state);
+  const saved = normalizeMemoryEngineSnapshot(state);
   handledDebugLog("memory-client", {
     sender: input.sender,
     category: input.chosenCategory,
-    activeRules: state.senderMemory.filter(
+    activeRules: saved.senderMemory.filter(
       (m) => m.trustScore >= MEMORY_AUTO_APPLY_THRESHOLD,
     ).length,
-    correctionHistory: state.categoryCorrections.filter(
+    correctionHistory: saved.categoryCorrections.filter(
       (c) => c.correctionCount >= MEMORY_CORRECTION_HISTORY_THRESHOLD,
     ).length,
   });

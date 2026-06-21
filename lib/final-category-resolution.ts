@@ -23,13 +23,26 @@ import {
 } from "@/lib/memory-engine/apply";
 import { logSenderRuleDebug, resolveSenderIdentity } from "@/lib/sender-identity";
 import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
+import { safeArray } from "@/lib/safe-array";
 
 export type CategoryResolutionContext = {
   emailOverrides: Record<string, InboxAiCategory>;
   /** Learned behavioral memory — outranks sender prefs and AI after 2+ corrections. */
+  memoryRules: InboxUserRule[] | null | undefined;
+  senderRules: InboxUserRule[] | null | undefined;
+};
+
+function safeResolutionContext(context: CategoryResolutionContext): {
+  emailOverrides: Record<string, InboxAiCategory>;
   memoryRules: InboxUserRule[];
   senderRules: InboxUserRule[];
-};
+} {
+  return {
+    emailOverrides: context.emailOverrides ?? {},
+    memoryRules: safeArray(context.memoryRules),
+    senderRules: safeArray(context.senderRules),
+  };
+}
 
 export type CategoryResolutionInput = {
   row: Pick<GmailInboxRow, "id" | "sender" | "subject" | "snippet"> & {
@@ -91,14 +104,14 @@ export function getManualOverride(
 
 export function getMemoryLearnedCategory(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
-  memoryRules: InboxUserRule[],
+  memoryRules: InboxUserRule[] | null | undefined,
 ): InboxAiCategory | null {
   return lookupSenderMemoryCategory(row, memoryRules);
 }
 
 export function getCorrectionHistoryCategory(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
-  memoryRules: InboxUserRule[],
+  memoryRules: InboxUserRule[] | null | undefined,
 ): InboxAiCategory | null {
   return lookupCorrectionHistoryCategory(row, memoryRules);
 }
@@ -106,16 +119,16 @@ export function getCorrectionHistoryCategory(
 /** Full memory stack — sender + correction history + patterns. */
 export function getAnyMemoryCategory(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
-  memoryRules: InboxUserRule[],
+  memoryRules: InboxUserRule[] | null | undefined,
 ): InboxAiCategory | null {
   return lookupMemoryCategory(row, memoryRules);
 }
 
 export function getSenderLearnedCategory(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
-  senderRules: InboxUserRule[],
+  senderRules: InboxUserRule[] | null | undefined,
 ): InboxAiCategory | null {
-  const senderPre = applyUserRulesPre(row as GmailInboxRow, senderRules);
+  const senderPre = applyUserRulesPre(row as GmailInboxRow, safeArray(senderRules));
   const category =
     senderPre?.kind === "force"
       ? senderPre.category
@@ -147,14 +160,16 @@ export function mustSkipAiCategorization(
   },
   context: CategoryResolutionContext,
 ): boolean {
-  if (getManualOverride(row.id, context.emailOverrides, row.accountId)) return true;
-  if (getAnyMemoryCategory(row, context.memoryRules)) return true;
-  if (getSenderLearnedCategory(row, context.senderRules)) return true;
+  const safe = safeResolutionContext(context);
+  if (getManualOverride(row.id, safe.emailOverrides, row.accountId)) return true;
+  if (getAnyMemoryCategory(row, safe.memoryRules)) return true;
+  if (getSenderLearnedCategory(row, safe.senderRules)) return true;
   return false;
 }
 
 export function resolveFinalCategory(input: CategoryResolutionInput): CategoryResolutionResult {
-  const { row, context } = input;
+  const { row } = input;
+  const context = safeResolutionContext(input.context);
   const manualOverride = getManualOverride(row.id, context.emailOverrides, row.accountId);
   const memoryLearned = getMemoryLearnedCategory(row, context.memoryRules);
   const correctionHistory = getCorrectionHistoryCategory(row, context.memoryRules);
@@ -229,7 +244,7 @@ export function resolveFinalCategory(input: CategoryResolutionInput): CategoryRe
     category: finalCategory,
     source: finalSource,
     audit,
-    skipAi: mustSkipAiCategorization(row, context),
+    skipAi: mustSkipAiCategorization(row, input.context),
   };
 }
 
@@ -296,8 +311,8 @@ export function resolveInboxMessageForDisplay<T extends InboxMessageWithCategory
 }
 
 export function resolveAllInboxMessagesForDisplay<T extends InboxMessageWithCategory>(
-  messages: T[],
+  messages: T[] | null | undefined,
   context: CategoryResolutionContext,
 ): T[] {
-  return messages.map((m) => resolveInboxMessageForDisplay(m, context));
+  return safeArray(messages).map((m) => resolveInboxMessageForDisplay(m, context));
 }

@@ -23,6 +23,7 @@ import type { InboxUserRule } from "@/lib/inbox-user-rules/types";
 import type { MemoryEngineSnapshot } from "@/lib/memory-engine/types";
 import { memoryRulesFromSnapshot } from "@/lib/memory-engine/apply";
 import { loadMemoryEngineForUser } from "@/lib/memory-engine/store";
+import { safeArray } from "@/lib/safe-array";
 
 export type CategorizationContext = {
   /** Per-email manual overrides — highest priority. */
@@ -43,8 +44,8 @@ export type CategorizationContext = {
   categoryCatalog: ReturnType<typeof buildInboxCategoryCatalog>;
 };
 
-function stripLearnedSenderDuplicates(rules: InboxUserRule[]): InboxUserRule[] {
-  return rules.filter((r) => !isLearnedSenderInboxRule(r));
+function stripLearnedSenderDuplicates(rules: InboxUserRule[] | null | undefined): InboxUserRule[] {
+  return safeArray(rules).filter((r) => !isLearnedSenderInboxRule(r));
 }
 
 export async function loadCategorizationContext(
@@ -89,11 +90,11 @@ export async function loadCategorizationContext(
     ? parseSenderRelationshipsHeader(request.headers.get("x-handled-sender-relationships"))
     : [];
   const relByKey = new Map<string, SenderRelationship>();
-  for (const r of clientRelationships) {
+  for (const r of safeArray(clientRelationships)) {
     const key = r.senderEmail || r.senderDomain;
     if (key) relByKey.set(key, r);
   }
-  for (const r of serverRelationships) {
+  for (const r of safeArray(serverRelationships)) {
     const key = r.senderEmail || r.senderDomain;
     if (key) relByKey.set(key, r);
   }
@@ -106,7 +107,7 @@ export async function loadCategorizationContext(
     : [];
   const serverPersonal = await loadPersonalCategoriesForUser(userId);
   const personalCategories =
-    clientPersonal.length > 0 ? clientPersonal : serverPersonal;
+    safeArray(clientPersonal).length > 0 ? clientPersonal : safeArray(serverPersonal);
   const categoryCatalog = buildInboxCategoryCatalog(personalCategories);
 
   return {

@@ -1,4 +1,5 @@
 import type { MemoryEngineSnapshot } from "@/lib/memory-engine/types";
+import { safeArray } from "@/lib/safe-array";
 
 export function emptyMemoryEngineSnapshot(): MemoryEngineSnapshot {
   return {
@@ -18,16 +19,14 @@ export function normalizeMemoryEngineSnapshot(
   }
 
   return {
-    senderMemory: Array.isArray(snapshot.senderMemory) ? snapshot.senderMemory : [],
-    categoryCorrections: Array.isArray(snapshot.categoryCorrections)
-      ? snapshot.categoryCorrections
-      : [],
-    categoryPatterns: Array.isArray(snapshot.categoryPatterns) ? snapshot.categoryPatterns : [],
-    actionMemory: Array.isArray(snapshot.actionMemory) ? snapshot.actionMemory : [],
+    senderMemory: safeArray(snapshot.senderMemory),
+    categoryCorrections: safeArray(snapshot.categoryCorrections),
+    categoryPatterns: safeArray(snapshot.categoryPatterns),
+    actionMemory: safeArray(snapshot.actionMemory),
   };
 }
 
 /** Guard array inputs before .filter/.map/.reduce — memory is optional, never blocking. */
 export function safeMemoryRecords<T>(records: T[] | null | undefined): T[] {
-  return Array.isArray(records) ? records : [];
+  return safeArray(records);
 }

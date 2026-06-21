@@ -6,6 +6,7 @@ import type {
   UserRulePostResult,
   UserRulePreResult,
 } from "@/lib/inbox-user-rules/types";
+import { safeArray } from "@/lib/safe-array";
 
 /**
  * PRE-PHASE (highest priority in the whole pipeline)
@@ -14,9 +15,9 @@ import type {
  */
 export function applyUserRulesPre(
   row: GmailInboxRow,
-  rules: InboxUserRule[],
+  rules: InboxUserRule[] | null | undefined,
 ): UserRulePreResult {
-  const rule = findFirstMatchingRule(row, rules, "pre");
+  const rule = findFirstMatchingRule(row, safeArray(rules), "pre");
   if (!rule) return null;
 
   console.log("RULE MATCH (user pre):", rule.label ?? rule.id, {
@@ -45,9 +46,9 @@ export function applyUserRulesPre(
 export function applyUserRulesPost(
   row: GmailInboxRow,
   currentCategory: InboxAiCategory,
-  rules: InboxUserRule[],
+  rules: InboxUserRule[] | null | undefined,
 ): UserRulePostResult {
-  for (const rule of sortRulesForPhase(rules, "post")) {
+  for (const rule of sortRulesForPhase(safeArray(rules), "post")) {
     if (!ruleMatchesRow(row, rule.match)) continue;
 
     if (rule.action.type === "demote" || rule.action.type === "boost") {
