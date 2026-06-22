@@ -24,6 +24,8 @@ export async function fetchUnifiedInboxPage(input: {
   accountFilterId?: string | null;
   maxResults: number;
   pageToken?: string | null;
+  /** Gmail search query — defaults to `in:inbox`. */
+  query?: string;
 }): Promise<UnifiedInboxFetchResult> {
   const targets = input.accountFilterId
     ? input.accounts.filter((a) => a.id === input.accountFilterId)
@@ -54,6 +56,7 @@ export async function fetchUnifiedInboxPage(input: {
               gmailListInboxPage(t, {
                 maxResults: perAccountMax,
                 pageToken: input.pageToken ?? undefined,
+                query: input.query,
               }),
             { accountId: account.id },
           ),
@@ -109,6 +112,25 @@ export async function fetchUnifiedInboxPage(input: {
     gmailTruth,
     accountsLoaded: fetches.filter((f) => f.rows.length > 0).length,
   };
+}
+
+/** Merge inbox rows by account-scoped id, newest first. */
+export function mergeUnifiedInboxRows(
+  primary: GmailInboxRow[],
+  extra: GmailInboxRow[],
+  maxResults: number,
+): GmailInboxRow[] {
+  const seen = new Set<string>();
+  const merged: GmailInboxRow[] = [];
+  for (const row of [...primary, ...extra]) {
+    const key = row.accountId ? `${row.accountId}:${row.id}` : row.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+  }
+  return merged
+    .sort((a, b) => b.internalDateMs - a.internalDateMs)
+    .slice(0, maxResults);
 }
 
 /** Search messages across connected accounts (Gmail q syntax — subject, sender, body). */

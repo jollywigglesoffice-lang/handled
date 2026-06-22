@@ -1335,6 +1335,32 @@ export function EmailsClient() {
     trackEvent("guided_onboarding_completed");
   }, []);
 
+  const fetchOnboardingExamples = useCallback(async () => {
+    const params = new URLSearchParams({ onboarding: "1" });
+    if (activeAccountFilter !== "all") {
+      params.set("accountId", activeAccountFilter);
+    }
+    const res = await fetch(`/api/gmail/messages?${params.toString()}`, {
+      credentials: "include",
+      headers: await inboxLoadFetchHeaders(),
+      signal: AbortSignal.timeout(INBOX_LOAD_CLIENT_TIMEOUT_MS),
+    });
+    if (!res.ok) return;
+    const body = (await res.json()) as { messages?: GmailInboxMessage[] };
+    if (!body.messages?.length) return;
+    setGmailMessages((prev) => {
+      const merged = new Map(
+        prev.map((m) => [scopedEmailKey(m.id, m.accountId), m] as const),
+      );
+      for (const message of body.messages ?? []) {
+        merged.set(scopedEmailKey(message.id, message.accountId), message);
+      }
+      return [...merged.values()].sort(
+        (a, b) => (b.internalDateMs ?? 0) - (a.internalDateMs ?? 0),
+      );
+    });
+  }, [activeAccountFilter]);
+
   const betaAiFilterCounts = useMemo(
     () => countBetaAiFilter(gmailBuckets.allVisible as GmailCardMessage[]),
     [gmailBuckets.allVisible],
@@ -2266,6 +2292,7 @@ export function EmailsClient() {
             readStateMap={readStateMap}
             isCompleted={isCompleted}
             onFinished={handleFirstOnboardingFinished}
+            onFetchMoreExamples={fetchOnboardingExamples}
           />
         ) : inboxLoading ? (
           <InboxLoadingState

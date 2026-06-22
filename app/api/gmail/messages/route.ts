@@ -6,7 +6,8 @@ import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-me
 export const dynamic = "force-dynamic";
 import { GmailApiError } from "@/lib/gmail-api-error";
 import { listConnectedGmailAccounts } from "@/lib/google/connected-accounts";
-import { fetchUnifiedInboxPage } from "@/lib/gmail/fetch-unified-inbox";
+import { fetchUnifiedInboxPage, mergeUnifiedInboxRows } from "@/lib/gmail/fetch-unified-inbox";
+import { ONBOARDING_BROAD_GMAIL_QUERY } from "@/lib/onboarding/example-buckets";
 import {
   INBOX_INITIAL_PAGE_SIZE,
   INBOX_LOAD_MORE_PAGE_SIZE,
@@ -121,6 +122,7 @@ export async function GET(request: Request) {
   const searchParams = new URL(request.url).searchParams;
   const pageToken = searchParams.get("pageToken");
   const refresh = searchParams.get("refresh") === "1";
+  const onboardingMode = searchParams.get("onboarding") === "1";
   const accountFilterId = searchParams.get("accountId");
   const paginated = Boolean(pageToken);
 
@@ -203,13 +205,25 @@ export async function GET(request: Request) {
     }
 
     const listStarted = Date.now();
-    const { rows, gmailTruth } = await fetchUnifiedInboxPage({
+    let { rows, gmailTruth } = await fetchUnifiedInboxPage({
       userId,
       accounts,
       accountFilterId,
       maxResults,
       pageToken,
     });
+
+    if (onboardingMode && !paginated && rows.length < 3) {
+      const broad = await fetchUnifiedInboxPage({
+        userId,
+        accounts,
+        accountFilterId,
+        maxResults: Math.max(maxResults, 100),
+        query: ONBOARDING_BROAD_GMAIL_QUERY,
+      });
+      rows = mergeUnifiedInboxRows(rows, broad.rows, Math.max(maxResults, 100));
+    }
+
     timings = mergeTimings(timings, {
       gmailListMs: elapsedMs(listStarted),
       gmailMetadataMs: elapsedMs(listStarted),

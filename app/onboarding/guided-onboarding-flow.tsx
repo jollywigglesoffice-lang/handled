@@ -8,7 +8,11 @@ import {
   buildOnboardingSenderCandidates,
   type SenderCandidate,
 } from "@/lib/onboarding/build-sender-candidates";
-import { buildFirstTimeOnboardingQueue } from "@/lib/onboarding/build-queue";
+import {
+  buildFirstTimeOnboardingQueue,
+  MIN_ONBOARDING_EXAMPLES,
+  needsMoreOnboardingExamples,
+} from "@/lib/onboarding/build-queue";
 import {
   GUIDED_ONBOARDING_STEPS,
   type GuidedOnboardingStep,
@@ -35,6 +39,8 @@ export type GuidedOnboardingFlowProps = {
   readStateMap: ReadStateMap;
   isCompleted: (id: string) => boolean;
   onFinished: () => void;
+  /** Broaden inbox fetch when Step 3 needs more example emails. */
+  onFetchMoreExamples?: () => Promise<void>;
 };
 
 const COPY = {
@@ -72,6 +78,14 @@ const COPY = {
     firstAction: {
       title: "Handle your first email",
       hint: "Click Reply or Done — that's how Handled learns.",
+      fetchingMore: "Not enough signals — fetching more examples…",
+      noEmailTitle: "No examples loaded yet",
+      noEmailBody: "Refresh to pull more from your inbox, or skip and explore on your own.",
+      refreshExamples: "Refresh examples",
+      skipStep: "Skip this step",
+      useWhatIHave: "Use what I have",
+      exampleCount: (n: number) =>
+        n === 1 ? "1 example ready" : `${n} examples ready`,
     },
     personalize: {
       title: "How should Handled treat this sender?",
@@ -124,6 +138,14 @@ const COPY = {
     firstAction: {
       title: "Gestisci la prima email",
       hint: "Clicca Rispondi o Fatto — così Handled impara.",
+      fetchingMore: "Segnali insufficienti — recupero altri esempi…",
+      noEmailTitle: "Nessun esempio caricato",
+      noEmailBody: "Aggiorna per recuperare altre email, oppure salta e esplora da solo.",
+      refreshExamples: "Aggiorna esempi",
+      skipStep: "Salta questo passo",
+      useWhatIHave: "Usa quelli disponibili",
+      exampleCount: (n: number) =>
+        n === 1 ? "1 esempio pronto" : `${n} esempi pronti`,
     },
     personalize: {
       title: "Come deve trattare Handled questo mittente?",
@@ -160,6 +182,7 @@ export function GuidedOnboardingFlow({
   readStateMap,
   isCompleted,
   onFinished,
+  onFetchMoreExamples,
 }: GuidedOnboardingFlowProps) {
   const t = COPY[locale];
   const { collectCategoryCorrection } = useMemoryCollect();
@@ -184,8 +207,29 @@ export function GuidedOnboardingFlow({
   const [importantSenders, setImportantSenders] = useState<Set<string>>(() => new Set());
   const [promoSenders, setPromoSenders] = useState<Set<string>>(() => new Set());
   const [senderRefreshIndex, setSenderRefreshIndex] = useState(0);
+  const [exampleRefreshIndex, setExampleRefreshIndex] = useState(0);
+  const [examplesFetching, setExamplesFetching] = useState(false);
+  const examplesFetchAttemptedRef = useRef(false);
   const [actionEmail, setActionEmail] = useState<GmailCardMessage | null>(null);
   const [personalizeCategory, setPersonalizeCategory] = useState<InboxAiCategory | null>(null);
+
+  const incompleteMessages = useMemo(
+    () => messages.filter((m) => !isCompleted(m.id)),
+    [messages, isCompleted],
+  );
+
+  const exampleQueue = useMemo(
+    () =>
+      buildFirstTimeOnboardingQueue(messages, isCompleted, {
+        refreshIndex: exampleRefreshIndex,
+      }),
+    [messages, isCompleted, exampleRefreshIndex],
+  );
+
+  const needsMoreExamples = useMemo(
+    () => needsMoreOnboardingExamples(exampleQueue, incompleteMessages.length),
+    [exampleQueue, incompleteMessages.length],
+  );
 
   const senderCandidates = useMemo(
     () => buildOnboardingSenderCandidates(messages, { refreshIndex: senderRefreshIndex }),
@@ -198,9 +242,41 @@ export function GuidedOnboardingFlow({
   const preferencesReady = inboxSettled && (messages.length > 0 || emptyInbox);
 
   const pickActionEmail = useCallback(() => {
-    const queue = buildFirstTimeOnboardingQueue(messages, isCompleted);
-    return queue[0] ?? messages.find((m) => !isCompleted(m.id)) ?? null;
-  }, [messages, isCompleted]);
+    return exampleQueue[0] ?? incompleteMessages[0] ?? null;
+  }, [exampleQueue, incompleteMessages]);
+
+  const requestMoreExamples = useCallback(async () => {
+    if (!onFetchMoreExamples || examplesFetching) return;
+    setExamplesFetching(true);
+    try {
+      await onFetchMoreExamples();
+    } finally {
+      setExamplesFetching(false);
+    }
+  }, [onFetchMoreExamples, examplesFetching]);
+
+  useEffect(() => {
+    if (step !== "first_action") return;
+    setActionEmail(pickActionEmail());
+  }, [step, pickActionEmail]);
+
+  useEffect(() => {
+    if (step !== "first_action") return;
+    if (!onFetchMoreExamples) return;
+    if (examplesFetchAttemptedRef.current && !needsMoreExamples) return;
+    if (exampleQueue.length >= MIN_ONBOARDING_EXAMPLES) return;
+    if (examplesFetching) return;
+
+    examplesFetchAttemptedRef.current = true;
+    void requestMoreExamples();
+  }, [
+    step,
+    onFetchMoreExamples,
+    needsMoreExamples,
+    exampleQueue.length,
+    examplesFetching,
+    requestMoreExamples,
+  ]);
 
   const persistSenderPrefs = useCallback(
     (sender: string, category: InboxAiCategory, label: string) => {
@@ -299,7 +375,7 @@ export function GuidedOnboardingFlow({
       }
       const email = pickActionEmail();
       setActionEmail(email);
-      goToStep(email ? "first_action" : "release");
+      goToStep("first_action");
     },
     [savePreferenceStep, pickActionEmail, goToStep],
   );
@@ -326,6 +402,33 @@ export function GuidedOnboardingFlow({
       refresh_index: senderRefreshIndex + 1,
     });
   }, [senderRefreshIndex]);
+
+  const handleRefreshExamples = useCallback(() => {
+    setExampleRefreshIndex((n) => n + 1);
+    examplesFetchAttemptedRef.current = false;
+    trackEvent("guided_onboarding_examples_refresh", {
+      refresh_index: exampleRefreshIndex + 1,
+    });
+    void requestMoreExamples();
+  }, [exampleRefreshIndex, requestMoreExamples]);
+
+  const handleSkipFirstAction = useCallback(() => {
+    trackEvent("guided_onboarding_first_action_skipped");
+    goToStep("release");
+  }, [goToStep]);
+
+  const handleUseWhatIHave = useCallback(() => {
+    const email = pickActionEmail();
+    setActionEmail(email);
+    trackEvent("guided_onboarding_use_available_examples", {
+      example_count: exampleQueue.length,
+    });
+    if (email) {
+      goToStep("personalize");
+    } else {
+      goToStep("release");
+    }
+  }, [pickActionEmail, exampleQueue.length, goToStep]);
 
   const handleFirstActionDone = useCallback(() => {
     if (actionEmail) {
@@ -398,19 +501,20 @@ export function GuidedOnboardingFlow({
         />
       ) : null}
 
-      {step === "first_action" && actionEmail ? (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-medium text-gray-900">{t.firstAction.title}</h3>
-            <p className="mt-1 text-sm text-gray-500">{t.firstAction.hint}</p>
-          </div>
-          <OnboardingEmailCard
-            message={actionEmail}
-            locale={locale}
-            readStateMap={readStateMap}
-            onAdvance={handleFirstActionDone}
-          />
-        </div>
+      {step === "first_action" ? (
+        <FirstActionStep
+          t={t.firstAction}
+          locale={locale}
+          actionEmail={actionEmail}
+          exampleCount={exampleQueue.length}
+          examplesFetching={examplesFetching}
+          showFetchingMessage={exampleQueue.length < MIN_ONBOARDING_EXAMPLES}
+          readStateMap={readStateMap}
+          onAdvance={handleFirstActionDone}
+          onRefresh={handleRefreshExamples}
+          onSkip={handleSkipFirstAction}
+          onUseWhatIHave={handleUseWhatIHave}
+        />
       ) : null}
 
       {step === "personalize" && actionEmail ? (
@@ -428,6 +532,115 @@ export function GuidedOnboardingFlow({
       {step === "release" ? (
         <ReleaseStep t={t.release} onFinish={onFinished} />
       ) : null}
+    </div>
+  );
+}
+
+function FirstActionStep({
+  t,
+  locale,
+  actionEmail,
+  exampleCount,
+  examplesFetching,
+  showFetchingMessage,
+  readStateMap,
+  onAdvance,
+  onRefresh,
+  onSkip,
+  onUseWhatIHave,
+}: {
+  t: (typeof COPY)["en" | "it"]["firstAction"];
+  locale: "en" | "it";
+  actionEmail: GmailCardMessage | null;
+  exampleCount: number;
+  examplesFetching: boolean;
+  showFetchingMessage: boolean;
+  readStateMap: ReadStateMap;
+  onAdvance: () => void;
+  onRefresh: () => void;
+  onSkip: () => void;
+  onUseWhatIHave: () => void;
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-medium text-gray-900">{t.title}</h3>
+        <p className="mt-1 text-sm text-gray-500">{t.hint}</p>
+        {exampleCount > 0 ? (
+          <p className="mt-2 text-xs font-medium text-accent">{t.exampleCount(exampleCount)}</p>
+        ) : null}
+        {showFetchingMessage ? (
+          <p className="mt-3 flex items-center gap-2 text-sm text-gray-500">
+            {examplesFetching ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+            ) : null}
+            {t.fetchingMore}
+          </p>
+        ) : null}
+      </div>
+
+      {actionEmail ? (
+        <OnboardingEmailCard
+          message={actionEmail}
+          locale={locale}
+          readStateMap={readStateMap}
+          onAdvance={onAdvance}
+        />
+      ) : (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/80 px-6 py-8 text-center">
+          <p className="text-sm font-medium text-gray-800">{t.noEmailTitle}</p>
+          <p className="mt-2 text-sm text-gray-500">{t.noEmailBody}</p>
+        </div>
+      )}
+
+      <FirstActionControls
+        t={t}
+        onRefresh={onRefresh}
+        onSkip={onSkip}
+        onUseWhatIHave={onUseWhatIHave}
+        refreshBusy={examplesFetching}
+      />
+    </section>
+  );
+}
+
+function FirstActionControls({
+  t,
+  onRefresh,
+  onSkip,
+  onUseWhatIHave,
+  refreshBusy,
+}: {
+  t: (typeof COPY)["en" | "it"]["firstAction"];
+  onRefresh: () => void;
+  onSkip: () => void;
+  onUseWhatIHave: () => void;
+  refreshBusy?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={refreshBusy}
+        className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+      >
+        {t.refreshExamples}
+      </button>
+      <button
+        type="button"
+        onClick={onUseWhatIHave}
+        className="flex-1 rounded-xl border border-accent/30 bg-accent-muted/20 px-4 py-3 text-sm font-medium text-accent transition hover:bg-accent-muted/40"
+      >
+        {t.useWhatIHave}
+      </button>
+      <button
+        type="button"
+        onClick={onSkip}
+        className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+      >
+        {t.skipStep}
+      </button>
     </div>
   );
 }

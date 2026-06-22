@@ -47,6 +47,9 @@ export type AnalyticsEvent =
   | "guided_onboarding_preferences_skipped"
   | "guided_onboarding_no_senders_matter"
   | "guided_onboarding_sender_refresh"
+  | "guided_onboarding_examples_refresh"
+  | "guided_onboarding_first_action_skipped"
+  | "guided_onboarding_use_available_examples"
   | "guided_onboarding_completed";
 
 type AnalyticsProps = Record<string, string | number | boolean | null | undefined>;
