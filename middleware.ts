@@ -1,3 +1,7 @@
+/**
+ * Edge middleware — auth checks, redirects, session validation ONLY.
+ * See ARCHITECTURE.md. Do not import domain, data, crypto, or Gmail modules here.
+ */
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import {

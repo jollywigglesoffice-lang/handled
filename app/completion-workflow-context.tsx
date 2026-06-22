@@ -11,7 +11,7 @@ import {
 import { CategoryUndoToast } from "@/app/emails/category-undo-toast";
 import { useEmailCompletions } from "@/app/email-completions-context";
 import type { CompletionActionId } from "@/lib/completion-actions/types";
-import { revertDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
+import { revertDoneInboxEffects } from "@/lib/client/inbox-truth/apply-done-effects";
 import { trackEvent } from "@/lib/analytics";
 
 const UNDO_VISIBLE_MS = 8000;

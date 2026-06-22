@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { revertDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
+import { revertDoneInboxEffects } from "@/lib/client/inbox-truth/apply-done-effects";
 import type { EmailCompletionRecord } from "@/lib/email-completions/types";
 import {
   buildWaitingDashboardItems,

@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
+import { categorizeGmailInboxRows, loadCategorizationContext } from "@/lib/domain/categorization";
 import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-messages";
 import { listConnectedGmailAccounts } from "@/lib/google/connected-accounts";
 import { fetchUnifiedGmailSearch } from "@/lib/gmail/fetch-unified-inbox";
 import { buildGmailSearchQuery } from "@/lib/inbox-search/query";
 import { INBOX_SEARCH_MAX_RESULTS } from "@/lib/inbox-search/constants";
-import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 import { parseWorkflowModeHeader } from "@/lib/workflow-mode-effects";

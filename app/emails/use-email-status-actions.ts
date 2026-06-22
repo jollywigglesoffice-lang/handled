@@ -11,11 +11,11 @@ import {
   READ_STATE_EVENT,
   type ReadStateMap,
 } from "@/lib/read-state/client-storage";
-import { applyDoneInboxEffects, revertDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
+import { useInboxTruthEffects } from "@/app/hooks/use-inbox-truth-effects";
+import { useMemoryCollect } from "@/app/hooks/use-memory-collect";
 import { markEmailsRead, markEmailsUnread } from "@/lib/read-state/gmail-sync";
 import type { CompleteEmailExtras, EmailCompletionRecord } from "@/lib/email-completions/types";
 import { isActiveWaiting } from "@/lib/waiting-on/helpers";
-import { collectActionMemory } from "@/lib/memory-engine/collect";
 
 import { emailStatusCopy } from "@/lib/handled-action-copy";
 
@@ -56,6 +56,8 @@ export function useEmailStatusActions({
 }: EmailStatusActionsInput) {
   const t = EMAIL_STATUS_COPY[locale];
   const { notifyCompleted } = useCompletionWorkflow();
+  const { applyDoneInboxEffects, revertDoneInboxEffects } = useInboxTruthEffects();
+  const { collectActionMemory } = useMemoryCollect();
   const { isCompleted, getCompletion, completeEmails, uncompleteEmails, resolveWaiting } =
     useEmailCompletions();
   const [readMap, setReadMap] = useState<ReadStateMap>(() =>

@@ -16,7 +16,7 @@ import { SaveStatus, type SaveStatusState } from "@/app/components/save-status";
 import { useEmailStatusActions } from "@/app/emails/use-email-status-actions";
 import { useInboxCategories } from "@/app/inbox-categories-context";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
-import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
+import { useCategoryFeedback } from "@/app/hooks/use-category-feedback";
 import { logSenderRuleDebug, senderIdentityForTeachHandled } from "@/lib/sender-identity";
 import {
   clearSenderLearningSuggestion,
@@ -154,6 +154,7 @@ export function GmailInboxCard({
   );
   const ui = useUiCopy();
   const { catalog } = useInboxCategories();
+  const { submitCategoryFeedback } = useCategoryFeedback();
 
   const emailStatus = useEmailStatusActions({
     emailId: message.id,

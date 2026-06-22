@@ -41,10 +41,8 @@ import { loadClientHandledBrain } from "@/lib/handled-brain/client-storage";
 import { retrieveBrainUsageDto } from "@/lib/knowledge/retrieve";
 import { buildGlancePresentation } from "@/lib/glance-clarity";
 import { recordSenderEmailOpen } from "@/lib/importance-memory";
-import {
-  collectEmailOpened,
-  collectEmailViewedWithoutAction,
-} from "@/lib/memory-engine/collect";
+import { useCategoryFeedback } from "@/app/hooks/use-category-feedback";
+import { useMemoryCollect } from "@/app/hooks/use-memory-collect";
 import {
   getIntelligenceVerbosity,
   recordEmailEngagement,
@@ -57,7 +55,6 @@ import {
   loadInboxReturnContext,
   queueInboxScrollRestore,
 } from "@/lib/inbox-return-context";
-import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import { gmailForwardComposeUrl } from "@/lib/gmail-forward-url";
 
@@ -116,6 +113,8 @@ export function EmailDetailView({
   // Owning Gmail account — keeps completion/read state account-scoped.
   const accountId = searchParams.get("accountId") ?? undefined;
   const { notifyCompleted } = useCompletionWorkflow();
+  const { submitCategoryFeedback } = useCategoryFeedback();
+  const { collectEmailOpened, collectEmailViewedWithoutAction } = useMemoryCollect();
   const { catalog } = useInboxCategories();
   const { uiLanguage } = useUserPreferences();
   const locale = uiLocaleFromLanguage(uiLanguage) === "it" ? "it" : "en";

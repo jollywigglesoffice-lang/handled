@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { EMPTY_CATEGORY_CATALOG } from "@/lib/inbox-category-catalog";
-import { categorizeGmailInboxRows } from "@/lib/categorize-inbox-messages";
+import { categorizeGmailInboxRows, loadCategorizationContext } from "@/lib/domain/categorization";
 import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-messages";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,6 @@ import {
   computeBackoffDelayMs,
   parseRetryAfterMs,
 } from "@/lib/inbox-load/rate-limit-backoff";
-import { loadCategorizationContext } from "@/lib/load-user-categorization-context";
 import { requireApiAuth, requireGoogleProviderToken } from "@/lib/auth/require-api-auth";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 import { parseWorkflowModeHeader } from "@/lib/workflow-mode-effects";

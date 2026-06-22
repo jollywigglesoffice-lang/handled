@@ -16,11 +16,7 @@ import { useUiCopy } from "@/app/use-ui-copy";
 import { useUserPreferences } from "@/app/user-preferences-context";
 import { inboxFetchHeaders, inboxLoadFetchHeaders } from "@/lib/inbox-fetch-headers";
 import { readWorkflowModeFromStorage } from "@/lib/workflow-mode";
-import { resolveAllInboxMessagesForDisplay } from "@/lib/final-category-resolution";
-import {
-  loadClientSenderPreferences,
-  senderPreferencesToRules,
-} from "@/lib/inbox-sender-preferences";
+import { loadClientSenderPreferences } from "@/lib/inbox-sender-preferences";
 import { syncSenderPreferencesFromAccount } from "@/lib/sender-rules/client-sync";
 import { logSenderRuleDebug, resolveSenderIdentity } from "@/lib/sender-identity";
 import {
@@ -65,7 +61,6 @@ import { InboxClutterSection } from "@/app/emails/inbox-clutter-section";
 import { applyImportanceOrderingToBuckets } from "@/lib/importance-memory";
 import { applyTimeImpactOrderingToBuckets } from "@/lib/time-impact/inbox-sort";
 import { buildTimeStripGroups } from "@/lib/time-impact/time-strip";
-import { isUserLockedCategorySource } from "@/lib/category-authority";
 import { classifyAutopilot, isAutopilotInboxVisible } from "@/lib/autopilot";
 import { useAutopilotProcessor } from "@/app/emails/use-autopilot-processor";
 import { BetaAiFilterBar } from "@/app/emails/beta-ai-filter-bar";
@@ -146,7 +141,6 @@ import {
 import { type CategorySource, normalizeInboxAiCategory } from "@/lib/inbox-ai-categories";
 import { saveClientPersonalCategories } from "@/lib/personal-categories/client-storage";
 import { normalizePersonalCategoriesList } from "@/lib/personal-categories/storage";
-import { applySenderRuleToMessages } from "@/lib/sender-rules/apply-to-messages";
 import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
 import { buildCategoryUndoSnapshot } from "@/lib/category-undo/snapshot";
 import {
@@ -165,7 +159,7 @@ import {
   type ReadStateMap,
 } from "@/lib/read-state/client-storage";
 import { useWaitingOnMetadata } from "@/app/waiting-on-metadata-context";
-import { applyDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
+import { applyDoneInboxEffects } from "@/lib/client/inbox-truth/apply-done-effects";
 import type { GmailTruthStats } from "@/lib/inbox-truth/types";
 import { markEmailsRead, markEmailsUnread } from "@/lib/read-state/gmail-sync";
 import {
@@ -194,13 +188,8 @@ import {
   type InboxZeroRecategorizeMeta,
   type InboxZeroStep,
 } from "@/app/emails/inbox-zero-mode";
-import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
-import { collectUserOverrideLog } from "@/lib/memory-engine/collect";
-import {
-  loadClientMemoryRules,
-  mergeClientMemorySnapshot,
-  MEMORY_ENGINE_EVENT,
-} from "@/lib/memory-engine/client-cache";
+import { useCategoryFeedback } from "@/app/hooks/use-category-feedback";
+import { useMemoryCollect } from "@/app/hooks/use-memory-collect";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 import { CategoryTabs, type CategoryTab } from "@/app/emails/category-tabs";
 import { calmLoadMoreMessage } from "@/lib/calm-system-copy";
@@ -509,6 +498,8 @@ export function EmailsClient() {
     waitingOpenRecords,
     isCompleted,
   } = useEmailCompletions();
+  const { submitCategoryFeedback } = useCategoryFeedback();
+  const { collectUserOverrideLog } = useMemoryCollect();
 
   const [inboxMode, setInboxMode] = useState<InboxMode>("loading");
   const [gmailMessages, setGmailMessages] = useState<GmailInboxMessage[]>([]);
@@ -519,8 +510,6 @@ export function EmailsClient() {
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, InboxAiCategory>>(
     {},
   );
-  const [senderPrefsVersion, setSenderPrefsVersion] = useState(0);
-  const [memoryVersion, setMemoryVersion] = useState(0);
   const [persistenceReady, setPersistenceReady] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [workflowMode, setWorkflowMode] = useState(readWorkflowModeFromStorage);
@@ -1076,7 +1065,6 @@ export function EmailsClient() {
       if (cancelled) return;
       setWorkflowMode(mode);
       setCategoryOverrides(overrides);
-      setSenderPrefsVersion((v) => v + 1);
       logSenderRuleDebug("inbox persistence ready", {
         overrideCount: Object.keys(overrides).length,
         senderPrefCount: senderPrefs.length,
@@ -1113,12 +1101,12 @@ export function EmailsClient() {
     };
     const onSenderPrefsChange = async () => {
       await syncSenderPreferencesFromAccount();
-      setSenderPrefsVersion((v) => v + 1);
+      void loadInbox();
     };
     window.addEventListener("handled-workflow-mode-changed", onModeChange);
     window.addEventListener("handled-inbox-rules-changed", onRulesChange);
     window.addEventListener("handled-inbox-refresh-requested", onRulesChange);
-    window.addEventListener("handled-sender-preferences-changed", onRulesChange);
+    window.addEventListener("handled-sender-preferences-changed", onSenderPrefsChange);
     window.addEventListener("handled-email-overrides-changed", onOverridesChange);
     window.addEventListener("handled-sender-relationships-changed", onRulesChange);
     return () => {
@@ -1188,34 +1176,6 @@ export function EmailsClient() {
     };
   }, [inboxLoading, loadingMicroMessages.length]);
 
-  useEffect(() => {
-    const bump = () => setMemoryVersion((v) => v + 1);
-    window.addEventListener(MEMORY_ENGINE_EVENT, bump);
-    return () => window.removeEventListener(MEMORY_ENGINE_EVENT, bump);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/memory/snapshot", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((snapshot) => {
-        if (!cancelled && snapshot) mergeClientMemorySnapshot(snapshot);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const categoryResolutionContext = useMemo(() => {
-    const fromStorage = loadClientEmailOverrideMap();
-    return {
-      emailOverrides: { ...fromStorage, ...categoryOverrides },
-      memoryRules: loadClientMemoryRules(),
-      senderRules: senderPreferencesToRules(loadClientSenderPreferences()),
-    };
-  }, [categoryOverrides, senderPrefsVersion, memoryVersion]);
-
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     const sync = () => setDismissedIds(loadDismissedIds());
@@ -1237,9 +1197,8 @@ export function EmailsClient() {
       dismissedIds.size === 0
         ? gmailMessages
         : gmailMessages.filter((m) => !isDismissedMessage(m));
-    const resolved = resolveAllInboxMessagesForDisplay(visible, categoryResolutionContext);
-    return resolved.filter((m) => !isEmailCompleted(m, completions));
-  }, [gmailMessages, categoryResolutionContext, dismissedIds, isDismissedMessage, completions]);
+    return visible.filter((m) => !isEmailCompleted(m, completions));
+  }, [gmailMessages, dismissedIds, isDismissedMessage, completions]);
 
   useEffect(() => {
     if (inboxMode !== "gmail" || gmailMessages.length === 0) return;
@@ -1268,15 +1227,11 @@ export function EmailsClient() {
         .filter((id): id is string => Boolean(id)),
     );
     return messagesWithOverrides.map((m) => {
-      const lockedCategory = isUserLockedCategorySource(m.categorySource ?? "ai");
       const completion = lookupScopedValue(completions, m.id, m.accountId);
       const workflow = workflowFieldsFromCompletion(completion);
-      const base =
-        responseEmailIds.has(m.id) && !lockedCategory
-          ? { ...m, category: "worth_your_attention" as InboxAiCategory, waitingResponseUpdate: true }
-          : m.waitingResponseUpdate && lockedCategory
-            ? { ...m, waitingResponseUpdate: true }
-            : m;
+      const base = responseEmailIds.has(m.id)
+        ? { ...m, waitingResponseUpdate: true }
+        : m;
 
       const withWorkflow = { ...base, ...workflow };
 
@@ -1318,12 +1273,9 @@ export function EmailsClient() {
 
   /** All loaded messages for search — includes completed; bypasses workflow visibility. */
   const messagesForSearchPool = useMemo(() => {
-    const visible =
-      dismissedIds.size === 0
-        ? gmailMessages
-        : gmailMessages.filter((m) => !isDismissedMessage(m));
-    return resolveAllInboxMessagesForDisplay(visible, categoryResolutionContext);
-  }, [gmailMessages, categoryResolutionContext, dismissedIds, isDismissedMessage]);
+    if (dismissedIds.size === 0) return gmailMessages;
+    return gmailMessages.filter((m) => !isDismissedMessage(m));
+  }, [gmailMessages, dismissedIds, isDismissedMessage]);
 
   const { buckets: gmailBucketsRaw, isCountsPending } = useStableInboxBuckets({
     messages: inboxBucketMessages,
@@ -1470,7 +1422,6 @@ export function EmailsClient() {
       setCategoryOverrides(snapshot.previousOverrides);
       saveClientEmailOverrides(snapshot.previousEmailOverrides);
       saveClientSenderPreferences(snapshot.previousSenderPrefs);
-      setSenderPrefsVersion((v) => v + 1);
       await persistCategoryUndo(snapshot);
     });
   }, [registerUndoHandler]);
@@ -2146,26 +2097,6 @@ export function EmailsClient() {
           ...resolveSenderIdentity(options.sender),
           category,
         });
-        const { messages } = applySenderRuleToMessages(
-          gmailMessages,
-          options.sender,
-          category,
-          { triggerEmailId: id },
-        );
-        setGmailMessages(messages);
-        const triggerRow = gmailMessages.find((m) => m.id === id);
-        void submitCategoryFeedback({
-          emailId: id,
-          sender: options.sender,
-          subject: triggerRow?.subject ?? "",
-          snippet: triggerRow?.snippet,
-          guessedCategory: options?.guessedCategory ?? triggerRow?.category ?? category,
-          chosenCategory: category,
-          scope: "sender",
-          accountId,
-        }).then(() => {
-          window.dispatchEvent(new Event("handled-sender-preferences-changed"));
-        });
         // Gap #2: sender-scope changes must NOT write per-email manual
         // override state for matched emails — that would mask persisted
         // manual overrides. The sender rule itself (persisted separately)
@@ -2240,7 +2171,7 @@ export function EmailsClient() {
         handleCategoryTabChange(category);
       }
     },
-    [gmailMessages, categoryOverrides, offerCategoryUndo, handleCategoryTabChange],
+    [gmailMessages, categoryOverrides, offerCategoryUndo, handleCategoryTabChange, collectUserOverrideLog],
   );
 
   const handleRecategorizeInZero = useCallback(
@@ -2280,7 +2211,7 @@ export function EmailsClient() {
         /* local override already applied */
       }
     },
-    [handleCategoryChange],
+    [handleCategoryChange, submitCategoryFeedback],
   );
 
   const handleResetCategoryOverride = useCallback(

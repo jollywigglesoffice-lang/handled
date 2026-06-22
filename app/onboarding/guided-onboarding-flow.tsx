@@ -22,7 +22,7 @@ import {
   preferenceFromSender,
   saveClientSenderPreferences,
 } from "@/lib/inbox-sender-preferences";
-import { collectCategoryCorrection } from "@/lib/memory-engine/collect";
+import { useMemoryCollect } from "@/app/hooks/use-memory-collect";
 import type { ReadStateMap } from "@/lib/read-state/client-storage";
 import { trackEvent } from "@/lib/analytics";
 
@@ -162,6 +162,7 @@ export function GuidedOnboardingFlow({
   onFinished,
 }: GuidedOnboardingFlowProps) {
   const t = COPY[locale];
+  const { collectCategoryCorrection } = useMemoryCollect();
   const totalSteps = GUIDED_ONBOARDING_STEPS.length;
   const startedRef = useRef(false);
 

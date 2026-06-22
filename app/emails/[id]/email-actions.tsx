@@ -12,7 +12,7 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEmailCompletions } from "@/app/email-completions-context";
-import { applyDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
+import { applyDoneInboxEffects } from "@/lib/client/inbox-truth/apply-done-effects";
 import { useReplyUsage } from "@/app/reply-usage-context";
 import {
   useUserPreferences,

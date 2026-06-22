@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import type { GmailCardMessage } from "@/app/emails/gmail-inbox-card";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
-import { submitCategoryFeedback } from "@/lib/apply-category-feedback";
+import { useCategoryFeedback } from "@/app/hooks/use-category-feedback";
 import type { CategoryApplyScope } from "@/lib/category-correction";
 
 const TRAINING_KEY = "handled_inbox_training_v1";
@@ -24,6 +24,7 @@ type InboxTrainingBannerProps = {
 };
 
 export function InboxTrainingBanner({ messages, onCategoryChange }: InboxTrainingBannerProps) {
+  const { submitCategoryFeedback } = useCategoryFeedback();
   const [dismissed, setDismissed] = useState(false);
   const [feedback, setFeedback] = useState("");
 

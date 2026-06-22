@@ -12,7 +12,7 @@ import {
 } from "@/lib/autopilot/log-storage";
 import type { HandledLogEntry, HandledLogStats } from "@/lib/autopilot/types";
 import { scopedEmailKey } from "@/lib/gmail/account-types";
-import { revertDoneInboxEffects } from "@/lib/inbox-truth/apply-done";
+import { revertDoneInboxEffects } from "@/lib/client/inbox-truth/apply-done-effects";
 
 type HandledLogViewProps = {
   locale: "en" | "it";
