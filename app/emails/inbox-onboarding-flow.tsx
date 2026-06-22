@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useState } from "react";
 import type { GmailCardMessage } from "@/app/emails/gmail-inbox-card";
 import { EmailActions } from "@/app/emails/[id]/email-actions";
 import { EmailBody } from "@/app/emails/[id]/email-body";
@@ -102,17 +102,25 @@ export function InboxOnboardingFlow({
   );
 }
 
-export function OnboardingEmailCard({
-  message,
-  locale,
-  readStateMap,
-  onAdvance,
-}: {
-  message: GmailCardMessage;
-  locale: "en" | "it";
-  readStateMap: ReadStateMap;
-  onAdvance: () => void;
-}) {
+export type OnboardingEmailCardHandle = {
+  triggerReply: () => void;
+  triggerDone: () => void;
+  busy: boolean;
+};
+
+export const OnboardingEmailCard = forwardRef<
+  OnboardingEmailCardHandle,
+  {
+    message: GmailCardMessage;
+    locale: "en" | "it";
+    readStateMap: ReadStateMap;
+    onAdvance: () => void;
+    hidePrimaryActions?: boolean;
+  }
+>(function OnboardingEmailCard(
+  { message, locale, readStateMap, onAdvance, hidePrimaryActions = false },
+  ref,
+) {
   const t = COPY[locale];
   const [expanded, setExpanded] = useState(false);
   const [showReply, setShowReply] = useState(false);
@@ -171,6 +179,21 @@ export function OnboardingEmailCard({
     const label = locale === "it" ? "Fatto" : "Done";
     void emailStatus.handleComplete("took_action", label);
   }, [emailStatus, locale]);
+
+  const triggerReply = useCallback(() => {
+    setShowReply(true);
+    markEmailsRead([message.id], { accountId: message.accountId });
+  }, [message.id, message.accountId]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      triggerReply,
+      triggerDone: handleDone,
+      busy: emailStatus.busy,
+    }),
+    [triggerReply, handleDone, emailStatus.busy],
+  );
 
   const handleMarkReplied = useCallback(() => {
     const label = locale === "it" ? "Risposto" : "Replied";
@@ -246,8 +269,12 @@ export function OnboardingEmailCard({
           ) : null}
 
           <div className="mt-6 flex flex-wrap gap-2 border-t border-gray-100 pt-4">
-            <PrimaryAction onClick={() => setShowReply(true)} label={t.reply} />
-            <SecondaryAction onClick={handleDone} label={t.done} busy={emailStatus.busy} />
+            {!hidePrimaryActions ? (
+              <>
+                <PrimaryAction onClick={triggerReply} label={t.reply} />
+                <SecondaryAction onClick={handleDone} label={t.done} busy={emailStatus.busy} />
+              </>
+            ) : null}
           </div>
         </div>
       </article>
@@ -264,16 +291,12 @@ export function OnboardingEmailCard({
         <p className="mt-3 line-clamp-4 text-sm leading-relaxed text-gray-500">{message.snippet}</p>
       ) : null}
 
-      <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-        <PrimaryAction
-          onClick={() => {
-            setShowReply(true);
-            markEmailsRead([message.id], { accountId: message.accountId });
-          }}
-          label={t.reply}
-        />
-        <SecondaryAction onClick={handleDone} label={t.done} busy={emailStatus.busy} />
-      </div>
+      {!hidePrimaryActions ? (
+        <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+          <PrimaryAction onClick={triggerReply} label={t.reply} />
+          <SecondaryAction onClick={handleDone} label={t.done} busy={emailStatus.busy} />
+        </div>
+      ) : null}
 
       <button
         type="button"
@@ -303,7 +326,7 @@ export function OnboardingEmailCard({
       ) : null}
     </article>
   );
-}
+});
 
 function PrimaryAction({ onClick, label }: { onClick: () => void; label: string }) {
   return (

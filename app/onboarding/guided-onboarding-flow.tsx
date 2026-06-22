@@ -2,7 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GmailCardMessage } from "@/app/emails/gmail-inbox-card";
-import { OnboardingEmailCard } from "@/app/emails/inbox-onboarding-flow";
+import {
+  OnboardingEmailCard,
+  type OnboardingEmailCardHandle,
+} from "@/app/emails/inbox-onboarding-flow";
+import { LiveProcessingPanel } from "@/app/onboarding/live-processing-panel";
+import { useFirstActionLiveReveal } from "@/app/onboarding/use-first-action-live-reveal";
+import {
+  EmotionalContextLine,
+  EmotionalFallbackPanel,
+  MicroReassuranceLine,
+} from "@/app/onboarding/emotional-guidance-lines";
+import {
+  EMOTIONAL_FALLBACK,
+  pickMicroReassurance,
+  resolveOnboardingEmotionalContext,
+  shouldShowMicroReassurance,
+} from "@/lib/onboarding/emotional-guidance";
 import { startGoogleOAuth } from "@/lib/auth/start-google-oauth";
 import {
   buildOnboardingSenderCandidates,
@@ -77,15 +93,18 @@ const COPY = {
     },
     firstAction: {
       title: "Handle your first email",
-      hint: "Click Reply or Done — that's how Handled learns.",
+      hint: "Handled is here to help you breathe through your inbox — one gentle step at a time.",
+      reply: "Reply",
+      done: "Done",
       fetchingMore: "Not enough signals — fetching more examples…",
       noEmailTitle: "No examples loaded yet",
       noEmailBody: "Refresh to pull more from your inbox, or skip and explore on your own.",
-      refreshExamples: "Refresh examples",
-      skipStep: "Skip this step",
+      refreshExamples: "Refresh",
+      skipStep: "Skip step",
       useWhatIHave: "Use what I have",
       exampleCount: (n: number) =>
         n === 1 ? "1 example ready" : `${n} examples ready`,
+      resultLabel: "Suggested starting email",
     },
     personalize: {
       title: "How should Handled treat this sender?",
@@ -137,15 +156,18 @@ const COPY = {
     },
     firstAction: {
       title: "Gestisci la prima email",
-      hint: "Clicca Rispondi o Fatto — così Handled impara.",
+      hint: "Handled ti aiuta a respirare con la inbox — un passo gentile alla volta.",
+      reply: "Rispondi",
+      done: "Fatto",
       fetchingMore: "Segnali insufficienti — recupero altri esempi…",
       noEmailTitle: "Nessun esempio caricato",
       noEmailBody: "Aggiorna per recuperare altre email, oppure salta e esplora da solo.",
-      refreshExamples: "Aggiorna esempi",
-      skipStep: "Salta questo passo",
+      refreshExamples: "Aggiorna",
+      skipStep: "Salta passo",
       useWhatIHave: "Usa quelli disponibili",
       exampleCount: (n: number) =>
         n === 1 ? "1 esempio pronto" : `${n} esempi pronti`,
+      resultLabel: "Email suggerita per iniziare",
     },
     personalize: {
       title: "Come deve trattare Handled questo mittente?",
@@ -417,19 +439,6 @@ export function GuidedOnboardingFlow({
     goToStep("release");
   }, [goToStep]);
 
-  const handleUseWhatIHave = useCallback(() => {
-    const email = pickActionEmail();
-    setActionEmail(email);
-    trackEvent("guided_onboarding_use_available_examples", {
-      example_count: exampleQueue.length,
-    });
-    if (email) {
-      goToStep("personalize");
-    } else {
-      goToStep("release");
-    }
-  }, [pickActionEmail, exampleQueue.length, goToStep]);
-
   const handleFirstActionDone = useCallback(() => {
     if (actionEmail) {
       goToStep("personalize");
@@ -506,14 +515,14 @@ export function GuidedOnboardingFlow({
           t={t.firstAction}
           locale={locale}
           actionEmail={actionEmail}
+          messagePool={messages}
           exampleCount={exampleQueue.length}
           examplesFetching={examplesFetching}
-          showFetchingMessage={exampleQueue.length < MIN_ONBOARDING_EXAMPLES}
+          sequenceKey={exampleRefreshIndex}
           readStateMap={readStateMap}
           onAdvance={handleFirstActionDone}
           onRefresh={handleRefreshExamples}
           onSkip={handleSkipFirstAction}
-          onUseWhatIHave={handleUseWhatIHave}
         />
       ) : null}
 
@@ -540,104 +549,178 @@ function FirstActionStep({
   t,
   locale,
   actionEmail,
+  messagePool,
   exampleCount,
   examplesFetching,
-  showFetchingMessage,
+  sequenceKey,
   readStateMap,
   onAdvance,
   onRefresh,
   onSkip,
-  onUseWhatIHave,
 }: {
   t: (typeof COPY)["en" | "it"]["firstAction"];
   locale: "en" | "it";
   actionEmail: GmailCardMessage | null;
+  messagePool: GmailCardMessage[];
   exampleCount: number;
   examplesFetching: boolean;
-  showFetchingMessage: boolean;
+  sequenceKey: number;
   readStateMap: ReadStateMap;
   onAdvance: () => void;
   onRefresh: () => void;
   onSkip: () => void;
-  onUseWhatIHave: () => void;
 }) {
+  const cardRef = useRef<OnboardingEmailCardHandle>(null);
+  const live = useFirstActionLiveReveal({
+    locale,
+    active: true,
+    exampleCount,
+    hasEmail: Boolean(actionEmail),
+    examplesFetching,
+    sequenceKey,
+  });
+
+  const emailReady = live.phase === "revealed";
+  const actionsEnabled = emailReady && Boolean(actionEmail);
+
+  const emotionalLine = useMemo(() => {
+    if (!actionEmail || !emailReady) return null;
+    return resolveOnboardingEmotionalContext(actionEmail, locale, {
+      pool: messagePool,
+    });
+  }, [actionEmail, emailReady, locale, messagePool]);
+
+  const reassuranceLine = useMemo(
+    () => pickMicroReassurance(locale, sequenceKey),
+    [locale, sequenceKey],
+  );
+
+  const showReassurance = shouldShowMicroReassurance(
+    exampleCount,
+    live.isProcessing || examplesFetching,
+  );
+
+  const fallbackCopy = EMOTIONAL_FALLBACK[locale];
+
   return (
     <section className="space-y-4">
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
         <h3 className="text-lg font-medium text-gray-900">{t.title}</h3>
         <p className="mt-1 text-sm text-gray-500">{t.hint}</p>
-        {exampleCount > 0 ? (
-          <p className="mt-2 text-xs font-medium text-accent">{t.exampleCount(exampleCount)}</p>
-        ) : null}
-        {showFetchingMessage ? (
-          <p className="mt-3 flex items-center gap-2 text-sm text-gray-500">
-            {examplesFetching ? (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-            ) : null}
-            {t.fetchingMore}
-          </p>
-        ) : null}
       </div>
 
-      {actionEmail ? (
-        <OnboardingEmailCard
-          message={actionEmail}
-          locale={locale}
-          readStateMap={readStateMap}
-          onAdvance={onAdvance}
-        />
-      ) : (
-        <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/80 px-6 py-8 text-center">
-          <p className="text-sm font-medium text-gray-800">{t.noEmailTitle}</p>
-          <p className="mt-2 text-sm text-gray-500">{t.noEmailBody}</p>
+      <LiveProcessingPanel
+        locale={locale}
+        activeLineId={live.activeLineId}
+        activeLineIndex={live.activeLineIndex}
+        totalLines={live.totalLines}
+        showResultBanner={live.showResultBanner}
+        compact={emailReady}
+      />
+
+      {showReassurance ? <MicroReassuranceLine line={reassuranceLine} /> : null}
+
+      {!emailReady ? (
+        <EmailRevealSkeleton locale={locale} />
+      ) : actionEmail ? (
+        <div className="calm-fade-in space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">
+            {t.resultLabel}
+          </p>
+          <OnboardingEmailCard
+            ref={cardRef}
+            message={actionEmail}
+            locale={locale}
+            readStateMap={readStateMap}
+            onAdvance={onAdvance}
+            hidePrimaryActions
+          />
+          {emotionalLine ? <EmotionalContextLine line={emotionalLine} /> : null}
         </div>
+      ) : (
+        <EmotionalFallbackPanel title={fallbackCopy.title} body={fallbackCopy.body} />
       )}
 
       <FirstActionControls
         t={t}
+        onReply={() => cardRef.current?.triggerReply()}
+        onDone={() => cardRef.current?.triggerDone()}
         onRefresh={onRefresh}
         onSkip={onSkip}
-        onUseWhatIHave={onUseWhatIHave}
-        refreshBusy={examplesFetching}
+        actionsEnabled={actionsEnabled}
+        refreshBusy={examplesFetching || live.isProcessing}
       />
     </section>
   );
 }
 
+function EmailRevealSkeleton({ locale }: { locale: "en" | "it" }) {
+  return (
+    <div
+      className="rounded-2xl border border-gray-100 bg-white px-5 py-6 shadow-sm"
+      aria-hidden
+    >
+      <div className="h-4 w-36 animate-pulse rounded bg-gray-100" />
+      <div className="mt-3 h-5 w-4/5 animate-pulse rounded bg-gray-100" />
+      <div className="mt-4 space-y-2">
+        <div className="h-3 w-full animate-pulse rounded bg-gray-50" />
+        <div className="h-3 w-full animate-pulse rounded bg-gray-50" />
+        <div className="h-3 w-2/3 animate-pulse rounded bg-gray-50" />
+      </div>
+      <p className="mt-5 text-xs text-gray-400">
+        {locale === "it" ? "Preparazione risultato…" : "Preparing your result…"}
+      </p>
+    </div>
+  );
+}
+
 function FirstActionControls({
   t,
+  onReply,
+  onDone,
   onRefresh,
   onSkip,
-  onUseWhatIHave,
+  actionsEnabled,
   refreshBusy,
 }: {
   t: (typeof COPY)["en" | "it"]["firstAction"];
+  onReply: () => void;
+  onDone: () => void;
   onRefresh: () => void;
   onSkip: () => void;
-  onUseWhatIHave: () => void;
+  actionsEnabled: boolean;
   refreshBusy?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+    <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2">
+      <button
+        type="button"
+        onClick={onReply}
+        disabled={!actionsEnabled}
+        className="rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        {t.reply}
+      </button>
+      <button
+        type="button"
+        onClick={onDone}
+        disabled={!actionsEnabled}
+        className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-accent/30 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+      >
+        {t.done}
+      </button>
       <button
         type="button"
         onClick={onRefresh}
         disabled={refreshBusy}
-        className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+        className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
       >
         {t.refreshExamples}
       </button>
       <button
         type="button"
-        onClick={onUseWhatIHave}
-        className="flex-1 rounded-xl border border-accent/30 bg-accent-muted/20 px-4 py-3 text-sm font-medium text-accent transition hover:bg-accent-muted/40"
-      >
-        {t.useWhatIHave}
-      </button>
-      <button
-        type="button"
         onClick={onSkip}
-        className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+        className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
       >
         {t.skipStep}
       </button>
