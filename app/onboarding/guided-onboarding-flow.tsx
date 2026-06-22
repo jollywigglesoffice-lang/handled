@@ -29,11 +29,13 @@ import {
   MIN_ONBOARDING_EXAMPLES,
   needsMoreOnboardingExamples,
 } from "@/lib/onboarding/build-queue";
+import type { GuidedOnboardingStep } from "@/lib/onboarding/guided-steps";
 import {
-  GUIDED_ONBOARDING_STEPS,
-  type GuidedOnboardingStep,
-  stepNumber,
-} from "@/lib/onboarding/guided-steps";
+  buildContinuityCue,
+  ONBOARDING_CONVERSATION,
+  type OnboardingPreferencesMemory,
+} from "@/lib/onboarding/conversation-copy";
+import { GuideMessage } from "@/app/onboarding/guide-message";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import { inboxCategorySectionTitle } from "@/lib/inbox-ai-categories";
 import {
@@ -55,138 +57,9 @@ export type GuidedOnboardingFlowProps = {
   readStateMap: ReadStateMap;
   isCompleted: (id: string) => boolean;
   onFinished: () => void;
-  /** Broaden inbox fetch when Step 3 needs more example emails. */
+  /** Broaden inbox fetch when the first-email moment needs more examples. */
   onFetchMoreExamples?: () => Promise<void>;
 };
-
-const COPY = {
-  en: {
-    headline: "Let's set up your inbox in 60 seconds",
-    stepOf: (n: number, total: number) => `Step ${n} of ${total}`,
-    connect: {
-      title: "Connect your inbox",
-      body: "Handled works on top of Gmail — your mail stays yours.",
-      connectGmail: "Connect Gmail",
-      connected: "Gmail connected",
-      continue: "Continue",
-      secondInbox: "Add second inbox",
-      secondInboxLocked: "Pro — add another inbox later",
-      connecting: "Connecting…",
-      checkingConnection: "Checking your Gmail connection…",
-    },
-    preferences: {
-      title: "Tell Handled what matters to you",
-      subtitle: "Optional — pick anyone you never want to miss, or skip and teach Handled later.",
-      importantHint: "Tap senders that matter (optional)",
-      promoHint: "Optional: senders to de-prioritize",
-      importantCount: (n: number) =>
-        n === 0 ? "No one selected yet" : `${n} selected`,
-      promoCount: (n: number) =>
-        n === 0 ? "None de-prioritized" : `${n} de-prioritized`,
-      continue: "Continue",
-      skip: "Skip for now",
-      noneOfThese: "None of these matter",
-      showDifferent: "Show me different suggestions",
-      waitingForMail: "Pulling senders from your inbox…",
-      emptyInboxSkip: "Your inbox is empty — skip for now and add senders later.",
-      clusterShowing: (label: string) => `Showing: ${label}`,
-    },
-    firstAction: {
-      title: "Handle your first email",
-      hint: "Handled is here to help you breathe through your inbox — one gentle step at a time.",
-      reply: "Reply",
-      done: "Done",
-      fetchingMore: "Not enough signals — fetching more examples…",
-      noEmailTitle: "No examples loaded yet",
-      noEmailBody: "Refresh to pull more from your inbox, or skip and explore on your own.",
-      refreshExamples: "Refresh",
-      skipStep: "Skip step",
-      useWhatIHave: "Use what I have",
-      exampleCount: (n: number) =>
-        n === 1 ? "1 example ready" : `${n} examples ready`,
-      resultLabel: "Suggested starting email",
-    },
-    personalize: {
-      title: "How should Handled treat this sender?",
-      body: (sender: string) => `Emails from ${sender}`,
-      save: "Save & continue",
-    },
-    release: {
-      title: "You're ready for your full inbox 🎉",
-      body: "Categories, Focus Mode, and smart suggestions are unlocked.",
-      cta: "Go to my inbox",
-    },
-    categories: {
-      worth_your_attention: "Needs my attention",
-      good_to_know: "Good to know",
-      promotions: "Promotions",
-      newsletters: "Newsletters",
-    } as Record<string, string>,
-  },
-  it: {
-    headline: "Configura la inbox in 60 secondi",
-    stepOf: (n: number, total: number) => `Passo ${n} di ${total}`,
-    connect: {
-      title: "Collega la tua inbox",
-      body: "Handled lavora su Gmail — la posta resta tua.",
-      connectGmail: "Collega Gmail",
-      connected: "Gmail collegato",
-      continue: "Continua",
-      secondInbox: "Aggiungi seconda inbox",
-      secondInboxLocked: "Pro — aggiungi un'altra inbox dopo",
-      connecting: "Connessione…",
-      checkingConnection: "Verifica connessione Gmail…",
-    },
-    preferences: {
-      title: "Dì a Handled cosa conta per te",
-      subtitle: "Facoltativo — scegli chi non vuoi perdere, oppure salta e insegna dopo.",
-      importantHint: "Tocca i mittenti che contano (facoltativo)",
-      promoHint: "Facoltativo: mittenti da deprioritizzare",
-      importantCount: (n: number) =>
-        n === 0 ? "Nessuno selezionato" : `${n} selezionati`,
-      promoCount: (n: number) =>
-        n === 0 ? "Nessuno deprioritizzato" : `${n} deprioritizzati`,
-      continue: "Continua",
-      skip: "Salta per ora",
-      noneOfThese: "Nessuno di questi conta",
-      showDifferent: "Mostrami altri suggerimenti",
-      waitingForMail: "Recupero mittenti dalla inbox…",
-      emptyInboxSkip: "Inbox vuota — salta per ora e aggiungi mittenti dopo.",
-      clusterShowing: (label: string) => `In evidenza: ${label}`,
-    },
-    firstAction: {
-      title: "Gestisci la prima email",
-      hint: "Handled ti aiuta a respirare con la inbox — un passo gentile alla volta.",
-      reply: "Rispondi",
-      done: "Fatto",
-      fetchingMore: "Segnali insufficienti — recupero altri esempi…",
-      noEmailTitle: "Nessun esempio caricato",
-      noEmailBody: "Aggiorna per recuperare altre email, oppure salta e esplora da solo.",
-      refreshExamples: "Aggiorna",
-      skipStep: "Salta passo",
-      useWhatIHave: "Usa quelli disponibili",
-      exampleCount: (n: number) =>
-        n === 1 ? "1 esempio pronto" : `${n} esempi pronti`,
-      resultLabel: "Email suggerita per iniziare",
-    },
-    personalize: {
-      title: "Come deve trattare Handled questo mittente?",
-      body: (sender: string) => `Email da ${sender}`,
-      save: "Salva e continua",
-    },
-    release: {
-      title: "Sei pronto per l'inbox completa 🎉",
-      body: "Categorie, Focus Mode e suggerimenti sono sbloccati.",
-      cta: "Vai alla mia inbox",
-    },
-    categories: {
-      worth_your_attention: "Richiede attenzione",
-      good_to_know: "Buono a sapersi",
-      promotions: "Promozioni",
-      newsletters: "Newsletter",
-    } as Record<string, string>,
-  },
-} as const;
 
 const PERSONALIZE_OPTIONS: InboxAiCategory[] = [
   "worth_your_attention",
@@ -206,9 +79,8 @@ export function GuidedOnboardingFlow({
   onFinished,
   onFetchMoreExamples,
 }: GuidedOnboardingFlowProps) {
-  const t = COPY[locale];
+  const t = ONBOARDING_CONVERSATION[locale];
   const { collectCategoryCorrection } = useMemoryCollect();
-  const totalSteps = GUIDED_ONBOARDING_STEPS.length;
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -234,6 +106,14 @@ export function GuidedOnboardingFlow({
   const examplesFetchAttemptedRef = useRef(false);
   const [actionEmail, setActionEmail] = useState<GmailCardMessage | null>(null);
   const [personalizeCategory, setPersonalizeCategory] = useState<InboxAiCategory | null>(null);
+  const [emailPickIndex, setEmailPickIndex] = useState(0);
+  const [preferencesMemory, setPreferencesMemory] = useState<OnboardingPreferencesMemory>({
+    skipped: false,
+    noneOfThese: false,
+    importantCount: 0,
+    promoCount: 0,
+  });
+  const [transitionLine, setTransitionLine] = useState<string | null>(null);
 
   const incompleteMessages = useMemo(
     () => messages.filter((m) => !isCompleted(m.id)),
@@ -263,9 +143,12 @@ export function GuidedOnboardingFlow({
   const emptyInbox = inboxMode === "gmail_empty";
   const preferencesReady = inboxSettled && (messages.length > 0 || emptyInbox);
 
-  const pickActionEmail = useCallback(() => {
-    return exampleQueue[0] ?? incompleteMessages[0] ?? null;
-  }, [exampleQueue, incompleteMessages]);
+  const pickActionEmail = useCallback(
+    (index = emailPickIndex) => {
+      return exampleQueue[index] ?? incompleteMessages[index] ?? null;
+    },
+    [exampleQueue, incompleteMessages, emailPickIndex],
+  );
 
   const requestMoreExamples = useCallback(async () => {
     if (!onFetchMoreExamples || examplesFetching) return;
@@ -334,10 +217,20 @@ export function GuidedOnboardingFlow({
     });
   }, [importantSenders, promoSenders, persistSenderPrefs, locale]);
 
-  const goToStep = useCallback((next: GuidedOnboardingStep) => {
-    setStep(next);
-    trackEvent("guided_onboarding_step", { step: next });
-  }, []);
+  const continuityCue = useMemo(
+    () => buildContinuityCue(preferencesMemory, locale),
+    [preferencesMemory, locale],
+  );
+
+  const goToStep = useCallback(
+    (next: GuidedOnboardingStep) => {
+      const line = ONBOARDING_CONVERSATION[locale].transitions[next];
+      if (line) setTransitionLine(line);
+      setStep(next);
+      trackEvent("guided_onboarding_step", { step: next });
+    },
+    [locale],
+  );
 
   const handleConnectGmail = useCallback(async () => {
     setOauthLoading(true);
@@ -379,6 +272,13 @@ export function GuidedOnboardingFlow({
 
   const advanceFromPreferences = useCallback(
     (opts?: { skipped?: boolean; noneOfThese?: boolean }) => {
+      setPreferencesMemory({
+        skipped: Boolean(opts?.skipped),
+        noneOfThese: Boolean(opts?.noneOfThese),
+        importantCount: opts?.skipped || opts?.noneOfThese ? 0 : importantSenders.size,
+        promoCount: opts?.skipped || opts?.noneOfThese ? 0 : promoSenders.size,
+      });
+
       if (opts?.skipped || opts?.noneOfThese) {
         if (opts.noneOfThese) {
           trackEvent("guided_onboarding_no_senders_matter");
@@ -395,11 +295,12 @@ export function GuidedOnboardingFlow({
       } else {
         savePreferenceStep();
       }
-      const email = pickActionEmail();
-      setActionEmail(email);
+      setEmailPickIndex(0);
+      setExampleRefreshIndex(0);
+      setActionEmail(pickActionEmail(0));
       goToStep("first_action");
     },
-    [savePreferenceStep, pickActionEmail, goToStep],
+    [savePreferenceStep, pickActionEmail, goToStep, importantSenders.size, promoSenders.size],
   );
 
   const handlePreferencesContinue = useCallback(() => {
@@ -434,10 +335,18 @@ export function GuidedOnboardingFlow({
     void requestMoreExamples();
   }, [exampleRefreshIndex, requestMoreExamples]);
 
-  const handleSkipFirstAction = useCallback(() => {
+  const handleSkipEmail = useCallback((): "another" | "end" => {
+    const nextIndex = emailPickIndex + 1;
+    if (nextIndex < exampleQueue.length) {
+      setEmailPickIndex(nextIndex);
+      setActionEmail(exampleQueue[nextIndex] ?? null);
+      setExampleRefreshIndex((n) => n + 1);
+      return "another";
+    }
     trackEvent("guided_onboarding_first_action_skipped");
     goToStep("release");
-  }, [goToStep]);
+    return "end";
+  }, [emailPickIndex, exampleQueue, goToStep]);
 
   const handleFirstActionDone = useCallback(() => {
     if (actionEmail) {
@@ -471,11 +380,11 @@ export function GuidedOnboardingFlow({
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
+      <div className="space-y-3">
         <h2 className="text-xl font-semibold tracking-tight text-gray-900 sm:text-2xl">
           {t.headline}
         </h2>
-        <p className="text-sm text-gray-500">{t.stepOf(stepNumber(step), totalSteps)}</p>
+        {transitionLine ? <GuideMessage variant="ack">{transitionLine}</GuideMessage> : null}
       </div>
 
       {step === "connect" ? (
@@ -496,7 +405,6 @@ export function GuidedOnboardingFlow({
           locale={locale}
           messagesReady={preferencesReady}
           emptyInbox={emptyInbox}
-          clusterLabel={senderCandidates.clusterLabel[locale]}
           importantCandidates={senderCandidates.importantCandidates}
           promotionalCandidates={senderCandidates.promotionalCandidates}
           importantSenders={importantSenders}
@@ -516,13 +424,14 @@ export function GuidedOnboardingFlow({
           locale={locale}
           actionEmail={actionEmail}
           messagePool={messages}
+          continuityCue={continuityCue}
           exampleCount={exampleQueue.length}
           examplesFetching={examplesFetching}
           sequenceKey={exampleRefreshIndex}
           readStateMap={readStateMap}
           onAdvance={handleFirstActionDone}
           onRefresh={handleRefreshExamples}
-          onSkip={handleSkipFirstAction}
+          onSkip={handleSkipEmail}
         />
       ) : null}
 
@@ -550,6 +459,7 @@ function FirstActionStep({
   locale,
   actionEmail,
   messagePool,
+  continuityCue,
   exampleCount,
   examplesFetching,
   sequenceKey,
@@ -558,19 +468,22 @@ function FirstActionStep({
   onRefresh,
   onSkip,
 }: {
-  t: (typeof COPY)["en" | "it"]["firstAction"];
+  t: (typeof ONBOARDING_CONVERSATION)["en"]["firstAction"];
   locale: "en" | "it";
   actionEmail: GmailCardMessage | null;
   messagePool: GmailCardMessage[];
+  continuityCue: string | null;
   exampleCount: number;
   examplesFetching: boolean;
   sequenceKey: number;
   readStateMap: ReadStateMap;
   onAdvance: () => void;
   onRefresh: () => void;
-  onSkip: () => void;
+  onSkip: () => "another" | "end";
 }) {
   const cardRef = useRef<OnboardingEmailCardHandle>(null);
+  const [dialogueAck, setDialogueAck] = useState<string | null>(null);
+
   const live = useFirstActionLiveReveal({
     locale,
     active: true,
@@ -600,14 +513,41 @@ function FirstActionStep({
     live.isProcessing || examplesFetching,
   );
 
+  useEffect(() => {
+    setDialogueAck(null);
+  }, [sequenceKey, actionEmail?.id]);
+
   const fallbackCopy = EMOTIONAL_FALLBACK[locale];
+
+  const handleReply = useCallback(() => {
+    setDialogueAck(t.ackReply);
+    cardRef.current?.triggerReply();
+  }, [t.ackReply]);
+
+  const handleDone = useCallback(() => {
+    setDialogueAck(t.ackDone);
+    cardRef.current?.triggerDone();
+  }, [t.ackDone]);
+
+  const handleSkip = useCallback(() => {
+    const result = onSkip();
+    setDialogueAck(result === "another" ? t.ackSkip : t.ackSkipNoMore);
+  }, [onSkip, t.ackSkip, t.ackSkipNoMore]);
+
+  const handleRefresh = useCallback(() => {
+    setDialogueAck(t.ackRefresh);
+    onRefresh();
+  }, [onRefresh, t.ackRefresh]);
 
   return (
     <section className="space-y-4">
-      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-medium text-gray-900">{t.title}</h3>
-        <p className="mt-1 text-sm text-gray-500">{t.hint}</p>
-      </div>
+      <GuideMessage>{live.isProcessing ? t.introLoading : t.intro}</GuideMessage>
+
+      {continuityCue ? (
+        <GuideMessage variant="continuity">{continuityCue}</GuideMessage>
+      ) : null}
+
+      {dialogueAck ? <GuideMessage variant="ack">{dialogueAck}</GuideMessage> : null}
 
       <LiveProcessingPanel
         locale={locale}
@@ -624,9 +564,7 @@ function FirstActionStep({
         <EmailRevealSkeleton locale={locale} />
       ) : actionEmail ? (
         <div className="calm-fade-in space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">
-            {t.resultLabel}
-          </p>
+          <GuideMessage>{t.afterReveal}</GuideMessage>
           <OnboardingEmailCard
             ref={cardRef}
             message={actionEmail}
@@ -636,6 +574,9 @@ function FirstActionStep({
             hidePrimaryActions
           />
           {emotionalLine ? <EmotionalContextLine line={emotionalLine} /> : null}
+          <GuideMessage variant="continuity">
+            {t.choiceHint} {t.findAnother}
+          </GuideMessage>
         </div>
       ) : (
         <EmotionalFallbackPanel title={fallbackCopy.title} body={fallbackCopy.body} />
@@ -643,10 +584,10 @@ function FirstActionStep({
 
       <FirstActionControls
         t={t}
-        onReply={() => cardRef.current?.triggerReply()}
-        onDone={() => cardRef.current?.triggerDone()}
-        onRefresh={onRefresh}
-        onSkip={onSkip}
+        onReply={handleReply}
+        onDone={handleDone}
+        onRefresh={handleRefresh}
+        onSkip={handleSkip}
         actionsEnabled={actionsEnabled}
         refreshBusy={examplesFetching || live.isProcessing}
       />
@@ -668,7 +609,7 @@ function EmailRevealSkeleton({ locale }: { locale: "en" | "it" }) {
         <div className="h-3 w-2/3 animate-pulse rounded bg-gray-50" />
       </div>
       <p className="mt-5 text-xs text-gray-400">
-        {locale === "it" ? "Preparazione risultato…" : "Preparing your result…"}
+        {locale === "it" ? "Un momento…" : "One moment…"}
       </p>
     </div>
   );
@@ -683,7 +624,7 @@ function FirstActionControls({
   actionsEnabled,
   refreshBusy,
 }: {
-  t: (typeof COPY)["en" | "it"]["firstAction"];
+  t: (typeof ONBOARDING_CONVERSATION)["en"]["firstAction"];
   onReply: () => void;
   onDone: () => void;
   onRefresh: () => void;
@@ -715,14 +656,14 @@ function FirstActionControls({
         disabled={refreshBusy}
         className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
       >
-        {t.refreshExamples}
+        {t.refresh}
       </button>
       <button
         type="button"
         onClick={onSkip}
         className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
       >
-        {t.skipStep}
+        {t.skip}
       </button>
     </div>
   );
@@ -737,7 +678,7 @@ function ConnectStep({
   onConnect,
   onContinue,
 }: {
-  t: (typeof COPY)["en" | "it"]["connect"];
+  t: (typeof ONBOARDING_CONVERSATION)["en"]["connect"];
   gmailConnected: boolean;
   checkingConnection: boolean;
   oauthLoading: boolean;
@@ -746,62 +687,62 @@ function ConnectStep({
   onContinue: () => void;
 }) {
   return (
-    <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-      <h3 className="text-lg font-medium text-gray-900">{t.title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-gray-500">{t.body}</p>
+    <section className="space-y-4">
+      <GuideMessage>{t.prompt}</GuideMessage>
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <p className="text-sm leading-relaxed text-gray-500">{t.body}</p>
 
-      {gmailConnected ? (
-        <div className="mt-5 flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/80 px-4 py-3 text-sm font-medium text-emerald-800">
-          <span aria-hidden>✓</span>
-          {t.connected}
-          {connectedAccountCount > 0 ? (
-            <span className="text-emerald-600/80">
-              ({connectedAccountCount} account{connectedAccountCount === 1 ? "" : "s"})
-            </span>
-          ) : null}
-        </div>
-      ) : checkingConnection ? (
-        <div className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          {t.checkingConnection}
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={onConnect}
-          disabled={oauthLoading}
-          className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:opacity-60"
-        >
-          {oauthLoading ? t.connecting : t.connectGmail}
-        </button>
-      )}
+        {gmailConnected ? (
+          <div className="mt-5 flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50/80 px-4 py-3 text-sm font-medium text-emerald-800">
+            <span aria-hidden>✓</span>
+            {t.connected}
+            {connectedAccountCount > 0 ? (
+              <span className="text-emerald-600/80">
+                ({connectedAccountCount} account{connectedAccountCount === 1 ? "" : "s"})
+              </span>
+            ) : null}
+          </div>
+        ) : checkingConnection ? (
+          <div className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+            {t.checkingConnection}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onConnect}
+            disabled={oauthLoading}
+            className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:opacity-60"
+          >
+            {oauthLoading ? t.connecting : t.connectGmail}
+          </button>
+        )}
 
-      <div className="mt-4">
-        <button
-          type="button"
-          disabled
-          title={t.secondInboxLocked}
-          className="w-full cursor-not-allowed rounded-xl border border-dashed border-gray-200 px-4 py-2.5 text-sm text-gray-400"
-        >
-          {t.secondInbox} · {t.secondInboxLocked}
-        </button>
+        <div className="mt-4">
+          <button
+            type="button"
+            disabled
+            title={t.secondInboxLocked}
+            className="w-full cursor-not-allowed rounded-xl border border-dashed border-gray-200 px-4 py-2.5 text-sm text-gray-400"
+          >
+            {t.secondInbox} · {t.secondInboxLocked}
+          </button>
+        </div>
+
+        {gmailConnected ? (
+          <button type="button" onClick={onContinue} className="btn-primary mt-6 w-full">
+            {t.continue}
+          </button>
+        ) : null}
       </div>
-
-      {gmailConnected ? (
-        <button type="button" onClick={onContinue} className="btn-primary mt-6 w-full">
-          {t.continue}
-        </button>
-      ) : null}
     </section>
   );
 }
 
 function PreferencesStep({
   t,
-  locale,
   messagesReady,
   emptyInbox,
-  clusterLabel,
   importantCandidates,
   promotionalCandidates,
   importantSenders,
@@ -813,11 +754,10 @@ function PreferencesStep({
   onNoneOfThese,
   onRefresh,
 }: {
-  t: (typeof COPY)["en" | "it"]["preferences"];
+  t: (typeof ONBOARDING_CONVERSATION)["en"]["preferences"];
   locale: "en" | "it";
   messagesReady: boolean;
   emptyInbox: boolean;
-  clusterLabel: string;
   importantCandidates: SenderCandidate[];
   promotionalCandidates: SenderCandidate[];
   importantSenders: Set<string>;
@@ -831,9 +771,9 @@ function PreferencesStep({
 }) {
   return (
     <section className="space-y-4">
+      <GuideMessage>{t.prompt}</GuideMessage>
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-medium text-gray-900">{t.title}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-gray-500">{t.subtitle}</p>
+        <p className="text-sm leading-relaxed text-gray-500">{t.subtitle}</p>
 
         {emptyInbox ? (
           <p className="mt-3 text-sm text-gray-500">{t.emptyInboxSkip}</p>
@@ -841,10 +781,7 @@ function PreferencesStep({
           <p className="mt-4 text-sm text-gray-400">{t.waitingForMail}</p>
         ) : (
           <>
-            <p className="mt-3 text-xs font-medium text-gray-400">
-              {t.clusterShowing(clusterLabel)}
-            </p>
-            <p className="mt-2 text-sm text-gray-500">{t.importantHint}</p>
+            <p className="mt-4 text-sm text-gray-600">{t.importantHint}</p>
             <p className="mt-1 text-xs font-medium text-accent">
               {t.importantCount(importantSenders.size)}
             </p>
@@ -972,7 +909,7 @@ function PersonalizeStep({
   onSave,
   locale,
 }: {
-  t: (typeof COPY)["en" | "it"]["personalize"];
+  t: (typeof ONBOARDING_CONVERSATION)["en"]["personalize"];
   categories: Record<string, string>;
   sender: string;
   selected: InboxAiCategory | null;
@@ -981,33 +918,35 @@ function PersonalizeStep({
   locale: "en" | "it";
 }) {
   return (
-    <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-      <h3 className="text-lg font-medium text-gray-900">{t.title}</h3>
-      <p className="mt-1 text-sm text-gray-500">{t.body(sender)}</p>
-      <div className="mt-5 grid gap-2 sm:grid-cols-2">
-        {PERSONALIZE_OPTIONS.map((cat) => (
-          <button
-            key={cat}
-            type="button"
-            onClick={() => onSelect(cat)}
-            className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition ${
-              selected === cat
-                ? "border-accent bg-accent-muted/30 text-accent"
-                : "border-gray-200 text-gray-700 hover:border-accent/30"
-            }`}
-          >
-            {categories[cat] ?? inboxCategorySectionTitle(cat, locale)}
-          </button>
-        ))}
+    <section className="space-y-4">
+      <GuideMessage>{t.prompt}</GuideMessage>
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <p className="text-sm text-gray-500">{t.body(sender)}</p>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          {PERSONALIZE_OPTIONS.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => onSelect(cat)}
+              className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition ${
+                selected === cat
+                  ? "border-accent bg-accent-muted/30 text-accent"
+                  : "border-gray-200 text-gray-700 hover:border-accent/30"
+              }`}
+            >
+              {categories[cat] ?? inboxCategorySectionTitle(cat, locale)}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!selected}
+          className="btn-primary mt-6 w-full disabled:opacity-50"
+        >
+          {t.save}
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={!selected}
-        className="btn-primary mt-6 w-full disabled:opacity-50"
-      >
-        {t.save}
-      </button>
     </section>
   );
 }
@@ -1016,16 +955,18 @@ function ReleaseStep({
   t,
   onFinish,
 }: {
-  t: (typeof COPY)["en" | "it"]["release"];
+  t: (typeof ONBOARDING_CONVERSATION)["en"]["release"];
   onFinish: () => void;
 }) {
   return (
-    <section className="rounded-2xl border border-gray-100 bg-white px-6 py-10 text-center shadow-sm">
-      <h3 className="text-xl font-semibold text-gray-900">{t.title}</h3>
-      <p className="mt-2 text-sm text-gray-500">{t.body}</p>
-      <button type="button" onClick={onFinish} className="btn-primary mt-8 w-full sm:w-auto">
-        {t.cta}
-      </button>
+    <section className="space-y-4">
+      <GuideMessage>{t.title}</GuideMessage>
+      <div className="rounded-2xl border border-gray-100 bg-white px-6 py-10 text-center shadow-sm">
+        <p className="text-sm text-gray-500">{t.body}</p>
+        <button type="button" onClick={onFinish} className="btn-primary mt-8 w-full sm:w-auto">
+          {t.cta}
+        </button>
+      </div>
     </section>
   );
 }

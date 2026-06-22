@@ -58,7 +58,7 @@ export function LiveProcessingPanel({
           </p>
           {!showResultBanner ? (
             <p className="mt-1 text-xs text-gray-400">
-              {locale === "it" ? "Handled sta analizzando…" : "Handled is thinking…"}
+              {locale === "it" ? "Dammi un momento…" : "Give me a moment…"}
             </p>
           ) : null}
           {!showResultBanner ? (
