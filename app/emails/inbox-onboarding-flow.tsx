@@ -116,16 +116,18 @@ export const OnboardingEmailCard = forwardRef<
     readStateMap: ReadStateMap;
     onAdvance: () => void;
     hidePrimaryActions?: boolean;
+    /** Background-load detail so reply is ready — no UI interruption. */
+    presencePrefetch?: boolean;
   }
 >(function OnboardingEmailCard(
-  { message, locale, readStateMap, onAdvance, hidePrimaryActions = false },
+  { message, locale, readStateMap, onAdvance, hidePrimaryActions = false, presencePrefetch = false },
   ref,
 ) {
   const t = COPY[locale];
   const [expanded, setExpanded] = useState(false);
   const [showReply, setShowReply] = useState(false);
 
-  const detailEnabled = expanded || showReply;
+  const detailEnabled = expanded || showReply || presencePrefetch;
   const { state: detailState, reload } = useGmailEmailDetail(
     message.id,
     message.accountId,

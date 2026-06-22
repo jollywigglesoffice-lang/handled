@@ -180,11 +180,18 @@ import {
 } from "@/lib/onboarding/first-time";
 import { useEmotionalMemoryLocale } from "@/app/hooks/use-emotional-memory";
 import { useInboxStress } from "@/app/hooks/use-inbox-stress";
+import { useInboxPresence } from "@/app/hooks/use-inbox-presence";
 import { CalmModeGuidance } from "@/app/inbox/calm-mode-guidance";
 import {
   filterCalmPriorityMessages,
   limitCalmSectionList,
 } from "@/lib/inbox-stress";
+import {
+  applyPresenceOrderingToBuckets,
+  derivePresencePatterns,
+  persistInboxVisit,
+  resolvePresenceAdjustments,
+} from "@/lib/presence";
 import {
   EMOTIONAL_MEMORY_CHANGED_EVENT,
   getSavedInboxMode,
@@ -1317,13 +1324,13 @@ export function EmailsClient() {
     catalog,
   });
 
-  const gmailBuckets = useMemo(
-    () =>
-      applyTimeImpactOrderingToBuckets(
-        applyImportanceOrderingToBuckets(gmailBucketsRaw, completions),
-      ),
-    [gmailBucketsRaw, completions],
-  );
+  const gmailBuckets = useMemo(() => {
+    const ordered = applyTimeImpactOrderingToBuckets(
+      applyImportanceOrderingToBuckets(gmailBucketsRaw, completions),
+    );
+    const adjustments = resolvePresenceAdjustments(derivePresencePatterns());
+    return applyPresenceOrderingToBuckets(ordered, adjustments);
+  }, [gmailBucketsRaw, completions]);
 
   const { summary: waitingSummary } = useWaitingOnMetadata();
 
@@ -1453,6 +1460,25 @@ export function EmailsClient() {
     enabled: !showGuidedOnboarding && inboxMode === "gmail",
   });
 
+  const inboxPresence = useInboxPresence({
+    locale: inboxLocale,
+    attentionCount: attentionSnapshot.needsAttention,
+    waitingCount: waitingOpenRecords.length,
+    stressActive: inboxStress.calm.active,
+    filteringAggressive:
+      adaptiveSettings.aggressiveAutopilotFilter || inboxStress.calm.active,
+    categoryCounts: gmailBuckets.counts,
+    enabled: !showGuidedOnboarding && inboxMode === "gmail" && !inboxLoading,
+    suppressLine: Boolean(
+      inboxStress.copy.headline || emotionalMemory.welcomeLine,
+    ),
+  });
+
+  useEffect(() => {
+    if (!inboxPresence.observationLine) return;
+    inboxPresence.acknowledgeObservation();
+  }, [inboxPresence.observationLine, inboxPresence.acknowledgeObservation]);
+
   const effectiveFocusCount = inboxStress.calm.active
     ? inboxStress.calm.focusPreviewCount
     : showGuidedOnboarding
@@ -1557,6 +1583,34 @@ export function EmailsClient() {
   }, []);
 
   const [activeCategoryTab, setActiveCategoryTab] = useState<CategoryTab>("all");
+  const presenceTabAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (presenceTabAppliedRef.current) return;
+    if (!inboxPresence.initialTab || showGuidedOnboarding || inboxLoading) return;
+    presenceTabAppliedRef.current = true;
+    setActiveCategoryTab(inboxPresence.initialTab);
+  }, [inboxPresence.initialTab, showGuidedOnboarding, inboxLoading]);
+
+  useEffect(() => {
+    if (inboxLoading || inboxMode !== "gmail" || showGuidedOnboarding) return;
+    persistInboxVisit(
+      messagesForDisplay.map((m) => ({
+        id: m.id,
+        internalDateMs: m.internalDateMs,
+        date: m.date,
+      })),
+      gmailBuckets.counts,
+      waitingOpenRecords.length,
+    );
+  }, [
+    inboxLoading,
+    inboxMode,
+    showGuidedOnboarding,
+    messagesForDisplay,
+    gmailBuckets.counts,
+    waitingOpenRecords.length,
+  ]);
 
   const inboxZeroQueue = useMemo(
     () =>
@@ -2540,6 +2594,7 @@ export function EmailsClient() {
                     focusEmails={focusEmails}
                     attentionCount={focusAttentionCount}
                     handledElsewhereCount={handledElsewhereCount}
+                    presenceLine={inboxPresence.observationLine}
                   />
                 </>
               ) : null}

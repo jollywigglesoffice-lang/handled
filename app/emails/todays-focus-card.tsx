@@ -20,6 +20,7 @@ type TodaysFocusCardProps = {
   focusEmails: FocusEmailPreview[];
   attentionCount: number;
   handledElsewhereCount: number;
+  presenceLine?: string | null;
 };
 
 const COPY = {
@@ -40,6 +41,7 @@ export function TodaysFocusCard({
   focusEmails,
   attentionCount,
   handledElsewhereCount,
+  presenceLine,
 }: TodaysFocusCardProps) {
   const t = COPY[locale];
   const insight = buildFocusInsightLine(attentionCount, locale);
@@ -51,6 +53,9 @@ export function TodaysFocusCard({
         <p className="text-xs font-medium text-gray-400">{t.today}</p>
         <p className="text-[15px] leading-relaxed text-gray-700">{insight}</p>
         <p className="text-sm text-gray-400">{handledLine}</p>
+        {presenceLine ? (
+          <p className="text-xs text-gray-400/90">{presenceLine}</p>
+        ) : null}
       </div>
 
       {focusEmails.length > 0 ? (

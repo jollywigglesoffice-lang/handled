@@ -53,6 +53,12 @@ import {
   recordOnboardingComplete,
 } from "@/lib/emotional-memory";
 import { recordOnboardingHesitation, recordStressSkip } from "@/lib/inbox-stress";
+import {
+  derivePresencePatterns,
+  pickPresenceOnboardingEmail,
+  resolvePresenceAdjustments,
+  shouldPresencePrefetchReply,
+} from "@/lib/presence";
 
 export type GuidedOnboardingFlowProps = {
   locale: "en" | "it";
@@ -171,6 +177,13 @@ export function GuidedOnboardingFlow({
 
   const pickActionEmail = useCallback(
     (index = emailPickIndex) => {
+      if (index === 0 && exampleQueue.length > 0) {
+        const preferred = pickPresenceOnboardingEmail(
+          exampleQueue,
+          resolvePresenceAdjustments(derivePresencePatterns()),
+        );
+        if (preferred) return preferred;
+      }
       return exampleQueue[index] ?? incompleteMessages[index] ?? null;
     },
     [exampleQueue, incompleteMessages, emailPickIndex],
@@ -635,6 +648,7 @@ function FirstActionStep({
             readStateMap={readStateMap}
             onAdvance={onAdvance}
             hidePrimaryActions
+            presencePrefetch={shouldPresencePrefetchReply(actionEmail)}
           />
           {emotionalLine ? <EmotionalContextLine line={emotionalLine} /> : null}
           <GuideMessage variant="continuity">
