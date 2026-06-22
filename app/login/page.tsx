@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { AuthResolutionProvider } from "@/app/auth-resolution-context";
 import { isBetaMode } from "@/lib/beta-mode";
 import { GoogleSignInButton, WelcomeLanding } from "@/app/components/welcome-landing";
 import { LanguageFooterToggle } from "@/app/components/language-footer-toggle";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { startGoogleOAuth } from "@/lib/auth/start-google-oauth";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const ui = useUiCopy();
-  const router = useRouter();
   const next =
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("next") || "/emails"
@@ -42,17 +41,15 @@ export default function LoginPage() {
     void (async () => {
       const { data } = await supabaseBrowser.auth.getSession();
       if (data.session) {
-        setAuthError("");
         params.delete("error");
         const qs = params.toString();
         const path = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
         window.history.replaceState(null, "", path);
-        router.replace("/emails");
         return;
       }
       setAuthError(ui.auth.oauthIncomplete);
     })();
-  }, [router, ui.auth.oauthIncomplete]);
+  }, [ui.auth.oauthIncomplete]);
 
   async function handleGoogleSignIn() {
     setAuthError("");
@@ -349,5 +346,27 @@ export default function LoginPage() {
       </div>
       <LanguageFooterToggle className="pb-8" />
     </main>
+  );
+}
+
+function LoginNextPathGate({ children }: { children: ReactNode }) {
+  const next =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("next") || "/emails"
+      : "/emails";
+  return (
+    <AuthResolutionProvider mode="login" loginNextPath={next}>
+      {children}
+    </AuthResolutionProvider>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginNextPathGate>
+        <LoginPageContent />
+      </LoginNextPathGate>
+    </Suspense>
   );
 }

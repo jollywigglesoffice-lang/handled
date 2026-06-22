@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { InboxSectionTitle } from "@/lib/fake-emails";
 import { ensureApiSessionCookies } from "@/lib/auth/ensure-api-session";
+import { logAuthTransition } from "@/lib/auth/auth-resolution";
+import { useAuthResolution } from "@/app/auth-resolution-context";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { saveGoogleProviderToken } from "@/lib/google-provider-token";
 import { useCompletionWorkflow } from "@/app/completion-workflow-context";
@@ -506,6 +508,7 @@ function EmailCardSkeleton() {
 
 export function EmailsClient() {
   const router = useRouter();
+  const { isAuthenticated, userEmail: authUserEmail } = useAuthResolution();
   const searchParams = useSearchParams();
   const ui = useUiCopy();
   const { catalog } = useInboxCategories();
@@ -570,7 +573,6 @@ export function EmailsClient() {
   const [showMicroMessage, setShowMicroMessage] = useState(true);
   const [rateLimitNotice, setRateLimitNotice] = useState("");
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
-  const [signedIn, setSignedIn] = useState(false);
   const [firstOnboardingDone, setFirstOnboardingDone] = useState(() => {
     if (typeof window === "undefined") return false;
     return isFirstOnboardingComplete();
@@ -583,6 +585,9 @@ export function EmailsClient() {
   }, []);
   const [onboardingPool, setOnboardingPool] = useState<GmailCardMessage[]>([]);
   const onboardingPoolInitRef = useRef(false);
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  isAuthenticatedRef.current = isAuthenticated;
+  const signedIn = isAuthenticated;
   const frozenBucketOrderRef = useRef<Record<string, string[]> | null>(null);
   const [presenceOrderingLocked, setPresenceOrderingLocked] = useState(false);
   const loadInFlightRef = useRef(false);
@@ -653,6 +658,12 @@ export function EmailsClient() {
 
       loadInFlightRef.current = true;
 
+      if (!isAuthenticatedRef.current) {
+        logAuthTransition("inbox_load_skipped", { reason: "auth_not_authenticated" });
+        loadInFlightRef.current = false;
+        return;
+      }
+
       logInboxLoadStart({
         loadId,
         paginated,
@@ -679,7 +690,16 @@ export function EmailsClient() {
 
       try {
         if (!hasSession) {
-          router.replace(`/login?next=${encodeURIComponent("/emails")}`);
+          logAuthTransition("inbox_load_aborted", {
+            reason: "session_cookies_unavailable",
+            clientSessionMs: clientTimings.clientSessionMs,
+          });
+          setInboxFailureReason("auth_error");
+          setGmailError(
+            locale === "it"
+              ? "Sessione non pronta — ricarica la pagina."
+              : "Session not ready — refresh the page.",
+          );
           return;
         }
 
@@ -1106,6 +1126,7 @@ export function EmailsClient() {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     let cancelled = false;
     void (async () => {
       const {
@@ -1114,7 +1135,7 @@ export function EmailsClient() {
       if (session?.provider_token) {
         saveGoogleProviderToken(session.provider_token);
       }
-      setUserEmail(session?.user?.email ?? null);
+      setUserEmail(authUserEmail ?? session?.user?.email ?? null);
       const [mode, overrides, senderPrefs] = await Promise.all([
         syncWorkflowModeFromAccount(),
         session ? syncEmailOverridesFromAccount() : Promise.resolve(loadClientEmailOverrideMap()),
@@ -1133,10 +1154,10 @@ export function EmailsClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAuthenticated, authUserEmail]);
 
   useEffect(() => {
-    if (!persistenceReady) return;
+    if (!isAuthenticated || !persistenceReady) return;
     const cache = loadInboxCache();
     const hasCache = Boolean(cache?.gmailMessages.length);
     if (hasCache && cache) {
@@ -1144,7 +1165,7 @@ export function EmailsClient() {
       hasLoadedInboxRef.current = true;
     }
     void loadInbox(hasCache ? { silent: true } : undefined);
-  }, [applyInboxCacheSnapshot, loadInbox, persistenceReady]);
+  }, [applyInboxCacheSnapshot, loadInbox, persistenceReady, isAuthenticated]);
 
   useEffect(() => {
     const onModeChange = () => {
@@ -1766,16 +1787,6 @@ export function EmailsClient() {
       controller.abort();
     };
   }, [searchFilters.query, searchFilters.read]);
-
-  useEffect(() => {
-    void supabaseBrowser.auth.getSession().then(({ data }) => {
-      setSignedIn(Boolean(data.session?.user));
-    });
-    const { data } = supabaseBrowser.auth.onAuthStateChange((_e, session) => {
-      setSignedIn(Boolean(session?.user));
-    });
-    return () => data.subscription.unsubscribe();
-  }, []);
 
   useEffect(() => {
     if (searchParams.get("inbox_added") === "1") {
