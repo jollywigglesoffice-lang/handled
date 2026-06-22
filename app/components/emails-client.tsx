@@ -61,7 +61,8 @@ import { InboxClutterSection } from "@/app/emails/inbox-clutter-section";
 import { applyImportanceOrderingToBuckets } from "@/lib/importance-memory";
 import { applyTimeImpactOrderingToBuckets } from "@/lib/time-impact/inbox-sort";
 import { buildTimeStripGroups } from "@/lib/time-impact/time-strip";
-import { classifyAutopilot, isAutopilotInboxVisible } from "@/lib/autopilot";
+import { classifyAutopilot } from "@/lib/autopilot";
+import { isEmotionalInboxVisible } from "@/lib/emotional-memory";
 import { useAutopilotProcessor } from "@/app/emails/use-autopilot-processor";
 import { BetaAiFilterBar } from "@/app/emails/beta-ai-filter-bar";
 import { InboxModeToggle } from "@/app/emails/inbox-mode-toggle";
@@ -177,6 +178,14 @@ import {
   isFirstOnboardingComplete,
   markFirstOnboardingComplete,
 } from "@/lib/onboarding/first-time";
+import { useEmotionalMemoryLocale } from "@/app/hooks/use-emotional-memory";
+import {
+  EMOTIONAL_MEMORY_CHANGED_EVENT,
+  getSavedInboxMode,
+  readEmotionalMemory,
+  resolveAdaptiveInboxSettings,
+  savePreferredInboxMode,
+} from "@/lib/emotional-memory";
 import { TodaysFocusCard } from "@/app/emails/todays-focus-card";
 import {
   INBOX_ZERO_STATE_COPY,
@@ -511,6 +520,16 @@ export function EmailsClient() {
     {},
   );
   const [persistenceReady, setPersistenceReady] = useState(false);
+  const [emotionalMemoryRevision, setEmotionalMemoryRevision] = useState(0);
+  useEffect(() => {
+    const sync = () => setEmotionalMemoryRevision((n) => n + 1);
+    window.addEventListener(EMOTIONAL_MEMORY_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(EMOTIONAL_MEMORY_CHANGED_EVENT, sync);
+  }, []);
+  const adaptiveSettings = useMemo(
+    () => resolveAdaptiveInboxSettings(readEmotionalMemory()),
+    [emotionalMemoryRevision],
+  );
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [workflowMode, setWorkflowMode] = useState(readWorkflowModeFromStorage);
   const [gmailError, setGmailError] = useState("");
@@ -1254,8 +1273,14 @@ export function EmailsClient() {
 
   /** Autopilot inbox: Level 3 + 4 only. Level 1/2 never appear. */
   const messagesForInbox = useMemo(
-    () => messagesForDisplay.filter((m) => isAutopilotInboxVisible(m.autopilot)),
-    [messagesForDisplay],
+    () =>
+      messagesForDisplay.filter((m) =>
+        isEmotionalInboxVisible(
+          m.autopilot,
+          adaptiveSettings.aggressiveAutopilotFilter,
+        ),
+      ),
+    [messagesForDisplay, adaptiveSettings.aggressiveAutopilotFilter],
   );
 
   /** Tab buckets always include every loaded message — autopilot only trims workflow sections. */
@@ -1300,7 +1325,18 @@ export function EmailsClient() {
   const [inboxInteractionMode, setInboxInteractionMode] = useState<InboxInteractionMode>("standard");
 
   useEffect(() => {
-    setInboxInteractionMode(readInboxInteractionMode());
+    const sessionMode = readInboxInteractionMode();
+    if (sessionMode === "standard") {
+      const saved = getSavedInboxMode();
+      if (saved && saved !== "standard") {
+        writeInboxInteractionMode(saved);
+        setInboxInteractionMode(saved);
+      } else {
+        setInboxInteractionMode(sessionMode);
+      }
+    } else {
+      setInboxInteractionMode(sessionMode);
+    }
     const sync = () => setInboxInteractionMode(readInboxInteractionMode());
     window.addEventListener(INBOX_INTERACTION_MODE_EVENT, sync);
     return () => window.removeEventListener(INBOX_INTERACTION_MODE_EVENT, sync);
@@ -1309,6 +1345,7 @@ export function EmailsClient() {
   const handleInboxInteractionModeChange = useCallback((mode: InboxInteractionMode) => {
     setInboxInteractionMode(mode);
     writeInboxInteractionMode(mode);
+    savePreferredInboxMode(mode);
     if (mode === "inbox_zero") {
       trackEvent("inbox_zero_mode_enabled");
     } else {
@@ -1328,6 +1365,13 @@ export function EmailsClient() {
 
   const firstOnboardingPending = !firstOnboardingDone;
   const showGuidedOnboarding = firstOnboardingPending;
+
+  const onboardingAdaptive = adaptiveSettings;
+
+  const emotionalMemory = useEmotionalMemoryLocale(inboxLocaleEarly, {
+    inboxVolume: gmailBuckets.allVisible.length,
+    enabled: !showGuidedOnboarding && inboxMode === "gmail",
+  });
 
   const handleFirstOnboardingFinished = useCallback(() => {
     markFirstOnboardingComplete();
@@ -1376,25 +1420,29 @@ export function EmailsClient() {
   const filterWorkflowSection = useCallback(
     (list: GmailCardMessage[]) => {
       const filtered = filterInboxList(list);
+      const aggressive = adaptiveSettings.aggressiveAutopilotFilter;
       return betaMode
         ? filtered
-        : filtered.filter((m) => isAutopilotInboxVisible(m.autopilot));
+        : filtered.filter((m) =>
+            isEmotionalInboxVisible(m.autopilot, aggressive),
+          );
     },
-    [filterInboxList, betaMode],
+    [filterInboxList, betaMode, adaptiveSettings.aggressiveAutopilotFilter],
   );
 
   const betaFilterActive = betaMode && betaAiFilter !== "all";
 
   const focusEmails = useMemo(() => {
     const pool = gmailBuckets.byCategoryAll.worth_your_attention ?? [];
-    return pool.slice(0, 3).map((m) => ({
+    const count = showGuidedOnboarding ? 3 : adaptiveSettings.focusPreviewCount;
+    return pool.slice(0, count).map((m) => ({
       id: m.id,
       sender: m.sender,
       subject: m.subject,
       snippet: m.snippet,
       accountId: m.accountId,
     }));
-  }, [gmailBuckets.byCategoryAll]);
+  }, [gmailBuckets.byCategoryAll, showGuidedOnboarding, adaptiveSettings.focusPreviewCount]);
 
   const focusAttentionCount = gmailBuckets.counts.worth_your_attention ?? 0;
 
@@ -2268,10 +2316,21 @@ export function EmailsClient() {
     }),
     [gmailBuckets, waitingOpenRecords.length],
   );
-  const todayHeadline = calmTodayHeadline(attentionSnapshot, inboxLocale);
+  const todayHeadline =
+    emotionalMemory.welcomeLine ??
+    calmTodayHeadline(attentionSnapshot, inboxLocale);
   const reliefMessage = useMemo(
-    () => (inboxLoading ? null : pickFocusReassurance(attentionSnapshot, inboxLocale)),
-    [inboxLoading, attentionSnapshot, inboxLocale],
+    () =>
+      inboxLoading
+        ? null
+        : emotionalMemory.welcomeSubline ??
+          pickFocusReassurance(attentionSnapshot, inboxLocale),
+    [
+      inboxLoading,
+      emotionalMemory.welcomeSubline,
+      attentionSnapshot,
+      inboxLocale,
+    ],
   );
   const inboxErrorDisplay =
     structuredInboxError ??
@@ -2293,6 +2352,8 @@ export function EmailsClient() {
             isCompleted={isCompleted}
             onFinished={handleFirstOnboardingFinished}
             onFetchMoreExamples={fetchOnboardingExamples}
+            compactMode={onboardingAdaptive.compactOnboarding}
+            skipPersonalize={onboardingAdaptive.skipPersonalizeStep}
           />
         ) : inboxLoading ? (
           <InboxLoadingState

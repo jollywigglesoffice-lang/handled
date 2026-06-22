@@ -1,4 +1,9 @@
 import type { GuidedOnboardingStep } from "@/lib/onboarding/guided-steps";
+import {
+  deriveWorkStyleProfile,
+  isReturningUser,
+  readEmotionalMemory,
+} from "@/lib/emotional-memory";
 
 export type OnboardingPreferencesMemory = {
   skipped: boolean;
@@ -225,5 +230,22 @@ export function buildContinuityCue(
   if (memory.importantCount > 0) return copy.focusImportant;
   if (memory.promoCount > 0) return copy.preferMinimal;
   if (memory.skipped || memory.noneOfThese) return copy.learnAsGo;
+
+  const state = readEmotionalMemory();
+  if (isReturningUser(state)) {
+    const profile = deriveWorkStyleProfile(state);
+    const returning = locale === "it"
+      ? {
+          minimal: "Di solito preferisci meno email — terrò le cose essenziali.",
+          fast: "Gestisci le email in fretta — metto in evidenza ciò che richiede azione.",
+        }
+      : {
+          minimal: "You tend to prefer fewer emails — I'll keep things minimal.",
+          fast: "You usually handle emails quickly — I'll prioritize actionable ones.",
+        };
+    if (profile.densityPreference === "minimal") return returning.minimal;
+    if (profile.pace === "fast_responder") return returning.fast;
+  }
+
   return null;
 }

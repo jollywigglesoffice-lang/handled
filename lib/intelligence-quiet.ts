@@ -1,5 +1,11 @@
 /** Familiarity — Handled speaks less as trust builds (local only). */
 
+import {
+  readEmotionalMemory,
+  resolveAdaptiveInboxSettings,
+  recordEmotionalAction,
+} from "@/lib/emotional-memory";
+
 const STORAGE_KEY = "handled:familiarity:v1";
 
 export type IntelligenceVerbosity = "full" | "compact" | "minimal";
@@ -39,6 +45,7 @@ function writeState(state: FamiliarityState): void {
 export function recordEmailEngagement(): void {
   const state = readState();
   writeState({ ...state, emailOpens: state.emailOpens + 1 });
+  recordEmotionalAction("open");
 }
 
 export function getEmailEngagementCount(): number {
@@ -47,9 +54,15 @@ export function getEmailEngagementCount(): number {
 
 export function getIntelligenceVerbosity(): IntelligenceVerbosity {
   const opens = readState().emailOpens;
-  if (opens >= 28) return "minimal";
-  if (opens >= 10) return "compact";
-  return "full";
+  let level: IntelligenceVerbosity;
+  if (opens >= 28) level = "minimal";
+  else if (opens >= 10) level = "compact";
+  else level = "full";
+
+  if (level === "full" && resolveAdaptiveInboxSettings(readEmotionalMemory()).compactExplanations) {
+    return "compact";
+  }
+  return level;
 }
 
 export function maxContextChips(verbosity: IntelligenceVerbosity): number {

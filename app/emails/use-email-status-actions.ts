@@ -13,6 +13,10 @@ import {
 } from "@/lib/read-state/client-storage";
 import { useInboxTruthEffects } from "@/app/hooks/use-inbox-truth-effects";
 import { useMemoryCollect } from "@/app/hooks/use-memory-collect";
+import {
+  mapCompletionToEmotionalAction,
+  recordEmotionalAction,
+} from "@/lib/emotional-memory";
 import { markEmailsRead, markEmailsUnread } from "@/lib/read-state/gmail-sync";
 import type { CompleteEmailExtras, EmailCompletionRecord } from "@/lib/email-completions/types";
 import { isActiveWaiting } from "@/lib/waiting-on/helpers";
@@ -133,6 +137,7 @@ export function useEmailStatusActions({
           actionId,
           actionLabel,
         });
+        recordEmotionalAction(mapCompletionToEmotionalAction(actionId));
         setShowDonePicker(false);
         if (!onCompleted) {
           notifyCompleted({ emailIds: [emailId], actionId, actionLabel, locale });

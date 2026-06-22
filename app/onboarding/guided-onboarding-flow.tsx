@@ -47,6 +47,11 @@ import {
 import { useMemoryCollect } from "@/app/hooks/use-memory-collect";
 import type { ReadStateMap } from "@/lib/read-state/client-storage";
 import { trackEvent } from "@/lib/analytics";
+import {
+  readEmotionalMemory,
+  recordEmotionalAction,
+  recordOnboardingComplete,
+} from "@/lib/emotional-memory";
 
 export type GuidedOnboardingFlowProps = {
   locale: "en" | "it";
@@ -59,6 +64,10 @@ export type GuidedOnboardingFlowProps = {
   onFinished: () => void;
   /** Broaden inbox fetch when the first-email moment needs more examples. */
   onFetchMoreExamples?: () => Promise<void>;
+  /** Returning low-tolerance users — skip sender preferences moment. */
+  compactMode?: boolean;
+  /** Fast responders — skip personalize after first action. */
+  skipPersonalize?: boolean;
 };
 
 const PERSONALIZE_OPTIONS: InboxAiCategory[] = [
@@ -78,14 +87,18 @@ export function GuidedOnboardingFlow({
   isCompleted,
   onFinished,
   onFetchMoreExamples,
+  compactMode = false,
+  skipPersonalize = false,
 }: GuidedOnboardingFlowProps) {
   const t = ONBOARDING_CONVERSATION[locale];
   const { collectCategoryCorrection } = useMemoryCollect();
   const startedRef = useRef(false);
+  const flowStartedAtRef = useRef(Date.now());
 
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
+    flowStartedAtRef.current = Date.now();
     trackEvent("guided_onboarding_started");
   }, []);
 
@@ -107,11 +120,16 @@ export function GuidedOnboardingFlow({
   const [actionEmail, setActionEmail] = useState<GmailCardMessage | null>(null);
   const [personalizeCategory, setPersonalizeCategory] = useState<InboxAiCategory | null>(null);
   const [emailPickIndex, setEmailPickIndex] = useState(0);
-  const [preferencesMemory, setPreferencesMemory] = useState<OnboardingPreferencesMemory>({
-    skipped: false,
-    noneOfThese: false,
-    importantCount: 0,
-    promoCount: 0,
+  const [preferencesMemory, setPreferencesMemory] = useState<OnboardingPreferencesMemory>(() => {
+    const persisted = readEmotionalMemory().preferencesMemory;
+    return (
+      persisted ?? {
+        skipped: false,
+        noneOfThese: false,
+        importantCount: 0,
+        promoCount: 0,
+      }
+    );
   });
   const [transitionLine, setTransitionLine] = useState<string | null>(null);
 
@@ -217,10 +235,19 @@ export function GuidedOnboardingFlow({
     });
   }, [importantSenders, promoSenders, persistSenderPrefs, locale]);
 
-  const continuityCue = useMemo(
-    () => buildContinuityCue(preferencesMemory, locale),
-    [preferencesMemory, locale],
-  );
+  const continuityCue = useMemo(() => {
+    const persisted = readEmotionalMemory().preferencesMemory;
+    const merged: OnboardingPreferencesMemory = {
+      skipped: preferencesMemory.skipped && !(persisted?.importantCount ?? 0),
+      noneOfThese: preferencesMemory.noneOfThese || Boolean(persisted?.noneOfThese),
+      importantCount: Math.max(
+        preferencesMemory.importantCount,
+        persisted?.importantCount ?? 0,
+      ),
+      promoCount: Math.max(preferencesMemory.promoCount, persisted?.promoCount ?? 0),
+    };
+    return buildContinuityCue(merged, locale);
+  }, [preferencesMemory, locale]);
 
   const goToStep = useCallback(
     (next: GuidedOnboardingStep) => {
@@ -349,12 +376,21 @@ export function GuidedOnboardingFlow({
   }, [emailPickIndex, exampleQueue, goToStep]);
 
   const handleFirstActionDone = useCallback(() => {
-    if (actionEmail) {
+    if (actionEmail && !skipPersonalize) {
       goToStep("personalize");
     } else {
       goToStep("release");
     }
-  }, [actionEmail, goToStep]);
+  }, [actionEmail, skipPersonalize, goToStep]);
+
+  const finishOnboarding = useCallback(() => {
+    recordOnboardingComplete({
+      preferencesMemory,
+      durationMs: Date.now() - flowStartedAtRef.current,
+      senderRefreshCount: senderRefreshIndex,
+    });
+    onFinished();
+  }, [preferencesMemory, senderRefreshIndex, onFinished]);
 
   const handlePersonalizeSave = useCallback(async () => {
     if (!actionEmail || !personalizeCategory) return;
@@ -395,7 +431,22 @@ export function GuidedOnboardingFlow({
           oauthLoading={oauthLoading}
           connectedAccountCount={connectedAccountCount}
           onConnect={() => void handleConnectGmail()}
-          onContinue={() => goToStep("preferences")}
+          onContinue={() => {
+            if (compactMode) {
+              setPreferencesMemory({
+                skipped: true,
+                noneOfThese: false,
+                importantCount: 0,
+                promoCount: 0,
+              });
+              setEmailPickIndex(0);
+              setExampleRefreshIndex(0);
+              setActionEmail(pickActionEmail(0));
+              goToStep("first_action");
+            } else {
+              goToStep("preferences");
+            }
+          }}
         />
       ) : null}
 
@@ -448,7 +499,7 @@ export function GuidedOnboardingFlow({
       ) : null}
 
       {step === "release" ? (
-        <ReleaseStep t={t.release} onFinish={onFinished} />
+        <ReleaseStep t={t.release} onFinish={finishOnboarding} />
       ) : null}
     </div>
   );
@@ -520,16 +571,19 @@ function FirstActionStep({
   const fallbackCopy = EMOTIONAL_FALLBACK[locale];
 
   const handleReply = useCallback(() => {
+    recordEmotionalAction("reply");
     setDialogueAck(t.ackReply);
     cardRef.current?.triggerReply();
   }, [t.ackReply]);
 
   const handleDone = useCallback(() => {
+    recordEmotionalAction("done");
     setDialogueAck(t.ackDone);
     cardRef.current?.triggerDone();
   }, [t.ackDone]);
 
   const handleSkip = useCallback(() => {
+    recordEmotionalAction("skip");
     const result = onSkip();
     setDialogueAck(result === "another" ? t.ackSkip : t.ackSkipNoMore);
   }, [onSkip, t.ackSkip, t.ackSkipNoMore]);
