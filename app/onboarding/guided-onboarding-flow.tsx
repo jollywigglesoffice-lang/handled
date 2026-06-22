@@ -25,9 +25,7 @@ import {
   type SenderCandidate,
 } from "@/lib/onboarding/build-sender-candidates";
 import {
-  buildFirstTimeOnboardingQueue,
   MIN_ONBOARDING_EXAMPLES,
-  needsMoreOnboardingExamples,
 } from "@/lib/onboarding/build-queue";
 import type { GuidedOnboardingStep } from "@/lib/onboarding/guided-steps";
 import {
@@ -52,13 +50,8 @@ import {
   recordEmotionalAction,
   recordOnboardingComplete,
 } from "@/lib/emotional-memory";
+import { useOnboardingEmailSelection } from "@/app/hooks/use-onboarding-email-selection";
 import { recordOnboardingHesitation, recordStressSkip } from "@/lib/inbox-stress";
-import {
-  derivePresencePatterns,
-  pickPresenceOnboardingEmail,
-  resolvePresenceAdjustments,
-  shouldPresencePrefetchReply,
-} from "@/lib/presence";
 
 export type GuidedOnboardingFlowProps = {
   locale: "en" | "it";
@@ -121,14 +114,19 @@ export function GuidedOnboardingFlow({
   const [importantSenders, setImportantSenders] = useState<Set<string>>(() => new Set());
   const [promoSenders, setPromoSenders] = useState<Set<string>>(() => new Set());
   const [senderRefreshIndex, setSenderRefreshIndex] = useState(0);
-  const [exampleRefreshIndex, setExampleRefreshIndex] = useState(0);
-  const [emailRevealKey, setEmailRevealKey] = useState(0);
   const [examplesFetching, setExamplesFetching] = useState(false);
-  const examplesFetchAttemptedRef = useRef(false);
-  const emailChangeLockRef = useRef(false);
-  const [actionEmail, setActionEmail] = useState<GmailCardMessage | null>(null);
+  const examplesFetchInitRef = useRef(false);
+  const onboardingEmail = useOnboardingEmailSelection();
+  const {
+    actionEmail,
+    emailRevealKey,
+    exampleQueue,
+    initializeSelection,
+    selectNextByUser,
+    canSelectNext,
+    mergePool,
+  } = onboardingEmail;
   const [personalizeCategory, setPersonalizeCategory] = useState<InboxAiCategory | null>(null);
-  const [emailPickIndex, setEmailPickIndex] = useState(0);
   const [preferencesMemory, setPreferencesMemory] = useState<OnboardingPreferencesMemory>(() => {
     const persisted = readEmotionalMemory().preferencesMemory;
     return (
@@ -154,19 +152,6 @@ export function GuidedOnboardingFlow({
     [messages, isCompleted],
   );
 
-  const exampleQueue = useMemo(
-    () =>
-      buildFirstTimeOnboardingQueue(messages, isCompleted, {
-        refreshIndex: exampleRefreshIndex,
-      }),
-    [messages, isCompleted, exampleRefreshIndex],
-  );
-
-  const needsMoreExamples = useMemo(
-    () => needsMoreOnboardingExamples(exampleQueue, incompleteMessages.length),
-    [exampleQueue, incompleteMessages.length],
-  );
-
   const senderCandidates = useMemo(
     () => buildOnboardingSenderCandidates(messages, { refreshIndex: senderRefreshIndex }),
     [messages, senderRefreshIndex],
@@ -176,20 +161,6 @@ export function GuidedOnboardingFlow({
     inboxMode === "gmail" || inboxMode === "gmail_empty" || inboxMode === "gmail_error";
   const emptyInbox = inboxMode === "gmail_empty";
   const preferencesReady = inboxSettled && (messages.length > 0 || emptyInbox);
-
-  const pickActionEmail = useCallback(
-    (index = emailPickIndex) => {
-      if (index === 0 && exampleQueue.length > 0) {
-        const preferred = pickPresenceOnboardingEmail(
-          exampleQueue,
-          resolvePresenceAdjustments(derivePresencePatterns()),
-        );
-        if (preferred) return preferred;
-      }
-      return exampleQueue[index] ?? incompleteMessages[index] ?? null;
-    },
-    [exampleQueue, incompleteMessages, emailPickIndex],
-  );
 
   const requestMoreExamples = useCallback(async () => {
     if (!onFetchMoreExamples || examplesFetching) return;
@@ -202,22 +173,22 @@ export function GuidedOnboardingFlow({
   }, [onFetchMoreExamples, examplesFetching]);
 
   useEffect(() => {
-    if (step !== "first_action") return;
-    if (!onFetchMoreExamples) return;
-    if (examplesFetchAttemptedRef.current && !needsMoreExamples) return;
-    if (exampleQueue.length >= MIN_ONBOARDING_EXAMPLES) return;
-    if (examplesFetching) return;
+    if (step !== "first_action") {
+      examplesFetchInitRef.current = false;
+      return;
+    }
+    mergePool(messages);
+  }, [step, messages, mergePool]);
 
-    examplesFetchAttemptedRef.current = true;
+  useEffect(() => {
+    if (step !== "first_action") return;
+    if (examplesFetchInitRef.current) return;
+    if (!onFetchMoreExamples) return;
+    if (exampleQueue.length >= MIN_ONBOARDING_EXAMPLES) return;
+
+    examplesFetchInitRef.current = true;
     void requestMoreExamples();
-  }, [
-    step,
-    onFetchMoreExamples,
-    needsMoreExamples,
-    exampleQueue.length,
-    examplesFetching,
-    requestMoreExamples,
-  ]);
+  }, [step, onFetchMoreExamples, exampleQueue.length, requestMoreExamples]);
 
   const persistSenderPrefs = useCallback(
     (sender: string, category: InboxAiCategory, label: string) => {
@@ -340,55 +311,11 @@ export function GuidedOnboardingFlow({
       } else {
         savePreferenceStep();
       }
-      setEmailPickIndex(0);
-      setExampleRefreshIndex(0);
-      setActionEmail(pickActionEmail(0));
-      setEmailRevealKey((k) => k + 1);
+      initializeSelection(messages, isCompleted);
       goToStep("first_action");
     },
-    [savePreferenceStep, pickActionEmail, goToStep, importantSenders.size, promoSenders.size],
+    [savePreferenceStep, initializeSelection, messages, isCompleted, goToStep, importantSenders.size, promoSenders.size],
   );
-
-  const advanceToNextExample = useCallback((): GmailCardMessage | null => {
-    if (emailChangeLockRef.current) return null;
-    emailChangeLockRef.current = true;
-
-    const currentId = actionEmail?.id ?? null;
-    let nextEmail: GmailCardMessage | null = null;
-
-    const nextIndex = emailPickIndex + 1;
-    if (nextIndex < exampleQueue.length) {
-      nextEmail = exampleQueue[nextIndex] ?? null;
-      setEmailPickIndex(nextIndex);
-    } else {
-      const rotatedIndex = exampleRefreshIndex + 1;
-      const rotatedQueue = buildFirstTimeOnboardingQueue(messages, isCompleted, {
-        refreshIndex: rotatedIndex,
-      });
-      setExampleRefreshIndex(rotatedIndex);
-      nextEmail =
-        rotatedQueue.find((m) => m.id !== currentId) ?? rotatedQueue[0] ?? null;
-      setEmailPickIndex(0);
-    }
-
-    if (nextEmail) {
-      setActionEmail(nextEmail);
-      setEmailRevealKey((k) => k + 1);
-    }
-
-    queueMicrotask(() => {
-      emailChangeLockRef.current = false;
-    });
-
-    return nextEmail;
-  }, [
-    actionEmail?.id,
-    emailPickIndex,
-    exampleQueue,
-    exampleRefreshIndex,
-    messages,
-    isCompleted,
-  ]);
 
   const handlePreferencesContinue = useCallback(() => {
     advanceFromPreferences();
@@ -414,38 +341,22 @@ export function GuidedOnboardingFlow({
   }, [senderRefreshIndex]);
 
   const handleRefreshExamples = useCallback(() => {
-    if (emailChangeLockRef.current) return;
-    const next = advanceToNextExample();
+    const next = selectNextByUser(messages, isCompleted);
     trackEvent("guided_onboarding_examples_refresh", {
-      refresh_index: emailPickIndex + 1,
+      refresh_index: onboardingEmail.pickIndex + 1,
       advanced: Boolean(next),
     });
-  }, [advanceToNextExample, emailPickIndex]);
+  }, [selectNextByUser, messages, isCompleted, onboardingEmail.pickIndex]);
 
   const handleSkipEmail = useCallback((): "another" | "end" => {
-    if (emailChangeLockRef.current) return "another";
-    const hasMoreInQueue = emailPickIndex + 1 < exampleQueue.length;
-    const hasRotatedAlternative =
-      buildFirstTimeOnboardingQueue(messages, isCompleted, {
-        refreshIndex: exampleRefreshIndex + 1,
-      }).find((m) => m.id !== actionEmail?.id) != null;
-    if (!hasMoreInQueue && !hasRotatedAlternative) {
+    if (!canSelectNext(messages, isCompleted)) {
       trackEvent("guided_onboarding_first_action_skipped");
       goToStep("release");
       return "end";
     }
-    advanceToNextExample();
+    selectNextByUser(messages, isCompleted);
     return "another";
-  }, [
-    advanceToNextExample,
-    emailPickIndex,
-    exampleQueue.length,
-    exampleRefreshIndex,
-    messages,
-    isCompleted,
-    actionEmail?.id,
-    goToStep,
-  ]);
+  }, [canSelectNext, selectNextByUser, messages, isCompleted, goToStep]);
 
   const handleFirstActionDone = useCallback(() => {
     if (actionEmail && !skipPersonalize) {
@@ -511,10 +422,7 @@ export function GuidedOnboardingFlow({
                 importantCount: 0,
                 promoCount: 0,
               });
-              setEmailPickIndex(0);
-              setExampleRefreshIndex(0);
-              setActionEmail(pickActionEmail(0));
-              setEmailRevealKey((k) => k + 1);
+              initializeSelection(messages, isCompleted);
               goToStep("first_action");
             } else {
               goToStep("preferences");
@@ -613,7 +521,6 @@ function FirstActionStep({
     active: true,
     exampleCount,
     hasEmail: Boolean(actionEmail),
-    examplesFetching,
     sequenceKey,
   });
 
@@ -700,7 +607,6 @@ function FirstActionStep({
             readStateMap={readStateMap}
             onAdvance={onAdvance}
             hidePrimaryActions
-            presencePrefetch={shouldPresencePrefetchReply(actionEmail)}
           />
           {emotionalLine ? <EmotionalContextLine line={emotionalLine} /> : null}
           <GuideMessage variant="continuity">

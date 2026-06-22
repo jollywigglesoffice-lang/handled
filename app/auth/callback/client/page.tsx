@@ -24,7 +24,24 @@ function parseHashTokens(): { access_token: string; refresh_token: string } | nu
   return { access_token, refresh_token };
 }
 
-function AuthCallbackContent() {
+async function waitForSession(maxAttempts = 5): Promise<boolean> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const { data, error } = await supabaseBrowser.auth.getSession();
+    if (error) {
+      console.error("[auth/callback/client] getSession", error);
+    }
+    if (data.session?.user) return true;
+    await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
+  }
+  return false;
+}
+
+function navigateAfterAuth(destination: string): void {
+  // Full navigation ensures Set-Cookie from the server exchange is sent on the next request.
+  window.location.replace(destination);
+}
+
+function AuthCallbackClientContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState(defaultLoadingStatus);
@@ -44,48 +61,24 @@ function AuthCallbackContent() {
               ? "/emails?inbox_added=1"
               : "/emails";
 
-        const code = searchParams.get("code");
-
-        if (code) {
+        const fromHash = parseHashTokens();
+        if (fromHash) {
           setStatus(LOADING_EN[0] ?? defaultLoadingStatus());
-          const { error } = await supabaseBrowser.auth.exchangeCodeForSession(code);
+          const { error } = await supabaseBrowser.auth.setSession({
+            access_token: fromHash.access_token,
+            refresh_token: fromHash.refresh_token,
+          });
           if (error) {
-            console.error("[auth/callback] exchangeCodeForSession", error);
-            if (!cancelled) {
-              router.replace(
-                isAttachFlow ? "/emails?attach_error=oauth" : "/login?error=oauth",
-              );
-            }
+            console.error("[auth/callback/client] setSession from hash", error);
+            if (!cancelled) router.replace("/login?error=oauth");
             return;
           }
         } else if (!isAttachFlow) {
-          const fromHash = parseHashTokens();
-          if (fromHash) {
-            setStatus(LOADING_EN[0] ?? defaultLoadingStatus());
-            const { error } = await supabaseBrowser.auth.setSession({
-              access_token: fromHash.access_token,
-              refresh_token: fromHash.refresh_token,
-            });
-            if (error) {
-              console.error("[auth/callback] setSession from hash", error);
-              if (!cancelled) router.replace("/login?error=oauth");
-              return;
-            }
-          } else {
-            setStatus(LOADING_EN[0] ?? defaultLoadingStatus());
-            await new Promise((r) => setTimeout(r, 100));
-            const { data, error } = await supabaseBrowser.auth.getSession();
-            if (error) {
-              console.error("[auth/callback] getSession", error);
-            }
-            if (!data.session) {
-              await new Promise((r) => setTimeout(r, 200));
-              const retry = await supabaseBrowser.auth.getSession();
-              if (!retry.data.session) {
-                if (!cancelled) router.replace("/login?error=oauth");
-                return;
-              }
-            }
+          setStatus(LOADING_EN[0] ?? defaultLoadingStatus());
+          const ready = await waitForSession();
+          if (!ready && !cancelled) {
+            router.replace("/login?error=oauth");
+            return;
           }
         } else {
           await new Promise((r) => setTimeout(r, 150));
@@ -94,21 +87,18 @@ function AuthCallbackContent() {
         if (isAttachFlow) {
           setStatus("Bringing your inbox into focus…");
           const result = await completeAttachInboxFromCallback(next);
-          if (!cancelled) {
-            if (typeof window !== "undefined") {
-              window.history.replaceState(null, "", "/auth/callback");
-            }
-            if (!result.ok) {
-              router.replace(
-                `/emails?attach_error=${encodeURIComponent(result.message ?? "attach_failed")}`,
-              );
-              return;
-            }
-            const dest = next.includes("inbox_added")
-              ? next
-              : `${next}${next.includes("?") ? "&" : "?"}inbox_added=1`;
-            router.replace(dest);
+          if (cancelled) return;
+
+          if (!result.ok) {
+            navigateAfterAuth(
+              `/emails?attach_error=${encodeURIComponent(result.message ?? "attach_failed")}`,
+            );
+            return;
           }
+          const dest = next.includes("inbox_added")
+            ? next
+            : `${next}${next.includes("?") ? "&" : "?"}inbox_added=1`;
+          navigateAfterAuth(dest);
           return;
         }
 
@@ -131,31 +121,31 @@ function AuthCallbackContent() {
             credentials: "include",
           });
         } catch (persistError) {
-          console.error("[auth/callback] persist Google tokens failed", persistError);
+          console.error("[auth/callback/client] persist Google tokens failed", persistError);
         }
 
-        await fetch("/api/create-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId: session.user.id,
-            email: session.user.email ?? "",
-          }),
-        });
-
-        if (typeof window !== "undefined") {
-          window.history.replaceState(null, "", "/auth/callback");
+        try {
+          await fetch("/api/create-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: session.user.id,
+              email: session.user.email ?? "",
+            }),
+          });
+        } catch (syncError) {
+          console.error("[auth/callback/client] create-user failed", syncError);
         }
 
         if (!cancelled) {
-          router.replace(next);
+          navigateAfterAuth(next);
         }
       } catch (e) {
-        console.error("[auth/callback] unexpected", e);
+        console.error("[auth/callback/client] unexpected", e);
         const attach = searchParams.get("attach");
         const isAttachFlow = attach === "true" || attach === "1";
         if (!cancelled) {
-          router.replace(
+          navigateAfterAuth(
             isAttachFlow ? "/emails?attach_error=unexpected" : "/login?error=oauth",
           );
         }
@@ -175,7 +165,7 @@ function AuthCallbackContent() {
   );
 }
 
-export default function AuthCallbackPage() {
+export default function AuthCallbackClientPage() {
   return (
     <Suspense
       fallback={
@@ -184,7 +174,7 @@ export default function AuthCallbackPage() {
         </main>
       }
     >
-      <AuthCallbackContent />
+      <AuthCallbackClientContent />
     </Suspense>
   );
 }

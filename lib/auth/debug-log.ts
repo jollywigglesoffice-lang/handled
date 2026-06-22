@@ -17,6 +17,8 @@ export type AuthDebugSnapshot = {
   hasProviderToken: boolean;
   authSource: "cookie" | "bearer" | null;
   failureReason: string | null;
+  /** Middleware-only: why the request was allowed or redirected. */
+  redirectDecision?: string;
 };
 
 export function logAuthDebug(label: string, snapshot: Partial<AuthDebugSnapshot>): void {

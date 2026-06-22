@@ -12,7 +12,6 @@ import { MIN_ONBOARDING_EXAMPLES } from "@/lib/onboarding/build-queue";
 const LINE_DURATION_MS = 720;
 const MIN_TOTAL_PROCESSING_MS = 1400;
 const MAX_TOTAL_PROCESSING_MS = 2800;
-const FETCH_REVEAL_TIMEOUT_MS = 9000;
 
 export type FirstActionLivePhase = "processing" | "revealed";
 
@@ -21,8 +20,7 @@ export type UseFirstActionLiveRevealInput = {
   active: boolean;
   exampleCount: number;
   hasEmail: boolean;
-  examplesFetching: boolean;
-  /** Bump to restart the live sequence (refresh). */
+  /** Bump only on explicit user navigation — never on fetch/state side effects. */
   sequenceKey: number;
 };
 
@@ -39,15 +37,14 @@ export type UseFirstActionLiveRevealResult = {
 function buildSequence(input: {
   exampleCount: number;
   hasEmail: boolean;
-  examplesFetching: boolean;
 }): LiveProcessingLineId[] {
   const lines: LiveProcessingLineId[] = [...BASE_PROCESSING_SEQUENCE];
 
-  if (input.exampleCount < MIN_ONBOARDING_EXAMPLES || input.examplesFetching) {
+  if (input.exampleCount < MIN_ONBOARDING_EXAMPLES) {
     lines.push(...WIDENING_PROCESSING_SEQUENCE);
   }
 
-  if (!input.hasEmail && (input.examplesFetching || input.exampleCount === 0)) {
+  if (!input.hasEmail && input.exampleCount === 0) {
     lines.push(...FALLBACK_PROCESSING_SEQUENCE);
   }
 
@@ -64,14 +61,8 @@ function randomRevealTargetMs(): number {
 export function useFirstActionLiveReveal(
   input: UseFirstActionLiveRevealInput,
 ): UseFirstActionLiveRevealResult {
-  const sequence = useMemo(
-    () =>
-      buildSequence({
-        exampleCount: input.exampleCount,
-        hasEmail: input.hasEmail,
-        examplesFetching: input.examplesFetching,
-      }),
-    [input.exampleCount, input.hasEmail, input.examplesFetching],
+  const frozenSequenceRef = useRef<LiveProcessingLineId[]>(
+    buildSequence({ exampleCount: input.exampleCount, hasEmail: input.hasEmail }),
   );
 
   const [phase, setPhase] = useState<FirstActionLivePhase>("processing");
@@ -81,35 +72,32 @@ export function useFirstActionLiveReveal(
 
   const revealTargetMsRef = useRef(randomRevealTargetMs());
   const startedAtRef = useRef(0);
-  const fetchWaitStartedRef = useRef<number | null>(null);
 
   const restart = useCallback(() => {
+    frozenSequenceRef.current = buildSequence({
+      exampleCount: input.exampleCount,
+      hasEmail: input.hasEmail,
+    });
     revealTargetMsRef.current = randomRevealTargetMs();
     startedAtRef.current = 0;
-    fetchWaitStartedRef.current = null;
     setPhase("processing");
     setActiveLineIndex(0);
     setShowResultBanner(false);
     setRestartNonce((n) => n + 1);
-  }, []);
+  }, [input.exampleCount, input.hasEmail]);
 
   useEffect(() => {
     if (!input.active) return;
     restart();
   }, [input.active, input.sequenceKey, restart]);
 
+  const sequence = frozenSequenceRef.current;
+
   useEffect(() => {
     if (!input.active || phase !== "processing") return;
 
     if (startedAtRef.current === 0) {
       startedAtRef.current = Date.now();
-    }
-
-    if (input.examplesFetching && fetchWaitStartedRef.current === null) {
-      fetchWaitStartedRef.current = Date.now();
-    }
-    if (!input.examplesFetching) {
-      fetchWaitStartedRef.current = null;
     }
 
     let cancelled = false;
@@ -120,16 +108,10 @@ export function useFirstActionLiveReveal(
       if (cancelled) return;
 
       const elapsed = Date.now() - startedAtRef.current;
-      const fetchWaitingTooLong =
-        input.examplesFetching &&
-        fetchWaitStartedRef.current !== null &&
-        Date.now() - fetchWaitStartedRef.current > FETCH_REVEAL_TIMEOUT_MS;
-
-      const fetchGate = !input.examplesFetching || fetchWaitingTooLong;
       const timeGate = elapsed >= revealTargetMsRef.current;
       const lineGate = activeLineIndex >= sequence.length - 1;
 
-      if (fetchGate && timeGate && lineGate) {
+      if (timeGate && lineGate) {
         setShowResultBanner(true);
         revealTimer = setTimeout(() => {
           if (!cancelled) setPhase("revealed");
@@ -153,14 +135,7 @@ export function useFirstActionLiveReveal(
       if (lineTimer) clearTimeout(lineTimer);
       if (revealTimer) clearTimeout(revealTimer);
     };
-  }, [
-    input.active,
-    input.examplesFetching,
-    phase,
-    activeLineIndex,
-    sequence.length,
-    restartNonce,
-  ]);
+  }, [input.active, phase, activeLineIndex, sequence.length, restartNonce]);
 
   const safeIndex =
     sequence.length === 0 ? 0 : Math.min(activeLineIndex, sequence.length - 1);

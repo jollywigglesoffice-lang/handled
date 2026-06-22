@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { logEmailSelectionChange } from "@/lib/email-selection/debug";
 import { CategoryCorrectionPanel } from "@/app/emails/category-correction-panel";
 import { DoneWithThisPicker } from "@/app/emails/done-with-this-picker";
 import type { GmailCardMessage } from "@/app/emails/gmail-inbox-card";
@@ -126,13 +127,32 @@ export function InboxZeroMode({
   onClose,
 }: InboxZeroModeProps) {
   const t = COPY[locale];
+  const frozenStepsRef = useRef<InboxZeroStep[] | null>(null);
+  if (frozenStepsRef.current === null) {
+    frozenStepsRef.current = steps;
+  }
+  const sessionSteps = frozenStepsRef.current;
+
   const [index, setIndex] = useState(0);
   const [processed, setProcessed] = useState(0);
   const [timeSaved, setTimeSaved] = useState(0);
   const [finished, setFinished] = useState(false);
 
-  const total = steps.length;
+  const total = sessionSteps.length;
   const isComplete = index >= total;
+
+  useEffect(() => {
+    logEmailSelectionChange({
+      context: "inbox_zero",
+      trigger: "system",
+      functionName: "InboxZeroMode",
+      component: "inbox-zero-mode",
+      previousEmailId: null,
+      nextEmailId:
+        sessionSteps[0]?.kind === "email" ? sessionSteps[0].message.id : null,
+      reason: "session_steps_frozen_on_open",
+    });
+  }, [sessionSteps]);
 
   useEffect(() => {
     if (isComplete && !finished) {
@@ -143,7 +163,7 @@ export function InboxZeroMode({
 
   const advance = useCallback(() => setIndex((i) => i + 1), []);
 
-  const current = steps[index];
+  const current = sessionSteps[index];
 
   const completeEmail = useCallback(
     (actionId: CompletionActionId, actionLabel: string, extras?: CompleteEmailExtras) => {
@@ -152,8 +172,18 @@ export function InboxZeroMode({
       setProcessed((n) => n + 1);
       setTimeSaved((s) => s + secondsForCategory(current.category));
       advance();
+      const nextStep = sessionSteps[index + 1];
+      logEmailSelectionChange({
+        context: "inbox_zero",
+        trigger: "user",
+        functionName: "completeEmail",
+        component: "inbox-zero-mode",
+        previousEmailId: current.message.id,
+        nextEmailId: nextStep?.kind === "email" ? nextStep.message.id : null,
+        reason: "user_completed_step",
+      });
     },
-    [current, onCompleteEmail, advance],
+    [current, onCompleteEmail, advance, sessionSteps, index],
   );
 
   const recategorizeEmail = useCallback(

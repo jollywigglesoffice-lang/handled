@@ -10,15 +10,15 @@ import {
   type AuthDebugSnapshot,
 } from "@/lib/auth/debug-log";
 import {
+  getMiddlewareAuthSkipReason,
+  isAppPath,
+  shouldSkipMiddlewareAuth,
+} from "@/lib/auth/middleware-access";
+import {
   listSupabaseAuthCookieNames,
   readRequestCookieEntries,
 } from "@/lib/auth/request-cookies";
-import { buildLoginRedirectUrl, isAppPath } from "@/lib/auth/route-access";
-
-const SKIP_AUTH_REFRESH_PREFIXES = ["/api/stripe-webhook"];
-
-/** Marketing home — no session reads, no auth enforcement. */
-const PUBLIC_SKIP_PATHS = new Set(["/"]);
+import { buildLoginRedirectUrl } from "@/lib/auth/route-access";
 
 function canonicalProductionHost(host: string | null): string | null {
   if (!host || process.env.NODE_ENV !== "production") return null;
@@ -57,6 +57,25 @@ function createSupabaseMiddlewareClient(request: NextRequest, response: NextResp
   });
 }
 
+function copyAuthCookies(from: NextResponse, to: NextResponse): void {
+  for (const cookie of from.cookies.getAll()) {
+    to.cookies.set(cookie.name, cookie.value);
+  }
+}
+
+function logMiddlewareDecision(
+  pathname: string,
+  host: string | null,
+  snapshot: Partial<AuthDebugSnapshot> & { redirectDecision?: string },
+): void {
+  if (!AUTH_DEBUG_ENABLED) return;
+  logAuthDebug("middleware", {
+    path: pathname,
+    host,
+    ...snapshot,
+  });
+}
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const host = request.headers.get("host");
@@ -68,11 +87,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url, 308);
   }
 
-  if (SKIP_AUTH_REFRESH_PREFIXES.some((p) => pathname.startsWith(p))) {
-    return NextResponse.next({ request });
-  }
-
-  if (PUBLIC_SKIP_PATHS.has(pathname)) {
+  const skipReason = getMiddlewareAuthSkipReason(pathname);
+  if (shouldSkipMiddlewareAuth(pathname)) {
+    logMiddlewareDecision(pathname, host, {
+      redirectDecision: `allow:${skipReason ?? "exempt"}`,
+      failureReason: null,
+    });
     return NextResponse.next({ request });
   }
 
@@ -80,34 +100,48 @@ export async function middleware(request: NextRequest) {
 
   const supabase = createSupabaseMiddlewareClient(request, response);
   if (!supabase) {
-    if (AUTH_DEBUG_ENABLED && pathname.startsWith("/api/")) {
-      console.warn("[auth-debug] middleware: Supabase env missing");
-    }
+    logMiddlewareDecision(pathname, host, {
+      redirectDecision: "allow:supabase_env_missing",
+      failureReason: "supabase_env_missing",
+    });
     return response;
   }
 
+  const entries = readRequestCookieEntries(request);
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
 
-  if (!user && isAppPath(pathname)) {
-    return NextResponse.redirect(buildLoginRedirectUrl(request.nextUrl, pathname));
-  }
+  const hasSession = Boolean(user?.id);
 
-  if (AUTH_DEBUG_ENABLED && pathname.startsWith("/api/")) {
-    const entries = readRequestCookieEntries(request);
-    const snapshot: Partial<AuthDebugSnapshot> = {
-      path: pathname,
-      host,
+  if (!hasSession && isAppPath(pathname)) {
+    logMiddlewareDecision(pathname, host, {
       hasCookieHeader: Boolean(request.headers.get("cookie")),
       cookieCount: entries.length,
       supabaseAuthCookieNames: listSupabaseAuthCookieNames(entries),
-      cookieUserId: user?.id ?? null,
+      cookieUserId: null,
       cookieUserError: userError?.message ?? null,
-    };
-    logAuthDebug("middleware", snapshot);
+      redirectDecision: "redirect:app_path_without_session",
+      failureReason: "no_session_on_app_path",
+    });
+
+    const redirectResponse = NextResponse.redirect(
+      buildLoginRedirectUrl(request.nextUrl, pathname),
+    );
+    copyAuthCookies(response, redirectResponse);
+    return redirectResponse;
   }
+
+  logMiddlewareDecision(pathname, host, {
+    hasCookieHeader: Boolean(request.headers.get("cookie")),
+    cookieCount: entries.length,
+    supabaseAuthCookieNames: listSupabaseAuthCookieNames(entries),
+    cookieUserId: user?.id ?? null,
+    cookieUserError: userError?.message ?? null,
+    redirectDecision: hasSession ? "allow:session_ok" : "allow:public_or_non_app",
+    failureReason: null,
+  });
 
   return response;
 }
