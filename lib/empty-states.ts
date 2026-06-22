@@ -4,7 +4,7 @@ import {
   type InboxCategoryCatalog,
 } from "@/lib/inbox-category-catalog";
 import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
-import { calmEmptyMessages } from "@/lib/calm-system-copy";
+import { voiceEmptyLines, VOICE } from "@/lib/voice";
 
 export type EmptyStateLocale = "en" | "it";
 
@@ -21,23 +21,13 @@ export function categoryEmptyMessage(
  * Rotated naturally so the inbox never repeats the same phrase every time.
  */
 const COMPLETION_TITLES: Record<EmptyStateLocale, string[]> = {
-  en: [...calmEmptyMessages("en"), "Handled cleared the noise."],
-  it: [...calmEmptyMessages("it"), "Handled ha tolto il rumore."],
+  en: [...voiceEmptyLines("en"), "Handled cleared the noise."],
+  it: [...voiceEmptyLines("it"), "Handled ha tolto il rumore."],
 };
 
 const COMPLETION_SUBTITLES: Record<EmptyStateLocale, string[]> = {
-  en: [
-    "You don't need to keep checking — Handled will surface anything that matters.",
-    "Step away when you want. New mail will appear here when it arrives.",
-    "The quiet is real. Nothing is waiting on you right now.",
-    "Low-priority mail is set aside for whenever you want it.",
-  ],
-  it: [
-    "Non serve continuare a controllare — Handled farà emergere ciò che conta.",
-    "Stacca quando vuoi. La nuova posta apparirà qui quando arriva.",
-    "La calma è reale. Niente ti sta aspettando adesso.",
-    "La posta a bassa priorità è da parte per quando vuoi.",
-  ],
+  en: [...VOICE.en.empty.completionSubtitles],
+  it: [...VOICE.it.empty.completionSubtitles],
 };
 
 export type InboxCompletionCopy = {

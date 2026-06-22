@@ -1,22 +1,7 @@
 import type { WorkStyleProfile } from "@/lib/emotional-memory/types";
+import { VOICE, type VoiceLocale } from "@/lib/voice";
 
-type Locale = "en" | "it";
-
-const EN = {
-  default: "Welcome back — I've prepared your inbox the way you usually like it.",
-  simple: "Welcome back — I've kept things simple for you.",
-  lighter: "Welcome back — I've adjusted things to keep your inbox lighter.",
-  actionable: "Welcome back — I'll surface what's actionable first.",
-  calm: "Welcome back — take your time, nothing urgent.",
-} as const;
-
-const IT = {
-  default: "Bentornato — ho preparato la inbox come ti piace di solito.",
-  simple: "Bentornato — ho mantenuto le cose semplici per te.",
-  lighter: "Bentornato — ho alleggerito la inbox per te.",
-  actionable: "Bentornato — metto in evidenza prima ciò che richiede azione.",
-  calm: "Bentornato — prenditi il tuo tempo, niente di urgente.",
-} as const;
+type Locale = VoiceLocale;
 
 /**
  * Subtle returning-user greeting — once per session, never references
@@ -37,7 +22,7 @@ export function pickReturningWelcome(
     }
   }
 
-  const copy = locale === "it" ? IT : EN;
+  const copy = VOICE[locale].returning;
 
   if (profile.densityPreference === "minimal" || profile.filteringStrength === "aggressive") {
     return profile.filteringStrength === "aggressive" ? copy.lighter : copy.simple;

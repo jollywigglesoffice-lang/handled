@@ -7,6 +7,7 @@ import {
   onboardingExampleBucket,
 } from "@/lib/onboarding/example-buckets";
 import { resolveSenderIdentity } from "@/lib/sender-identity";
+import { voiceOnboardingFallback } from "@/lib/voice";
 
 export type EmotionalContextId =
   | "similar_before"
@@ -75,14 +76,8 @@ export const EMOTIONAL_FALLBACK: Record<
   "en" | "it",
   { title: string; body: string }
 > = {
-  en: {
-    title: "Nothing demanding your attention right now — that's a good thing.",
-    body: "Your inbox looks calm. Skip ahead or refresh whenever you like.",
-  },
-  it: {
-    title: "Niente che chieda attenzione adesso — ed è una buona notizia.",
-    body: "La tua inbox sembra tranquilla. Salta avanti o aggiorna quando vuoi.",
-  },
+  en: voiceOnboardingFallback("en"),
+  it: voiceOnboardingFallback("it"),
 };
 
 const MICRO_REASSURANCE_ORDER: MicroReassuranceId[] = [

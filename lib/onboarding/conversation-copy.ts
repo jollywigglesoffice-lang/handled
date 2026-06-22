@@ -4,6 +4,7 @@ import {
   isReturningUser,
   readEmotionalMemory,
 } from "@/lib/emotional-memory";
+import { voiceOnboardingHeadline } from "@/lib/voice";
 
 export type OnboardingPreferencesMemory = {
   skipped: boolean;
@@ -74,7 +75,7 @@ export const ONBOARDING_CONVERSATION: Record<
   }
 > = {
   en: {
-    headline: "Let's set up your inbox together.",
+    headline: voiceOnboardingHeadline("en"),
     connect: {
       prompt: "First, let's connect your Gmail.",
       body: "Handled works on top of Gmail — your mail stays yours, always.",
@@ -140,7 +141,7 @@ export const ONBOARDING_CONVERSATION: Record<
     },
   },
   it: {
-    headline: "Configuriamo la inbox insieme.",
+    headline: voiceOnboardingHeadline("it"),
     connect: {
       prompt: "Per prima cosa, colleghiamo Gmail.",
       body: "Handled lavora su Gmail — la posta resta sempre tua.",

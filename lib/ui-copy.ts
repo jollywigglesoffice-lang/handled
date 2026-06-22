@@ -4,6 +4,7 @@ import {
   calmLoadingMessages,
   calmRetryLabel,
 } from "@/lib/calm-system-copy";
+import { voiceErrorTitle, voiceTryAgainLabel } from "@/lib/voice";
 
 export type UiLocale = "en" | "it" | "es" | "fr" | "de";
 
@@ -297,8 +298,8 @@ const en: UiCopy = {
   },
   calm: {
     errors: {
-      title: "Something got away from us",
-      tryAgain: calmRetryLabel("en"),
+      title: voiceErrorTitle("generic", "en"),
+      tryAgain: voiceTryAgainLabel("en"),
       showDetails: "Technical details",
     },
     empty: {
@@ -337,7 +338,7 @@ const en: UiCopy = {
     copyButton: "Copy Reply",
     copiedButton: "Copied!",
     sendButton: "Send Reply",
-    sendSuccess: "Reply sent ✔",
+    sendSuccess: "Reply sent.",
     editReplyButton: "Edit Reply",
     remindLaterButton: "Remind Me Later",
     ignoreButton: "Ignore",
@@ -597,8 +598,8 @@ const it: UiCopy = {
   },
   calm: {
     errors: {
-      title: "Qualcosa ci è sfuggito",
-      tryAgain: calmRetryLabel("it"),
+      title: voiceErrorTitle("generic", "it"),
+      tryAgain: voiceTryAgainLabel("it"),
       showDetails: "Dettagli tecnici",
     },
     empty: {
@@ -637,7 +638,7 @@ const it: UiCopy = {
     copyButton: "Copia risposta",
     copiedButton: "Copiata!",
     sendButton: "Invia risposta",
-    sendSuccess: "Risposta inviata ✔",
+    sendSuccess: "Risposta inviata.",
     editReplyButton: "Modifica risposta",
     remindLaterButton: "Ricordamelo dopo",
     ignoreButton: "Ignora",
