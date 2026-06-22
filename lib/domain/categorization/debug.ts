@@ -18,10 +18,14 @@ export function logCategoryResolutionDebug(audit: CategoryResolutionAudit): void
       memoryLearned: audit.memoryLearned,
       correctionHistory: audit.correctionHistory,
       senderLearned: audit.senderLearned,
+      senderRuleLabel: audit.senderRuleLabel,
       persistedCategory: audit.persistedCategory,
     },
     resolvedCategory: audit.finalCategory,
     ruleSource: audit.winningRule,
     categorySource: audit.finalSource,
+    senderRuleApplied: audit.senderLearned,
+    finalCategoryDecisionSource: audit.winningRule,
+    overrideReason: audit.overrideReason,
   });
 }

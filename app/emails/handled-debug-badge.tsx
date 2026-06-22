@@ -55,7 +55,18 @@ export function HandledDebugBadge({
             {categoryResolution.senderLearned ? (
               <div>
                 <dt className="inline text-amber-700">sender_rule: </dt>
-                <dd className="inline">{categoryResolution.senderLearned}</dd>
+                <dd className="inline">
+                  {categoryResolution.senderLearned}
+                  {categoryResolution.senderRuleLabel
+                    ? ` (${categoryResolution.senderRuleLabel})`
+                    : ""}
+                </dd>
+              </div>
+            ) : null}
+            {categoryResolution.overrideReason ? (
+              <div>
+                <dt className="inline text-amber-700">override_reason: </dt>
+                <dd className="inline">{categoryResolution.overrideReason}</dd>
               </div>
             ) : null}
             {categoryResolution.aiCategory ? (

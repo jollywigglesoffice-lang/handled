@@ -23,12 +23,14 @@ export type CategoryAuthorityResult = {
   category: InboxAiCategory;
   source: CategorySource;
   locked: boolean;
+  ruleLabel?: string;
 };
 
 /**
  * Resolve category before AI/heuristics — strict hierarchy:
  * 1. Per-email manual override
- * 2. Learned sender rule
+ * 2. Learned sender rule (onboarding + explicit sender feedback)
+ * 3. Behavioral memory rule
  */
 export function resolvePreAiCategoryAuthority(
   input: CategoryAuthorityInput,
@@ -42,20 +44,40 @@ export function resolvePreAiCategoryAuthority(
     return { category: manual, source: "manual_override", locked: true };
   }
 
-  const memoryPre = applyUserRulesPre(input.row, input.memoryRules);
-  if (memoryPre?.kind === "force") {
-    return { category: memoryPre.category, source: "memory_rule", locked: true };
-  }
-  if (memoryPre?.kind === "block") {
-    return { category: "good_to_know", source: "memory_rule", locked: true };
-  }
-
   const senderPre = applyUserRulesPre(input.row, input.senderRules);
   if (senderPre?.kind === "force") {
-    return { category: senderPre.category, source: "sender_rule", locked: true };
+    return {
+      category: senderPre.category,
+      source: "sender_rule",
+      locked: true,
+      ruleLabel: senderPre.label,
+    };
   }
   if (senderPre?.kind === "block") {
-    return { category: "good_to_know", source: "sender_rule", locked: true };
+    return {
+      category: "good_to_know",
+      source: "sender_rule",
+      locked: true,
+      ruleLabel: senderPre.label,
+    };
+  }
+
+  const memoryPre = applyUserRulesPre(input.row, input.memoryRules);
+  if (memoryPre?.kind === "force") {
+    return {
+      category: memoryPre.category,
+      source: "memory_rule",
+      locked: true,
+      ruleLabel: memoryPre.label,
+    };
+  }
+  if (memoryPre?.kind === "block") {
+    return {
+      category: "good_to_know",
+      source: "memory_rule",
+      locked: true,
+      ruleLabel: memoryPre.label,
+    };
   }
 
   return null;

@@ -3,11 +3,11 @@
  *
  * Hierarchy (strict):
  * 1. Per-email manual override (DB + local)
- * 2. Sender memory (trust-weighted personal learning)
- * 3. Category correction history for sender
- * 4. Learned sender preference
- * 4. Persisted locked category (already resolved on server with manual/sender/memory source)
- * 5. AI / heuristic categorization
+ * 2. Learned sender preference (onboarding + explicit sender feedback)
+ * 3. Sender memory (trust-weighted personal learning)
+ * 4. Category correction history for sender
+ * 5. Persisted locked category (already resolved on server with manual/sender/memory source)
+ * 6. AI / heuristic categorization
  */
 
 import type { GmailInboxRow } from "@/lib/gmail-api";
@@ -74,6 +74,7 @@ export type CategoryResolutionAudit = {
   memoryLearned: InboxAiCategory | null;
   correctionHistory: InboxAiCategory | null;
   senderLearned: InboxAiCategory | null;
+  senderRuleLabel: string | null;
   persistedCategory: InboxAiCategory | null;
   aiCategory: InboxAiCategory | null;
   finalCategory: InboxAiCategory;
@@ -88,6 +89,8 @@ export type CategoryResolutionAudit = {
     | "ai"
     | "pipeline"
     | "default";
+  /** When final resolution overrides an earlier pipeline/AI label. */
+  overrideReason: string | null;
 };
 
 /**
@@ -129,6 +132,13 @@ export function getSenderLearnedCategory(
   row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
   senderRules: InboxUserRule[] | null | undefined,
 ): InboxAiCategory | null {
+  return getSenderLearnedRule(row, senderRules)?.category ?? null;
+}
+
+export function getSenderLearnedRule(
+  row: Pick<GmailInboxRow, "sender" | "subject" | "snippet">,
+  senderRules: InboxUserRule[] | null | undefined,
+): { category: InboxAiCategory; label?: string } | null {
   const senderPre = applyUserRulesPre(row as GmailInboxRow, safeArray(senderRules));
   const category =
     senderPre?.kind === "force"
@@ -151,7 +161,8 @@ export function getSenderLearnedCategory(
     });
   }
 
-  return category;
+  if (!category) return null;
+  return { category, label: senderPre?.label };
 }
 
 /** True when AI categorization must not run for this email. */
@@ -163,8 +174,8 @@ export function mustSkipAiCategorization(
 ): boolean {
   const safe = safeResolutionContext(context);
   if (getManualOverride(row.id, safe.emailOverrides, row.accountId)) return true;
-  if (getAnyMemoryCategory(row, safe.memoryRules)) return true;
   if (getSenderLearnedCategory(row, safe.senderRules)) return true;
+  if (getAnyMemoryCategory(row, safe.memoryRules)) return true;
   return false;
 }
 
@@ -172,9 +183,10 @@ export function resolveFinalCategory(input: CategoryResolutionInput): CategoryRe
   const { row } = input;
   const context = safeResolutionContext(input.context);
   const manualOverride = getManualOverride(row.id, context.emailOverrides, row.accountId);
+  const senderRule = getSenderLearnedRule(row, context.senderRules);
+  const senderLearned = senderRule?.category ?? null;
   const memoryLearned = getMemoryLearnedCategory(row, context.memoryRules);
   const correctionHistory = getCorrectionHistoryCategory(row, context.memoryRules);
-  const senderLearned = getSenderLearnedCategory(row, context.senderRules);
   const aiCategory = input.aiCategory ?? null;
   const persistedCategory =
     input.pipelineSource && isUserLockedCategorySource(input.pipelineSource)
@@ -187,15 +199,15 @@ export function resolveFinalCategory(input: CategoryResolutionInput): CategoryRe
   if (manualOverride) {
     finalCategory = manualOverride;
     finalSource = "manual_override";
+  } else if (senderLearned) {
+    finalCategory = senderLearned;
+    finalSource = "sender_rule";
   } else if (memoryLearned) {
     finalCategory = memoryLearned;
     finalSource = "memory_rule";
   } else if (correctionHistory) {
     finalCategory = correctionHistory;
     finalSource = "memory_rule";
-  } else if (senderLearned) {
-    finalCategory = senderLearned;
-    finalSource = "sender_rule";
   } else if (persistedCategory && input.pipelineSource) {
     finalCategory = persistedCategory;
     finalSource = input.pipelineSource;
@@ -214,19 +226,30 @@ export function resolveFinalCategory(input: CategoryResolutionInput): CategoryRe
 
   const winningRule: CategoryResolutionAudit["winningRule"] = manualOverride
     ? "manual_override"
-    : memoryLearned
-      ? "memory_rule"
-      : correctionHistory
-        ? "correction_history"
-        : senderLearned
-        ? "sender_rule"
-        : persistedCategory && input.pipelineSource
-          ? "persisted_locked"
-          : aiCategory
-            ? "ai"
-            : input.pipelineCategory
-              ? "pipeline"
-              : "default";
+    : senderLearned
+      ? "sender_rule"
+      : memoryLearned
+        ? "memory_rule"
+        : correctionHistory
+          ? "correction_history"
+          : persistedCategory && input.pipelineSource
+            ? "persisted_locked"
+            : aiCategory
+              ? "ai"
+              : input.pipelineCategory
+                ? "pipeline"
+                : "default";
+
+  const pipelineCategory = input.pipelineCategory ?? aiCategory;
+  const overrideReason =
+    pipelineCategory &&
+    pipelineCategory !== finalCategory &&
+    (winningRule === "sender_rule" ||
+      winningRule === "memory_rule" ||
+      winningRule === "manual_override" ||
+      winningRule === "correction_history")
+      ? `${winningRule} overrode ${input.pipelineSource ?? "pipeline"} (${pipelineCategory} → ${finalCategory})`
+      : null;
 
   const audit: CategoryResolutionAudit = {
     emailId: row.id,
@@ -236,11 +259,13 @@ export function resolveFinalCategory(input: CategoryResolutionInput): CategoryRe
     memoryLearned,
     correctionHistory,
     senderLearned,
+    senderRuleLabel: senderRule?.label ?? null,
     persistedCategory,
     aiCategory,
     finalCategory,
     finalSource,
     winningRule,
+    overrideReason,
   };
 
   logCategoryResolutionDebug(audit);

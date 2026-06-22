@@ -41,7 +41,7 @@ import { applyRelationshipToCategory } from "@/lib/relationship-intelligence/eff
 import { resolveRelationshipCategory } from "@/lib/relationship-intelligence/relationship-category";
 import { resolveSenderRelationship } from "@/lib/relationship-intelligence/resolve";
 import type { SenderRelationship, SenderRelationshipProfile } from "@/lib/relationship-intelligence/types";
-import { isUserLockedCategorySource } from "@/lib/category-authority";
+import { isUserLockedCategorySource, resolvePreAiCategoryAuthority } from "@/lib/category-authority";
 import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-messages";
 import {
   mustSkipAiCategorization,
@@ -718,7 +718,7 @@ function applyUserPostIfNeeded(
 }
 
 /**
- * Pipeline: manual overrides → relationship/semantic memory → sender rules → keyword rules
+ * Pipeline: manual overrides → sender feedback → memory → keyword rules
  * → multilingual importance → system rules → AI → fallback → post-rules.
  */
 export async function categorizeGmailInboxRows(
@@ -750,6 +750,18 @@ export async function categorizeGmailInboxRows(
 
   for (let i = 0; i < safeRows.length; i++) {
     const row = safeRows[i];
+
+    const authority = resolvePreAiCategoryAuthority({
+      row,
+      emailOverrides,
+      memoryRules,
+      senderRules,
+    });
+    if (authority?.locked) {
+      const rel = resolveSenderRelationship(row, authority.category, senderRelationships);
+      out[i] = finalizeRow(row, i, authority.category, authority.source, 1, rel);
+      continue;
+    }
 
     if (mustSkipAiCategorization(row, resolutionCtx)) {
       const resolved = resolveFinalCategory({

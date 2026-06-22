@@ -1,7 +1,11 @@
 import type { GmailInboxRow } from "@/lib/gmail-api";
-import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
+import {
+  inboxCategoryLearnPriority,
+  type InboxAiCategory,
+} from "@/lib/inbox-ai-categories";
 import { emailHaystack } from "@/lib/categorization-intelligence/priority-signals";
 import { applySenderMemory } from "@/lib/categorization-intelligence/sender-memory";
+import { parseSenderDomain, parseSenderEmail } from "@/lib/inbox-user-rules/match";
 import {
   detectPromotionalSignals,
   isMarketingStyleQuestion,
@@ -138,6 +142,24 @@ export function analyzeCategorizationIntelligence(
     reasonLabels.push("Safety rule: prefer Needs Attention when uncertain");
   }
 
+  const lockedSenderCategory = lookupSenderFeedbackCategory(row, options?.senderRules);
+  if (
+    lockedSenderCategory &&
+    inboxCategoryLearnPriority(lockedSenderCategory) <=
+      inboxCategoryLearnPriority("good_to_know")
+  ) {
+    forcePromotional = lockedSenderCategory === "promotions" || lockedSenderCategory === "newsletters";
+    forceNeedsAttention = false;
+    blockLowPriorityCategories = false;
+    suggestedCategory = lockedSenderCategory;
+    if (!reasonCodes.includes("known_low_priority_sender")) {
+      reasonCodes.push("known_low_priority_sender");
+      reasonLabels.push(
+        `Sender feedback enforced → ${lockedSenderCategory.replace(/_/g, " ")}`,
+      );
+    }
+  }
+
   let confidence = 0.52 + Math.min(0.4, realHumanScore / 120);
   if (forcePromotional) {
     confidence = 0.62 + Math.min(0.3, promotionalScore / 150);
@@ -170,4 +192,24 @@ export function mustNotAutoHandle(
   const result = analyzeCategorizationIntelligence(row, options);
   if (result.forcePromotional) return false;
   return result.blockLowPriorityCategories;
+}
+
+function lookupSenderFeedbackCategory(
+  row: GmailInboxRow,
+  rules: CategorizationIntelligenceOptions["senderRules"],
+): InboxAiCategory | null {
+  for (const rule of rules ?? []) {
+    const email = parseSenderEmail(row.sender)?.toLowerCase();
+    const domain = parseSenderDomain(row.sender)?.toLowerCase();
+    if (rule.senderEmail && email && email === rule.senderEmail.toLowerCase()) {
+      return rule.targetCategory;
+    }
+    if (rule.senderDomain && domain && domain === rule.senderDomain.toLowerCase()) {
+      return rule.targetCategory;
+    }
+    if (rule.senderEmail && row.sender.toLowerCase().includes(rule.senderEmail.toLowerCase())) {
+      return rule.targetCategory;
+    }
+  }
+  return null;
 }
