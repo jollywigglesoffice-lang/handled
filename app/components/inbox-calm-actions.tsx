@@ -18,6 +18,7 @@ type InboxCalmActionsProps = {
   locale: "en" | "it";
   primaryAction: InboxPrimaryActionKind;
   detailHref: string;
+  calmMode?: boolean;
   hideActions?: boolean;
   category?: InboxAiCategory;
   categoryConfidence?: number;
@@ -54,6 +55,7 @@ export function InboxCalmActions({
   showResetOverride,
   onSmartReply,
   onSchedule,
+  calmMode,
 }: InboxCalmActionsProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const {
@@ -148,29 +150,33 @@ export function InboxCalmActions({
           {actions.handled}
         </CommandButton>
 
-        <CommandButton
-          disabled={busy}
-          onClick={() =>
-            void handleComplete("saved_for_reference", actions.putAway)
-          }
-        >
-          {actions.putAway}
-        </CommandButton>
+        {!calmMode ? (
+          <>
+            <CommandButton
+              disabled={busy}
+              onClick={() =>
+                void handleComplete("saved_for_reference", actions.putAway)
+              }
+            >
+              {actions.putAway}
+            </CommandButton>
 
-        <CommandButton disabled title={locale === "it" ? "Prossimamente" : "Coming soon"}>
-          {delegateLabel}
-        </CommandButton>
+            <CommandButton disabled title={locale === "it" ? "Prossimamente" : "Coming soon"}>
+              {delegateLabel}
+            </CommandButton>
 
-        <CommandButton
-          disabled={busy}
-          onClick={() => setMoreOpen((v) => !v)}
-          aria-expanded={moreOpen}
-        >
-          {moreLabel}
-        </CommandButton>
+            <CommandButton
+              disabled={busy}
+              onClick={() => setMoreOpen((v) => !v)}
+              aria-expanded={moreOpen}
+            >
+              {moreLabel}
+            </CommandButton>
+          </>
+        ) : null}
       </div>
 
-      {moreOpen ? (
+      {!calmMode && moreOpen ? (
         <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-gray-400">
           <MoreLink onClick={onChangeCategory} disabled={busy}>
             {changeCategoryLabel ?? t.changeCategory}

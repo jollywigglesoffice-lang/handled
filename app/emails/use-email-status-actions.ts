@@ -17,6 +17,7 @@ import {
   mapCompletionToEmotionalAction,
   recordEmotionalAction,
 } from "@/lib/emotional-memory";
+import { recordStressQuickDone } from "@/lib/inbox-stress";
 import { markEmailsRead, markEmailsUnread } from "@/lib/read-state/gmail-sync";
 import type { CompleteEmailExtras, EmailCompletionRecord } from "@/lib/email-completions/types";
 import { isActiveWaiting } from "@/lib/waiting-on/helpers";
@@ -109,6 +110,7 @@ export function useEmailStatusActions({
     ) => {
       setBusy(true);
       try {
+        const wasUnread = lifecycle === "unread";
         await completeEmails(
           [
             {
@@ -138,6 +140,7 @@ export function useEmailStatusActions({
           actionLabel,
         });
         recordEmotionalAction(mapCompletionToEmotionalAction(actionId));
+        recordStressQuickDone(wasUnread);
         setShowDonePicker(false);
         if (!onCompleted) {
           notifyCompleted({ emailIds: [emailId], actionId, actionLabel, locale });

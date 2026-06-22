@@ -52,6 +52,7 @@ import {
   recordEmotionalAction,
   recordOnboardingComplete,
 } from "@/lib/emotional-memory";
+import { recordOnboardingHesitation, recordStressSkip } from "@/lib/inbox-stress";
 
 export type GuidedOnboardingFlowProps = {
   locale: "en" | "it";
@@ -132,6 +133,13 @@ export function GuidedOnboardingFlow({
     );
   });
   const [transitionLine, setTransitionLine] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      recordOnboardingHesitation();
+    }, 120_000);
+    return () => window.clearTimeout(timer);
+  }, [step]);
 
   const incompleteMessages = useMemo(
     () => messages.filter((m) => !isCompleted(m.id)),
@@ -584,6 +592,7 @@ function FirstActionStep({
 
   const handleSkip = useCallback(() => {
     recordEmotionalAction("skip");
+    recordStressSkip();
     const result = onSkip();
     setDialogueAck(result === "another" ? t.ackSkip : t.ackSkipNoMore);
   }, [onSkip, t.ackSkip, t.ackSkipNoMore]);

@@ -128,6 +128,8 @@ type GmailInboxCardProps = {
   readStateMap?: ReadStateMap;
   inboxReturnCapture?: InboxReturnCapture;
   showAccountBadge?: boolean;
+  /** Calm mode — fewer actions, less noise. */
+  calmMode?: boolean;
 };
 
 export function GmailInboxCard({
@@ -141,6 +143,7 @@ export function GmailInboxCard({
   readStateMap = {},
   inboxReturnCapture,
   showAccountBadge = false,
+  calmMode = false,
 }: GmailInboxCardProps) {
   const [feedback, setFeedback] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatusState>("idle");
@@ -431,15 +434,15 @@ export function GmailInboxCard({
           </h3>
         </Link>
 
-        {message.autopilot?.state === "assisted" ? (
+        {!calmMode && message.autopilot?.state === "assisted" ? (
           <AutopilotSuggestionLine autopilot={message.autopilot} locale={locale} />
         ) : null}
 
-        {isPassive && !emailStatus.completed ? (
+        {!calmMode && isPassive && !emailStatus.completed ? (
           <PassiveAwarenessLine locale={locale} />
         ) : (
           <p className="text-sm leading-relaxed text-gray-500 calm-fade-in">
-            {message.timeImpact?.deadlineHint
+            {message.timeImpact?.deadlineHint && !calmMode
               ? `${preview.glanceLine} · ${message.timeImpact.deadlineHint}`
               : preview.glanceLine}
           </p>
@@ -471,7 +474,7 @@ export function GmailInboxCard({
           />
         ) : null}
 
-        {activeLearningPrompt && !panelsOpen ? (
+        {activeLearningPrompt && !panelsOpen && !calmMode ? (
           <div className="rounded-lg bg-amber-50/60 px-3 py-2.5">
             <p className="text-xs leading-relaxed text-amber-900/80">{activeLearningPrompt}</p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -516,6 +519,7 @@ export function GmailInboxCard({
           locale={locale}
           primaryAction={primaryAction}
           detailHref={detailHref}
+          calmMode={calmMode}
           hideActions={showCorrection || showRelationship}
           category={message.category}
           categoryConfidence={message.categoryConfidence}

@@ -48,6 +48,10 @@ import {
   recordEmailEngagement,
   showExplicitNextStepLabel,
 } from "@/lib/intelligence-quiet";
+import {
+  recordStressDetailLeave,
+  recordStressDetailOpen,
+} from "@/lib/inbox-stress";
 import { buildExtractiveSummary, buildSituationBundle } from "@/lib/situational-understanding";
 import {
   inboxReturnDestinationLabel,
@@ -124,6 +128,7 @@ export function EmailDetailView({
   useEffect(() => {
     recordEmailEngagement();
     recordSenderEmailOpen(email.sender);
+    recordStressDetailOpen(email.id);
     void collectEmailOpened({
       emailId: email.id,
       accountId,
@@ -133,6 +138,7 @@ export function EmailDetailView({
     });
 
     return () => {
+      recordStressDetailLeave(email.id, userActedRef.current);
       if (userActedRef.current) return;
       void collectEmailViewedWithoutAction({
         emailId: email.id,

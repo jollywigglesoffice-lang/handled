@@ -8,6 +8,7 @@ import type { InboxAiCategory } from "@/lib/inbox-ai-categories";
 import type { InboxCategoryChangeOptions } from "@/lib/inbox-category-change";
 import type { ReadStateMap } from "@/lib/read-state/client-storage";
 import { recordEmotionalAction } from "@/lib/emotional-memory";
+import { recordStressSkip } from "@/lib/inbox-stress";
 
 type InboxZeroFlowViewProps = {
   messages: GmailCardMessage[];
@@ -76,6 +77,7 @@ export function InboxZeroFlowView({
     const id = visibleMessages[safeIndex]?.id;
     if (!id) return;
     recordEmotionalAction("skip");
+    recordStressSkip();
     setSkippedIds((prev) => {
       const next = new Set(prev);
       next.add(id);

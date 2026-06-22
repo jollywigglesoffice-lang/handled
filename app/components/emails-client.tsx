@@ -179,6 +179,12 @@ import {
   markFirstOnboardingComplete,
 } from "@/lib/onboarding/first-time";
 import { useEmotionalMemoryLocale } from "@/app/hooks/use-emotional-memory";
+import { useInboxStress } from "@/app/hooks/use-inbox-stress";
+import { CalmModeGuidance } from "@/app/inbox/calm-mode-guidance";
+import {
+  filterCalmPriorityMessages,
+  limitCalmSectionList,
+} from "@/lib/inbox-stress";
 import {
   EMOTIONAL_MEMORY_CHANGED_EVENT,
   getSavedInboxMode,
@@ -413,6 +419,7 @@ function GmailCategorySection({
   onResetOverride,
   activeCategoryTab,
   showAccountBadges,
+  calmMode,
 }: {
   category: InboxAiCategory;
   list: GmailCardMessage[];
@@ -430,6 +437,7 @@ function GmailCategorySection({
   onResetOverride: (id: string) => void;
   activeCategoryTab: CategoryTab;
   showAccountBadges: boolean;
+  calmMode?: boolean;
 }) {
   return (
     <section className="space-y-1">
@@ -459,6 +467,7 @@ function GmailCategorySection({
               readStateMap={readStateMap}
               inboxReturnCapture={{ view: "inbox", categoryTab: activeCategoryTab }}
               showAccountBadge={showAccountBadges}
+              calmMode={calmMode}
             />
           </div>
         ))}
@@ -1272,16 +1281,14 @@ export function EmailsClient() {
   }, [messagesWithOverrides, waitingResponseRecords, completions]);
 
   /** Autopilot inbox: Level 3 + 4 only. Level 1/2 never appear. */
-  const messagesForInbox = useMemo(
-    () =>
-      messagesForDisplay.filter((m) =>
-        isEmotionalInboxVisible(
-          m.autopilot,
-          adaptiveSettings.aggressiveAutopilotFilter,
-        ),
-      ),
-    [messagesForDisplay, adaptiveSettings.aggressiveAutopilotFilter],
-  );
+  const messagesForInbox = useMemo(() => {
+    const aggressive =
+      adaptiveSettings.aggressiveAutopilotFilter;
+    const filtered = messagesForDisplay.filter((m) =>
+      isEmotionalInboxVisible(m.autopilot, aggressive),
+    );
+    return filtered;
+  }, [messagesForDisplay, adaptiveSettings.aggressiveAutopilotFilter]);
 
   /** Tab buckets always include every loaded message — autopilot only trims workflow sections. */
   const inboxBucketMessages = useMemo(
@@ -1416,33 +1423,72 @@ export function EmailsClient() {
     [betaMode, betaAiFilter],
   );
 
+  const betaFilterActive = betaMode && betaAiFilter !== "all";
+
+  const inboxLocale = uiLanguage === "it" ? "it" : "en";
+
+  const attentionSnapshot: AttentionSnapshot = useMemo(
+    () => ({
+      needsAttention: gmailBuckets.todayAttentionCount,
+      waitingOn: waitingOpenRecords.length,
+      goodToKnow: gmailBuckets.counts.good_to_know ?? 0,
+      newsletter: gmailBuckets.newsletterEmails.length,
+      promotion: gmailBuckets.promotionEmails.length,
+      clutter: gmailBuckets.clutterCount,
+      totalVisible: gmailBuckets.allVisible.length,
+    }),
+    [gmailBuckets, waitingOpenRecords.length],
+  );
+
+  const unreadInboxCount = useMemo(
+    () => attentionSnapshot.needsAttention + attentionSnapshot.goodToKnow,
+    [attentionSnapshot],
+  );
+
+  const inboxStress = useInboxStress({
+    locale: inboxLocale,
+    snapshot: attentionSnapshot,
+    messages: messagesForInbox as GmailCardMessage[],
+    unreadCount: unreadInboxCount,
+    enabled: !showGuidedOnboarding && inboxMode === "gmail",
+  });
+
+  const effectiveFocusCount = inboxStress.calm.active
+    ? inboxStress.calm.focusPreviewCount
+    : showGuidedOnboarding
+      ? 3
+      : adaptiveSettings.focusPreviewCount;
+
   /** All-tab workflow sections hide autopilot-auto; category tabs show every message. */
   const filterWorkflowSection = useCallback(
     (list: GmailCardMessage[]) => {
       const filtered = filterInboxList(list);
-      const aggressive = adaptiveSettings.aggressiveAutopilotFilter;
+      const aggressive =
+        adaptiveSettings.aggressiveAutopilotFilter || inboxStress.calm.active;
       return betaMode
         ? filtered
         : filtered.filter((m) =>
             isEmotionalInboxVisible(m.autopilot, aggressive),
           );
     },
-    [filterInboxList, betaMode, adaptiveSettings.aggressiveAutopilotFilter],
+    [
+      filterInboxList,
+      betaMode,
+      adaptiveSettings.aggressiveAutopilotFilter,
+      inboxStress.calm.active,
+    ],
   );
-
-  const betaFilterActive = betaMode && betaAiFilter !== "all";
 
   const focusEmails = useMemo(() => {
     const pool = gmailBuckets.byCategoryAll.worth_your_attention ?? [];
-    const count = showGuidedOnboarding ? 3 : adaptiveSettings.focusPreviewCount;
-    return pool.slice(0, count).map((m) => ({
+    return pool.slice(0, effectiveFocusCount).map((m) => ({
       id: m.id,
       sender: m.sender,
       subject: m.subject,
       snippet: m.snippet,
       accountId: m.accountId,
     }));
-  }, [gmailBuckets.byCategoryAll, showGuidedOnboarding, adaptiveSettings.focusPreviewCount]);
+  }, [gmailBuckets.byCategoryAll, effectiveFocusCount]);
 
   const focusAttentionCount = gmailBuckets.counts.worth_your_attention ?? 0;
 
@@ -1451,21 +1497,21 @@ export function EmailsClient() {
     messagesForDisplay.length - focusEmails.length,
   );
 
-  const inboxLocale = uiLanguage === "it" ? "it" : "en";
-
   const timeStripGroups = useMemo(
     () =>
-      buildTimeStripGroups(
-        messagesForInbox.map((m) => ({
-          id: m.id,
-          sender: m.sender,
-          subject: m.subject,
-          timeImpact: m.timeImpact,
-          accountId: m.accountId,
-        })),
-        inboxLocale,
-      ),
-    [messagesForInbox, inboxLocale],
+      inboxStress.calm.hideTimeStrip
+        ? []
+        : buildTimeStripGroups(
+            messagesForInbox.map((m) => ({
+              id: m.id,
+              sender: m.sender,
+              subject: m.subject,
+              timeImpact: m.timeImpact,
+              accountId: m.accountId,
+            })),
+            inboxLocale,
+          ),
+    [messagesForInbox, inboxLocale, inboxStress.calm.hideTimeStrip],
   );
 
   const autopilotWorkflowClear =
@@ -2304,39 +2350,31 @@ export function EmailsClient() {
     [loadInbox, dismissUndoToast],
   );
 
-  const attentionSnapshot: AttentionSnapshot = useMemo(
-    () => ({
-      needsAttention: gmailBuckets.todayAttentionCount,
-      waitingOn: waitingOpenRecords.length,
-      goodToKnow: gmailBuckets.counts.good_to_know ?? 0,
-      newsletter: gmailBuckets.newsletterEmails.length,
-      promotion: gmailBuckets.promotionEmails.length,
-      clutter: gmailBuckets.clutterCount,
-      totalVisible: gmailBuckets.allVisible.length,
-    }),
-    [gmailBuckets, waitingOpenRecords.length],
-  );
+  const workflowProfile = getWorkflowModeProfile(workflowMode);
+
   const todayHeadline =
+    inboxStress.copy.headline ??
     emotionalMemory.welcomeLine ??
     calmTodayHeadline(attentionSnapshot, inboxLocale);
   const reliefMessage = useMemo(
     () =>
       inboxLoading
         ? null
-        : emotionalMemory.welcomeSubline ??
+        : inboxStress.copy.reassurance ??
+          emotionalMemory.welcomeSubline ??
           pickFocusReassurance(attentionSnapshot, inboxLocale),
     [
       inboxLoading,
+      inboxStress.copy.reassurance,
       emotionalMemory.welcomeSubline,
       attentionSnapshot,
       inboxLocale,
     ],
   );
+
   const inboxErrorDisplay =
     structuredInboxError ??
     handledErrorFromInboxFailure(inboxFailureReason ?? "unknown", inboxLocale);
-
-  const workflowProfile = getWorkflowModeProfile(workflowMode);
 
   return (
     <main className="min-h-screen bg-white px-4 py-8 sm:px-6 sm:py-12">
@@ -2489,12 +2527,21 @@ export function EmailsClient() {
                 onRefresh={() => void loadInbox({ silent: true, refresh: true, force: true })}
               />
               {!betaMode && !isSearchActive ? (
-                <TodaysFocusCard
-                  locale={inboxLocale}
-                  focusEmails={focusEmails}
-                  attentionCount={focusAttentionCount}
-                  handledElsewhereCount={handledElsewhereCount}
-                />
+                <>
+                  {inboxStress.calm.active && inboxStress.copy.headline ? (
+                    <CalmModeGuidance
+                      headline={inboxStress.copy.headline}
+                      reassurance={inboxStress.copy.reassurance}
+                      recovering={inboxStress.recovering}
+                    />
+                  ) : null}
+                  <TodaysFocusCard
+                    locale={inboxLocale}
+                    focusEmails={focusEmails}
+                    attentionCount={focusAttentionCount}
+                    handledElsewhereCount={handledElsewhereCount}
+                  />
+                </>
               ) : null}
               {!betaMode ? (
                 <InboxSearchBar
@@ -2613,9 +2660,22 @@ export function EmailsClient() {
                     </section>
                   ) : null}
                   {autopilotWorkflowClear ? null : gmailBuckets.categoryOrder.map((category) => {
-                    const list = filterWorkflowSection(
+                    if (
+                      inboxStress.calm.active &&
+                      !inboxStress.calm.priorityCategories.includes(category)
+                    ) {
+                      return null;
+                    }
+                    let list = filterWorkflowSection(
                       gmailBuckets.byCategory[category] as GmailCardMessage[],
                     );
+                    if (inboxStress.calm.active) {
+                      list = filterCalmPriorityMessages(list);
+                      list = limitCalmSectionList(
+                        list,
+                        inboxStress.calm.maxEmailsPerSection,
+                      );
+                    }
                     if (!list.length) return null;
                     return (
                       <GmailCategorySection
@@ -2632,18 +2692,20 @@ export function EmailsClient() {
                         onResetOverride={handleResetCategoryOverride}
                         activeCategoryTab={activeCategoryTab}
                         showAccountBadges={connectedAccounts.length > 1}
+                        calmMode={inboxStress.calm.simplifyCardActions}
                       />
                     );
                   })}
-                  {gmailBuckets.showClutterSection ||
-                  (autopilotWorkflowClear &&
-                    filterInboxList(
-                      [
-                        ...(gmailBuckets.byCategoryAll.promotions ?? []),
-                        ...(gmailBuckets.byCategoryAll.newsletters ?? []),
-                      ] as GmailCardMessage[],
-                      { categoryTabOnly: true },
-                    ).length > 0) ? (
+                  {!inboxStress.calm.hideClutterSection &&
+                  (gmailBuckets.showClutterSection ||
+                    (autopilotWorkflowClear &&
+                      filterInboxList(
+                        [
+                          ...(gmailBuckets.byCategoryAll.promotions ?? []),
+                          ...(gmailBuckets.byCategoryAll.newsletters ?? []),
+                        ] as GmailCardMessage[],
+                        { categoryTabOnly: true },
+                      ).length > 0)) ? (
                     <InboxClutterSection
                       messages={filterInboxList(
                         (autopilotWorkflowClear
@@ -2697,7 +2759,14 @@ export function EmailsClient() {
                   />
                   <GmailCategorySection
                     category={activeCategoryTab}
-                    list={list}
+                    list={
+                      inboxStress.calm.active
+                        ? limitCalmSectionList(
+                            filterCalmPriorityMessages(list),
+                            inboxStress.calm.maxEmailsPerSection,
+                          )
+                        : list
+                    }
                     uiLanguage={uiLanguage}
                     count={list.length}
                     onSelectAll={() => handleSelectAllInSection(activeCategoryTab)}
@@ -2708,6 +2777,7 @@ export function EmailsClient() {
                     onResetOverride={handleResetCategoryOverride}
                     activeCategoryTab={activeCategoryTab}
                     showAccountBadges={connectedAccounts.length > 1}
+                    calmMode={inboxStress.calm.simplifyCardActions}
                   />
                 </div>
                   );
