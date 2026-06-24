@@ -39,6 +39,28 @@ import { trackEvent } from "@/lib/analytics";
 import { recordOnboardingComplete } from "@/lib/emotional-memory";
 import { recordOnboardingHesitation } from "@/lib/inbox-stress";
 import { MIN_ONBOARDING_EXAMPLES } from "@/lib/onboarding/build-queue";
+import {
+  clearOnboardingProgressStorage,
+  readOnboardingProgress,
+  readOnboardingTrainingState,
+  saveOnboardingProgress,
+  saveOnboardingTrainingState,
+} from "@/lib/onboarding/progress-storage";
+import { ONBOARDING_RESET_EVENT } from "@/lib/onboarding/reset";
+
+function loadInitialOnboardingState(): {
+  step: GuidedOnboardingStep;
+  classifications: TrainingClassifications;
+  refreshIndexByStep: Record<string, number>;
+} {
+  const progress = readOnboardingProgress();
+  const training = readOnboardingTrainingState();
+  return {
+    step: progress?.step ?? "connect",
+    classifications: training?.classifications ?? emptyTrainingClassifications(),
+    refreshIndexByStep: training?.refreshIndexByStep ?? {},
+  };
+}
 
 export type GuidedOnboardingFlowProps = {
   locale: "en" | "it";
@@ -86,12 +108,16 @@ export function GuidedOnboardingFlow({
       inboxMode === "gmail_error");
   const checkingConnection = signedIn && inboxMode === "loading" && !gmailConnected;
 
-  const [step, setStep] = useState<GuidedOnboardingStep>("connect");
+  const initialStateRef = useRef(loadInitialOnboardingState());
+
+  const [step, setStep] = useState<GuidedOnboardingStep>(initialStateRef.current.step);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [classifications, setClassifications] = useState<TrainingClassifications>(
-    emptyTrainingClassifications,
+    initialStateRef.current.classifications,
   );
-  const [refreshIndexByStep, setRefreshIndexByStep] = useState<Record<string, number>>({});
+  const [refreshIndexByStep, setRefreshIndexByStep] = useState<Record<string, number>>(
+    initialStateRef.current.refreshIndexByStep,
+  );
   const [examplesFetching, setExamplesFetching] = useState(false);
   const [transitionLine, setTransitionLine] = useState<string | null>(null);
 
@@ -101,6 +127,32 @@ export function GuidedOnboardingFlow({
     }, 120_000);
     return () => window.clearTimeout(timer);
   }, [step]);
+
+  useEffect(() => {
+    saveOnboardingProgress({ step, updatedAt: new Date().toISOString() });
+  }, [step]);
+
+  useEffect(() => {
+    saveOnboardingTrainingState({
+      classifications,
+      refreshIndexByStep,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [classifications, refreshIndexByStep]);
+
+  useEffect(() => {
+    const onReset = () => {
+      setStep("connect");
+      setClassifications(emptyTrainingClassifications());
+      setRefreshIndexByStep({});
+      setTransitionLine(null);
+      startedRef.current = false;
+      examplesFetchInitRef.current = false;
+      flowStartedAtRef.current = Date.now();
+    };
+    window.addEventListener(ONBOARDING_RESET_EVENT, onReset);
+    return () => window.removeEventListener(ONBOARDING_RESET_EVENT, onReset);
+  }, []);
 
   const inboxSettled =
     inboxMode === "gmail" || inboxMode === "gmail_empty" || inboxMode === "gmail_error";
@@ -258,6 +310,7 @@ export function GuidedOnboardingFlow({
       classified_emails: Object.keys(classifications.emails).length,
       remaining_unclassified: remainingUnclassified,
     });
+    clearOnboardingProgressStorage();
     onFinished();
   }, [classifications, remainingUnclassified, onFinished]);
 

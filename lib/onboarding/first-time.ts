@@ -1,6 +1,16 @@
 const COMPLETE_KEY = "handled_guided_onboarding_v2_complete";
 const LEGACY_COMPLETE_KEY = "handled_first_onboarding_complete_v1";
 
+export function clearFirstOnboardingComplete(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(COMPLETE_KEY);
+    localStorage.removeItem(LEGACY_COMPLETE_KEY);
+  } catch {
+    /* private mode */
+  }
+}
+
 export function isFirstOnboardingComplete(): boolean {
   if (typeof window === "undefined") return false;
   try {

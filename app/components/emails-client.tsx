@@ -180,6 +180,11 @@ import {
   isFirstOnboardingComplete,
   markFirstOnboardingComplete,
 } from "@/lib/onboarding/first-time";
+import {
+  ONBOARDING_RESET_EVENT,
+  registerOnboardingResetDevHelper,
+  tryApplyOnboardingReset,
+} from "@/lib/onboarding/reset";
 import { useEmotionalMemoryLocale } from "@/app/hooks/use-emotional-memory";
 import { useInboxStress } from "@/app/hooks/use-inbox-stress";
 import { useInboxPresence } from "@/app/hooks/use-inbox-presence";
@@ -575,16 +580,35 @@ export function EmailsClient() {
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
   const [firstOnboardingDone, setFirstOnboardingDone] = useState(() => {
     if (typeof window === "undefined") return false;
+    if (tryApplyOnboardingReset()) return false;
     return isFirstOnboardingComplete();
   });
   const showGuidedOnboarding = !firstOnboardingDone;
-  useEffect(() => {
-    const sync = () => setFirstOnboardingDone(isFirstOnboardingComplete());
-    window.addEventListener(FIRST_ONBOARDING_COMPLETE_EVENT, sync);
-    return () => window.removeEventListener(FIRST_ONBOARDING_COMPLETE_EVENT, sync);
-  }, []);
   const [onboardingPool, setOnboardingPool] = useState<GmailCardMessage[]>([]);
   const onboardingPoolInitRef = useRef(false);
+  useEffect(() => {
+    registerOnboardingResetDevHelper();
+    const syncComplete = () => setFirstOnboardingDone(isFirstOnboardingComplete());
+    const syncReset = () => {
+      setFirstOnboardingDone(false);
+      setOnboardingPool([]);
+      onboardingPoolInitRef.current = false;
+    };
+    window.addEventListener(FIRST_ONBOARDING_COMPLETE_EVENT, syncComplete);
+    window.addEventListener(ONBOARDING_RESET_EVENT, syncReset);
+    return () => {
+      window.removeEventListener(FIRST_ONBOARDING_COMPLETE_EVENT, syncComplete);
+      window.removeEventListener(ONBOARDING_RESET_EVENT, syncReset);
+    };
+  }, []);
+  useEffect(() => {
+    if (searchParams.get("resetOnboarding") !== "true") return;
+    if (tryApplyOnboardingReset()) {
+      setFirstOnboardingDone(false);
+      setOnboardingPool([]);
+      onboardingPoolInitRef.current = false;
+    }
+  }, [searchParams]);
   const isAuthenticatedRef = useRef(isAuthenticated);
   isAuthenticatedRef.current = isAuthenticated;
   const signedIn = isAuthenticated;
