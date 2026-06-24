@@ -1,4 +1,5 @@
 import { logAuthTransition } from "@/lib/auth/auth-resolution";
+import { getOnboardingRuntimeEnvironment, logOnboardingCompletionState } from "@/lib/onboarding/completion-log";
 import { isFirstOnboardingComplete } from "@/lib/onboarding/first-time";
 import {
   hasOnboardingResetPending,
@@ -13,6 +14,8 @@ const ONBOARDING_GATED_PREFIXES = ["/emails", "/inbox", "/settings", "/app"] as 
 export type ResolveStartRouteInput = {
   requestedNext?: string | null;
   userId?: string | null;
+  /** When set (e.g. after server hydrate), skips cache read. */
+  onboardingComplete?: boolean;
 };
 
 function sanitizeInternalPath(path?: string | null): string | null {
@@ -57,7 +60,10 @@ export function resolveStartRoute(input: ResolveStartRouteInput = {}): string {
 
   const resetPending = hasOnboardingResetPending();
   tryApplyOnboardingReset();
-  const onboardingComplete = isFirstOnboardingComplete(userId);
+  const onboardingComplete =
+    input.onboardingComplete !== undefined
+      ? input.onboardingComplete === true
+      : isFirstOnboardingComplete(userId);
 
   let finalRoute: string;
   let reason: string;
@@ -84,6 +90,15 @@ export function resolveStartRoute(input: ResolveStartRouteInput = {}): string {
     onboardingRequired: !onboardingComplete,
     finalRoute,
     reason,
+    environment: getOnboardingRuntimeEnvironment(),
+  });
+
+  logOnboardingCompletionState({
+    scope: "boot",
+    userId,
+    onboardingCompleted: onboardingComplete,
+    source: input.onboardingComplete !== undefined ? "boot_hydrated" : "cache_read",
+    environment: getOnboardingRuntimeEnvironment(),
   });
 
   return finalRoute;

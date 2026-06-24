@@ -11,11 +11,16 @@ import {
   ONBOARDING_PATH,
   resolveStartRoute,
 } from "@/lib/auth/resolve-start-route";
+import { getOnboardingRuntimeEnvironment, logOnboardingCompletionState } from "@/lib/onboarding/completion-log";
+import {
+  hydrateOnboardingCompletionFromServer,
+  isFirstOnboardingComplete,
+} from "@/lib/onboarding/first-time";
 import {
   hasOnboardingResetPending,
+  syncOnboardingResetFromServer,
   tryApplyOnboardingReset,
 } from "@/lib/onboarding/reset";
-import { isFirstOnboardingComplete } from "@/lib/onboarding/first-time";
 
 export type BootMode = "app" | "login" | "callback";
 
@@ -45,14 +50,38 @@ let lockedSnapshot: BootSnapshot | null = null;
 let routeDecisionLocked = false;
 let navigationCommitted = false;
 
-function resolveOnboardingState(userId: string | null): {
+async function resolveOnboardingState(
+  userId: string | null,
+  authStatus: AuthStatus,
+): Promise<{
   onboardingComplete: boolean;
   requireOnboarding: boolean;
   resetPending: boolean;
-} {
+}> {
   const resetPending = hasOnboardingResetPending();
-  tryApplyOnboardingReset();
-  const onboardingComplete = isFirstOnboardingComplete(userId);
+  if (resetPending) {
+    tryApplyOnboardingReset();
+    if (userId) {
+      await syncOnboardingResetFromServer(userId);
+    }
+  }
+
+  if (userId && authStatus === "authenticated") {
+    await hydrateOnboardingCompletionFromServer(userId, "authenticated");
+  }
+
+  const onboardingComplete = userId ? isFirstOnboardingComplete(userId) : false;
+
+  logOnboardingCompletionState({
+    scope: "boot",
+    userId,
+    authStatus,
+    sessionPresent: authStatus === "authenticated",
+    onboardingCompleted: onboardingComplete,
+    source: userId ? "post_hydrate_cache" : "default_false_unauthenticated",
+    environment: getOnboardingRuntimeEnvironment(),
+  });
+
   return {
     onboardingComplete,
     requireOnboarding: !onboardingComplete,
@@ -64,9 +93,10 @@ function computeDestination(input: {
   mode: BootMode;
   pathname: string;
   auth: AuthResolutionResult;
+  onboardingComplete: boolean;
   requestedNext?: string | null;
 }): string | null {
-  const { mode, pathname, auth, requestedNext } = input;
+  const { mode, pathname, auth, requestedNext, onboardingComplete } = input;
 
   if (auth.status === "unauthenticated") {
     if (mode === "app") {
@@ -78,6 +108,7 @@ function computeDestination(input: {
   const startRoute = resolveStartRoute({
     requestedNext,
     userId: auth.userId,
+    onboardingComplete,
   });
 
   if (mode === "login" || mode === "callback") {
@@ -98,7 +129,10 @@ function computeDestination(input: {
 function buildSnapshot(
   input: BootInput,
   auth: AuthResolutionResult,
-  onboarding: ReturnType<typeof resolveOnboardingState>,
+  onboarding: {
+    onboardingComplete: boolean;
+    requireOnboarding: boolean;
+  },
   destination: string | null,
   phase: BootPhase,
 ): BootSnapshot {
@@ -127,6 +161,7 @@ function logBootComplete(snapshot: BootSnapshot, input: BootInput): void {
     finalRoute: snapshot.destination,
     ready: snapshot.ready,
     routeLocked: routeDecisionLocked,
+    environment: getOnboardingRuntimeEnvironment(),
   });
   logAuthTransition("boot_complete", {
     mode: input.mode,
@@ -139,7 +174,7 @@ function logBootComplete(snapshot: BootSnapshot, input: BootInput): void {
 
 /**
  * Deterministic boot — runs once per full page load.
- * 1. resolve auth  2. resolveStartRoute  3. lock
+ * 1. resolve auth  2. hydrate onboarding from server  3. resolveStartRoute  4. lock
  */
 export async function runBoot(input: BootInput): Promise<BootSnapshot> {
   if (lockedSnapshot && lockedSnapshot.pathname !== input.pathname) {
@@ -158,14 +193,16 @@ export async function runBoot(input: BootInput): Promise<BootSnapshot> {
       mode: input.mode,
       pathname: input.pathname,
       requestedNext: input.requestedNext ?? null,
+      environment: getOnboardingRuntimeEnvironment(),
     });
 
     const auth = await resolveClientAuth();
-    const onboarding = resolveOnboardingState(auth.userId);
+    const onboarding = await resolveOnboardingState(auth.userId, auth.status);
     const destination = computeDestination({
       mode: input.mode,
       pathname: input.pathname,
       auth,
+      onboardingComplete: onboarding.onboardingComplete,
       requestedNext: input.requestedNext,
     });
 
@@ -217,6 +254,7 @@ export function commitPostAuthRouteDecision(snapshot: BootSnapshot): boolean {
     userId: snapshot.userId,
     onboardingComplete: snapshot.onboardingComplete,
     navigated: willNavigate,
+    environment: getOnboardingRuntimeEnvironment(),
     at: Date.now(),
   };
 
@@ -255,6 +293,7 @@ export async function completeBootAfterAuth(
 
   logPostAuthRoute("auth_success", {
     requestedNext: requestedNext ?? null,
+    environment: getOnboardingRuntimeEnvironment(),
   });
 
   const snapshot = await runBoot({

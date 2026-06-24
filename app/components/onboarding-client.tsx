@@ -124,11 +124,13 @@ export function OnboardingClient() {
 
   const handleFinished = useCallback(() => {
     if (!userId) return;
-    markFirstOnboardingComplete(userId);
-    trackEvent("guided_onboarding_completed");
-    window.dispatchEvent(new Event(FIRST_ONBOARDING_COMPLETE_EVENT));
-    resetBootLock();
-    void completeBootAfterOnboarding();
+    void (async () => {
+      await markFirstOnboardingComplete(userId);
+      trackEvent("guided_onboarding_completed");
+      window.dispatchEvent(new Event(FIRST_ONBOARDING_COMPLETE_EVENT));
+      resetBootLock();
+      await completeBootAfterOnboarding();
+    })();
   }, [userId]);
 
   return (

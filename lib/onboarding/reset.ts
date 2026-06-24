@@ -1,5 +1,8 @@
 import { readEmotionalMemory, writeEmotionalMemory } from "@/lib/emotional-memory/store";
-import { clearFirstOnboardingComplete } from "@/lib/onboarding/first-time";
+import {
+  clearFirstOnboardingComplete,
+  clearFirstOnboardingCompleteOnServer,
+} from "@/lib/onboarding/first-time";
 import { clearOnboardingProgressStorage } from "@/lib/onboarding/progress-storage";
 
 /** Set to "true" in localStorage to reset onboarding on next inbox load. */
@@ -56,7 +59,7 @@ function clearOnboardingEmotionalMemoryFields(): void {
 }
 
 /**
- * Clears onboarding flow state only.
+ * Clears local onboarding flow state only.
  * Does NOT touch email data, sender rules, email overrides, or inbox cache.
  */
 export function resetOnboardingState(): void {
@@ -64,6 +67,10 @@ export function resetOnboardingState(): void {
   clearFirstOnboardingComplete();
   clearOnboardingProgressStorage();
   clearOnboardingEmotionalMemoryFields();
+}
+
+export async function syncOnboardingResetFromServer(userId: string): Promise<void> {
+  await clearFirstOnboardingCompleteOnServer(userId);
 }
 
 export function hasOnboardingResetPending(): boolean {
