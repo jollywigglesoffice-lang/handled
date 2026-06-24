@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useAuthResolution } from "@/app/auth-resolution-context";
 import { useEmailCompletions } from "@/app/email-completions-context";
 import { GuidedOnboardingFlow } from "@/app/onboarding/guided-onboarding-flow";
-import { useOnboardingRouteGuard } from "@/app/hooks/use-onboarding-route-guard";
 import { useUserPreferences } from "@/app/user-preferences-context";
 import type { GmailCardMessage } from "@/app/emails/gmail-inbox-card";
 import { inboxLoadFetchHeaders } from "@/lib/inbox-fetch-headers";
@@ -30,8 +29,6 @@ export function OnboardingClient() {
   const { isCompleted } = useEmailCompletions();
   const { uiLanguage } = useUserPreferences();
   const locale = uiLanguage === "it" ? "it" : "en";
-
-  useOnboardingRouteGuard();
 
   const [inboxMode, setInboxMode] = useState<InboxMode>("loading");
   const [messages, setMessages] = useState<GmailCardMessage[]>([]);

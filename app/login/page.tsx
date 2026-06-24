@@ -8,7 +8,7 @@ import { GoogleSignInButton, WelcomeLanding } from "@/app/components/welcome-lan
 import { LanguageFooterToggle } from "@/app/components/language-footer-toggle";
 import { useUiCopy } from "@/app/use-ui-copy";
 import { startGoogleOAuth } from "@/lib/auth/start-google-oauth";
-import { resolvePostAuthPath } from "@/lib/onboarding/route-access";
+import { navigateAfterAuthSuccess } from "@/lib/auth/decide-next-route";
 
 function LoginPageContent() {
   const ui = useUiCopy();
@@ -167,7 +167,7 @@ function LoginPageContent() {
         }
       }
 
-      window.location.href = resolvePostAuthPath(next);
+      navigateAfterAuthSuccess(next, "login_password_success");
     } catch (error) {
       console.error("auth failed", error);
       setAuthError(ui.auth.authConnectFailed);

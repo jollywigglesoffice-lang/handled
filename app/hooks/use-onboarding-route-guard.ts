@@ -1,29 +1,28 @@
 "use client";
 
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAuthResolution } from "@/app/auth-resolution-context";
 import { commitClientRedirect } from "@/lib/auth/client-redirect-lock";
 import {
-  logOnboardingRouteDecision,
+  logPostAuthRoute,
   resolveAppRouteGuard,
-} from "@/lib/onboarding/route-access";
+} from "@/lib/auth/decide-next-route";
 
 /** Redirect between /onboarding and app routes based on onboarding completion only. */
 export function useOnboardingRouteGuard(): void {
   const pathname = usePathname();
   const { authStatus } = useAuthResolution();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (authStatus === "loading") return;
     const redirect = resolveAppRouteGuard(pathname, authStatus);
     if (!redirect) return;
     if (!commitClientRedirect("onboarding_route_guard", redirect)) return;
 
-    logOnboardingRouteDecision({
-      context: "use_onboarding_route_guard",
+    logPostAuthRoute("onboarding_route_guard_navigate", {
       from: pathname,
-      redirect,
+      finalRoute: redirect,
       authStatus,
     });
     window.location.replace(redirect);

@@ -6,10 +6,7 @@ import { calmLoadingMessages } from "@/lib/calm-system-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { saveGoogleProviderToken } from "@/lib/google-provider-token";
 import { completeAttachInboxFromCallback } from "@/lib/gmail/connect-account-client";
-import {
-  logPostLoginRouteDecision,
-  resolvePostAuthPath,
-} from "@/lib/onboarding/route-access";
+import { navigateAfterAuthSuccess } from "@/lib/auth/decide-next-route";
 
 const LOADING_EN = calmLoadingMessages("en");
 
@@ -40,9 +37,8 @@ async function waitForSession(maxAttempts = 5): Promise<boolean> {
   return false;
 }
 
-function navigateAfterAuth(destination: string): void {
-  // Full navigation ensures Set-Cookie from the server exchange is sent on the next request.
-  window.location.replace(destination);
+function navigateAfterAuthWithDecision(requestedNext?: string | null, source?: string): void {
+  navigateAfterAuthSuccess(requestedNext, source);
 }
 
 function AuthCallbackClientContent() {
@@ -63,7 +59,7 @@ function AuthCallbackClientContent() {
             ? nextParam
             : isAttachFlow
               ? "/emails?inbox_added=1"
-              : "/emails";
+              : "/onboarding";
 
         const fromHash = parseHashTokens();
         if (fromHash) {
@@ -94,7 +90,7 @@ function AuthCallbackClientContent() {
           if (cancelled) return;
 
           if (!result.ok) {
-            navigateAfterAuth(
+            window.location.replace(
               `/emails?attach_error=${encodeURIComponent(result.message ?? "attach_failed")}`,
             );
             return;
@@ -102,7 +98,7 @@ function AuthCallbackClientContent() {
           const dest = next.includes("inbox_added")
             ? next
             : `${next}${next.includes("?") ? "&" : "?"}inbox_added=1`;
-          navigateAfterAuth(dest);
+          navigateAfterAuthWithDecision(dest, "attach_flow_success");
           return;
         }
 
@@ -142,22 +138,18 @@ function AuthCallbackClientContent() {
         }
 
         if (!cancelled) {
-          const destination = resolvePostAuthPath(next);
-          logPostLoginRouteDecision({
-            authStatus: "authenticated",
-            requestedNext: next,
-            destination,
-          });
-          navigateAfterAuth(destination);
+          navigateAfterAuthWithDecision(next, "oauth_callback_success");
         }
       } catch (e) {
         console.error("[auth/callback/client] unexpected", e);
         const attach = searchParams.get("attach");
         const isAttachFlow = attach === "true" || attach === "1";
         if (!cancelled) {
-          navigateAfterAuth(
-            isAttachFlow ? "/emails?attach_error=unexpected" : "/login?error=oauth",
-          );
+          if (isAttachFlow) {
+            window.location.replace("/emails?attach_error=unexpected");
+          } else {
+            router.replace("/login?error=oauth");
+          }
         }
       }
     }

@@ -174,7 +174,6 @@ import {
 import { trackEvent } from "@/lib/analytics";
 import { InboxLoadingState } from "@/app/emails/inbox-loading-state";
 import { LanguageFooterToggle } from "@/app/components/language-footer-toggle";
-import { useOnboardingRouteGuard } from "@/app/hooks/use-onboarding-route-guard";
 import { useEmotionalMemoryLocale } from "@/app/hooks/use-emotional-memory";
 import { useInboxStress } from "@/app/hooks/use-inbox-stress";
 import { useInboxPresence } from "@/app/hooks/use-inbox-presence";
@@ -504,7 +503,6 @@ function EmailCardSkeleton() {
 export function EmailsClient() {
   const router = useRouter();
   const { isAuthenticated, userEmail: authUserEmail } = useAuthResolution();
-  useOnboardingRouteGuard();
   const searchParams = useSearchParams();
   const ui = useUiCopy();
   const { catalog } = useInboxCategories();

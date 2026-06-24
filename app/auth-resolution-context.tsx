@@ -2,15 +2,17 @@
 
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { isFirstOnboardingComplete } from "@/lib/onboarding/first-time";
 import {
   logAuthTransition,
   resolveClientAuth,
@@ -18,9 +20,9 @@ import {
 } from "@/lib/auth/auth-resolution";
 import { commitClientRedirect } from "@/lib/auth/client-redirect-lock";
 import {
-  logPostLoginRouteDecision,
-  resolvePostAuthPath,
-} from "@/lib/onboarding/route-access";
+  navigateAfterAuthSuccess,
+  resolveAppRouteGuard,
+} from "@/lib/auth/decide-next-route";
 import { InboxLoadingState } from "@/app/emails/inbox-loading-state";
 
 export type AuthResolutionContextValue = {
@@ -58,9 +60,11 @@ export function AuthResolutionProvider({
   loginNextPath = "/emails",
   locale = "en",
 }: AuthResolutionProviderProps) {
+  const pathname = usePathname();
   const [authStatus, setAuthStatus] = useState<AuthStatus>("loading");
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [appRouteReady, setAppRouteReady] = useState(mode !== "app");
   const resolvedRef = useRef(false);
   const loginForwardRef = useRef(false);
 
@@ -75,6 +79,14 @@ export function AuthResolutionProvider({
       setAuthStatus(result.status);
       setUserId(result.userId);
       setUserEmail(result.email);
+
+      if (result.status === "authenticated") {
+        logAuthTransition("auth_success", {
+          mode,
+          userId: result.userId,
+          onboardingComplete: isFirstOnboardingComplete(),
+        });
+      }
     })();
 
     const {
@@ -87,10 +99,17 @@ export function AuthResolutionProvider({
         setAuthStatus("unauthenticated");
         setUserId(null);
         setUserEmail(null);
+        setAppRouteReady(mode !== "app");
         return;
       }
 
       if (session?.user && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        logAuthTransition("auth_success", {
+          event,
+          mode,
+          userId: session.user.id,
+          onboardingComplete: isFirstOnboardingComplete(),
+        });
         logAuthTransition("auth_state_change", {
           event,
           status: "authenticated",
@@ -99,6 +118,9 @@ export function AuthResolutionProvider({
         setAuthStatus("authenticated");
         setUserId(session.user.id);
         setUserEmail(session.user.email ?? null);
+        if (mode === "app") {
+          setAppRouteReady(false);
+        }
       }
     });
 
@@ -108,25 +130,33 @@ export function AuthResolutionProvider({
     };
   }, [mode]);
 
-  const forwardAuthenticatedFromLogin = useCallback(() => {
-    if (mode !== "login" || authStatus !== "authenticated") return;
-    if (loginForwardRef.current) return;
-    loginForwardRef.current = true;
+  useLayoutEffect(() => {
+    if (authStatus === "loading") return;
 
-    const target = resolvePostAuthPath(loginNextPath);
-    if (!commitClientRedirect("login_forward_authenticated", target)) return;
+    if (mode === "login" && authStatus === "authenticated") {
+      if (loginForwardRef.current) return;
+      loginForwardRef.current = true;
+      navigateAfterAuthSuccess(loginNextPath, "login_forward_authenticated");
+      return;
+    }
 
-    logPostLoginRouteDecision({
-      authStatus,
-      requestedNext: loginNextPath,
-      destination: target,
-    });
-    window.location.replace(target);
-  }, [mode, authStatus, loginNextPath]);
+    if (mode !== "app") return;
 
-  useEffect(() => {
-    forwardAuthenticatedFromLogin();
-  }, [forwardAuthenticatedFromLogin]);
+    if (authStatus === "unauthenticated") {
+      setAppRouteReady(true);
+      return;
+    }
+
+    const redirect = resolveAppRouteGuard(pathname, authStatus);
+    if (redirect) {
+      if (commitClientRedirect("auth_resolution_app_guard", redirect)) {
+        window.location.replace(redirect);
+      }
+      return;
+    }
+
+    setAppRouteReady(true);
+  }, [authStatus, mode, pathname, loginNextPath]);
 
   const value = useMemo(
     (): AuthResolutionContextValue => ({
@@ -158,10 +188,17 @@ export function AuthResolutionProvider({
     );
   }
 
-  if (mode === "app" && authStatus === "unauthenticated") {
+  if (mode === "app" && authStatus === "authenticated" && !appRouteReady) {
     return (
-      <AppUnauthenticatedFallback locale={locale} />
+      <InboxLoadingState
+        locale={locale}
+        message={locale === "it" ? "Un momento…" : "One moment…"}
+      />
     );
+  }
+
+  if (mode === "app" && authStatus === "unauthenticated") {
+    return <AppUnauthenticatedFallback locale={locale} />;
   }
 
   return (
@@ -170,7 +207,7 @@ export function AuthResolutionProvider({
 }
 
 function AppUnauthenticatedFallback({ locale }: { locale: "en" | "it" }) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const target = `/login?next=${encodeURIComponent("/emails")}`;
     if (commitClientRedirect("app_unauthenticated_fallback", target)) {
       window.location.replace(target);

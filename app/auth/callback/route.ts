@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       ? nextParam
       : isAttachFlow
         ? "/emails?inbox_added=1"
-        : "/emails";
+        : "/onboarding";
 
   const { supabase, applyAuthCookies } = createRouteHandlerSupabase(request);
   if (!supabase) {
