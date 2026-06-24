@@ -174,17 +174,7 @@ import {
 import { trackEvent } from "@/lib/analytics";
 import { InboxLoadingState } from "@/app/emails/inbox-loading-state";
 import { LanguageFooterToggle } from "@/app/components/language-footer-toggle";
-import { GuidedOnboardingFlow } from "@/app/onboarding/guided-onboarding-flow";
-import {
-  FIRST_ONBOARDING_COMPLETE_EVENT,
-  isFirstOnboardingComplete,
-  markFirstOnboardingComplete,
-} from "@/lib/onboarding/first-time";
-import {
-  ONBOARDING_RESET_EVENT,
-  registerOnboardingResetDevHelper,
-  tryApplyOnboardingReset,
-} from "@/lib/onboarding/reset";
+import { useOnboardingRouteGuard } from "@/app/hooks/use-onboarding-route-guard";
 import { useEmotionalMemoryLocale } from "@/app/hooks/use-emotional-memory";
 import { useInboxStress } from "@/app/hooks/use-inbox-stress";
 import { useInboxPresence } from "@/app/hooks/use-inbox-presence";
@@ -514,6 +504,7 @@ function EmailCardSkeleton() {
 export function EmailsClient() {
   const router = useRouter();
   const { isAuthenticated, userEmail: authUserEmail } = useAuthResolution();
+  useOnboardingRouteGuard();
   const searchParams = useSearchParams();
   const ui = useUiCopy();
   const { catalog } = useInboxCategories();
@@ -578,37 +569,6 @@ export function EmailsClient() {
   const [showMicroMessage, setShowMicroMessage] = useState(true);
   const [rateLimitNotice, setRateLimitNotice] = useState("");
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
-  const [firstOnboardingDone, setFirstOnboardingDone] = useState(() => {
-    if (typeof window === "undefined") return false;
-    if (tryApplyOnboardingReset()) return false;
-    return isFirstOnboardingComplete();
-  });
-  const showGuidedOnboarding = !firstOnboardingDone;
-  const [onboardingPool, setOnboardingPool] = useState<GmailCardMessage[]>([]);
-  const onboardingPoolInitRef = useRef(false);
-  useEffect(() => {
-    registerOnboardingResetDevHelper();
-    const syncComplete = () => setFirstOnboardingDone(isFirstOnboardingComplete());
-    const syncReset = () => {
-      setFirstOnboardingDone(false);
-      setOnboardingPool([]);
-      onboardingPoolInitRef.current = false;
-    };
-    window.addEventListener(FIRST_ONBOARDING_COMPLETE_EVENT, syncComplete);
-    window.addEventListener(ONBOARDING_RESET_EVENT, syncReset);
-    return () => {
-      window.removeEventListener(FIRST_ONBOARDING_COMPLETE_EVENT, syncComplete);
-      window.removeEventListener(ONBOARDING_RESET_EVENT, syncReset);
-    };
-  }, []);
-  useEffect(() => {
-    if (searchParams.get("resetOnboarding") !== "true") return;
-    if (tryApplyOnboardingReset()) {
-      setFirstOnboardingDone(false);
-      setOnboardingPool([]);
-      onboardingPoolInitRef.current = false;
-    }
-  }, [searchParams]);
   const isAuthenticatedRef = useRef(isAuthenticated);
   isAuthenticatedRef.current = isAuthenticated;
   const signedIn = isAuthenticated;
@@ -1305,27 +1265,10 @@ export function EmailsClient() {
   }, [gmailMessages, dismissedIds, isDismissedMessage, completions]);
 
   useEffect(() => {
-    if (showGuidedOnboarding || inboxLoading || inboxMode !== "gmail") return;
+    if (inboxLoading || inboxMode !== "gmail") return;
     if (presenceOrderingLocked) return;
     setPresenceOrderingLocked(true);
-  }, [showGuidedOnboarding, inboxLoading, inboxMode, presenceOrderingLocked]);
-
-  useEffect(() => {
-    if (!showGuidedOnboarding) {
-      onboardingPoolInitRef.current = false;
-      return;
-    }
-    if (onboardingPoolInitRef.current) return;
-    const seed = messagesWithOverrides as GmailCardMessage[];
-    if (seed.length === 0) return;
-    onboardingPoolInitRef.current = true;
-    setOnboardingPool(seed);
-  }, [showGuidedOnboarding, messagesWithOverrides]);
-
-  const onboardingDisplayMessages =
-    onboardingPool.length > 0
-      ? onboardingPool
-      : (messagesWithOverrides as GmailCardMessage[]);
+  }, [inboxLoading, inboxMode, presenceOrderingLocked]);
 
   useEffect(() => {
     if (inboxMode !== "gmail" || gmailMessages.length === 0) return;
@@ -1420,16 +1363,13 @@ export function EmailsClient() {
     const ordered = applyTimeImpactOrderingToBuckets(
       applyImportanceOrderingToBuckets(gmailBucketsRaw, completions),
     );
-    if (showGuidedOnboarding) {
-      return ordered;
-    }
     const adjustments = resolvePresenceAdjustments(derivePresencePatterns());
     const withPresence =
       presenceOrderingLocked && (adjustments.boostActionable || adjustments.prioritizeWaiting)
         ? applyPresenceOrderingToBuckets(ordered, adjustments)
         : ordered;
     return stabilizeBucketOrder(withPresence, frozenBucketOrderRef, presenceOrderingLocked);
-  }, [gmailBucketsRaw, completions, showGuidedOnboarding, presenceOrderingLocked]);
+  }, [gmailBucketsRaw, completions, presenceOrderingLocked]);
 
   const { summary: waitingSummary } = useWaitingOnMetadata();
 
@@ -1466,47 +1406,10 @@ export function EmailsClient() {
     }
   }, []);
 
-  const firstOnboardingPending = showGuidedOnboarding;
-
-  const onboardingAdaptive = adaptiveSettings;
-
   const emotionalMemory = useEmotionalMemoryLocale(inboxLocaleEarly, {
     inboxVolume: gmailBuckets.allVisible.length,
-    enabled: !showGuidedOnboarding && inboxMode === "gmail",
+    enabled: inboxMode === "gmail",
   });
-
-  const handleFirstOnboardingFinished = useCallback(() => {
-    markFirstOnboardingComplete();
-    setFirstOnboardingDone(true);
-    trackEvent("guided_onboarding_completed");
-  }, []);
-
-  const fetchOnboardingExamples = useCallback(async () => {
-    const params = new URLSearchParams({ onboarding: "1" });
-    if (activeAccountFilter !== "all") {
-      params.set("accountId", activeAccountFilter);
-    }
-    const res = await fetch(`/api/gmail/messages?${params.toString()}`, {
-      credentials: "include",
-      headers: await inboxLoadFetchHeaders(),
-      signal: AbortSignal.timeout(INBOX_LOAD_CLIENT_TIMEOUT_MS),
-    });
-    if (!res.ok) return;
-    const body = (await res.json()) as { messages?: GmailInboxMessage[] };
-    if (!body.messages?.length) return;
-    setOnboardingPool((prev) => {
-      const merged = new Map(
-        prev.map((m) => [scopedEmailKey(m.id, m.accountId), m] as const),
-      );
-      for (const message of body.messages ?? []) {
-        merged.set(
-          scopedEmailKey(message.id, message.accountId),
-          message as GmailCardMessage,
-        );
-      }
-      return [...merged.values()].sort((a, b) => b.date.localeCompare(a.date));
-    });
-  }, [activeAccountFilter]);
 
   const betaAiFilterCounts = useMemo(
     () => countBetaAiFilter(gmailBuckets.allVisible as GmailCardMessage[]),
@@ -1546,7 +1449,7 @@ export function EmailsClient() {
     snapshot: attentionSnapshot,
     messages: messagesForInbox as GmailCardMessage[],
     unreadCount: unreadInboxCount,
-    enabled: !showGuidedOnboarding && inboxMode === "gmail",
+    enabled: inboxMode === "gmail",
   });
 
   const inboxPresence = useInboxPresence({
@@ -1557,7 +1460,7 @@ export function EmailsClient() {
     filteringAggressive:
       adaptiveSettings.aggressiveAutopilotFilter || inboxStress.calm.active,
     categoryCounts: gmailBuckets.counts,
-    enabled: !showGuidedOnboarding && inboxMode === "gmail" && !inboxLoading,
+    enabled: inboxMode === "gmail" && !inboxLoading,
     suppressLine: Boolean(
       inboxStress.copy.headline || emotionalMemory.welcomeLine,
     ),
@@ -1570,9 +1473,7 @@ export function EmailsClient() {
 
   const effectiveFocusCount = inboxStress.calm.active
     ? inboxStress.calm.focusPreviewCount
-    : showGuidedOnboarding
-      ? 3
-      : adaptiveSettings.focusPreviewCount;
+    : adaptiveSettings.focusPreviewCount;
 
   /** All-tab workflow sections hide autopilot-auto; category tabs show every message. */
   const filterWorkflowSection = useCallback(
@@ -1676,13 +1577,13 @@ export function EmailsClient() {
 
   useEffect(() => {
     if (presenceTabAppliedRef.current) return;
-    if (!inboxPresence.initialTab || showGuidedOnboarding || inboxLoading) return;
+    if (!inboxPresence.initialTab || inboxLoading) return;
     presenceTabAppliedRef.current = true;
     setActiveCategoryTab(inboxPresence.initialTab);
-  }, [inboxPresence.initialTab, showGuidedOnboarding, inboxLoading]);
+  }, [inboxPresence.initialTab, inboxLoading]);
 
   useEffect(() => {
-    if (inboxLoading || inboxMode !== "gmail" || showGuidedOnboarding) return;
+    if (inboxLoading || inboxMode !== "gmail") return;
     persistInboxVisit(
       messagesForDisplay.map((m) => ({
         id: m.id,
@@ -1695,7 +1596,6 @@ export function EmailsClient() {
   }, [
     inboxLoading,
     inboxMode,
-    showGuidedOnboarding,
     messagesForDisplay,
     gmailBuckets.counts,
     waitingOpenRecords.length,
@@ -2512,18 +2412,7 @@ export function EmailsClient() {
   return (
     <main className="min-h-screen bg-white px-4 py-8 sm:px-6 sm:py-12">
       <div className="mx-auto flex w-full max-w-2xl flex-col">
-        {showGuidedOnboarding ? (
-          <GuidedOnboardingFlow
-            locale={inboxLocale}
-            inboxMode={inboxMode}
-            signedIn={signedIn}
-            connectedAccountCount={connectedAccounts.length}
-            messages={onboardingDisplayMessages}
-            isCompleted={isCompleted}
-            onFinished={handleFirstOnboardingFinished}
-            onFetchMoreExamples={fetchOnboardingExamples}
-          />
-        ) : inboxLoading ? (
+        {inboxLoading ? (
           <InboxLoadingState
             locale={inboxLocale}
             message={loadingMicroMessages[messageIndex]}
@@ -2985,7 +2874,7 @@ export function EmailsClient() {
         />
       ) : null}
 
-      {inboxMode === "gmail" && inboxInteractionMode !== "inbox_zero" && !undoToast && !showGuidedOnboarding ? (
+      {inboxMode === "gmail" && inboxInteractionMode !== "inbox_zero" && !undoToast ? (
         <BulkActionBar
           count={selection.count}
           totalVisible={gmailBuckets.allVisible.length}

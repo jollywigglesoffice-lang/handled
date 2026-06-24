@@ -6,6 +6,10 @@ import { calmLoadingMessages } from "@/lib/calm-system-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { saveGoogleProviderToken } from "@/lib/google-provider-token";
 import { completeAttachInboxFromCallback } from "@/lib/gmail/connect-account-client";
+import {
+  logPostLoginRouteDecision,
+  resolvePostAuthPath,
+} from "@/lib/onboarding/route-access";
 
 const LOADING_EN = calmLoadingMessages("en");
 
@@ -138,7 +142,13 @@ function AuthCallbackClientContent() {
         }
 
         if (!cancelled) {
-          navigateAfterAuth(next);
+          const destination = resolvePostAuthPath(next);
+          logPostLoginRouteDecision({
+            authStatus: "authenticated",
+            requestedNext: next,
+            destination,
+          });
+          navigateAfterAuth(destination);
         }
       } catch (e) {
         console.error("[auth/callback/client] unexpected", e);

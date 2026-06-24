@@ -221,7 +221,7 @@ export function GuidedOnboardingFlow({
   const handleConnectGmail = useCallback(async () => {
     setOauthLoading(true);
     try {
-      await startGoogleOAuth("/emails");
+      await startGoogleOAuth("/onboarding");
     } finally {
       setOauthLoading(false);
     }

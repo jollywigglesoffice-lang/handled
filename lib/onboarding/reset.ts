@@ -66,8 +66,12 @@ export function resetOnboardingState(): void {
   clearOnboardingEmotionalMemoryFields();
 }
 
-function isExplicitResetRequested(): boolean {
+export function hasOnboardingResetPending(): boolean {
   return hasQueryResetParam() || hasStorageResetFlag();
+}
+
+function isExplicitResetRequested(): boolean {
+  return hasOnboardingResetPending();
 }
 
 /** Reset is allowed in development or when an explicit trigger is present. */

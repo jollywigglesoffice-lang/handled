@@ -17,6 +17,10 @@ import {
   type AuthStatus,
 } from "@/lib/auth/auth-resolution";
 import { commitClientRedirect } from "@/lib/auth/client-redirect-lock";
+import {
+  logPostLoginRouteDecision,
+  resolvePostAuthPath,
+} from "@/lib/onboarding/route-access";
 import { InboxLoadingState } from "@/app/emails/inbox-loading-state";
 
 export type AuthResolutionContextValue = {
@@ -109,10 +113,14 @@ export function AuthResolutionProvider({
     if (loginForwardRef.current) return;
     loginForwardRef.current = true;
 
-    const target = loginNextPath.startsWith("/") ? loginNextPath : "/emails";
+    const target = resolvePostAuthPath(loginNextPath);
     if (!commitClientRedirect("login_forward_authenticated", target)) return;
 
-    logAuthTransition("login_forward", { target });
+    logPostLoginRouteDecision({
+      authStatus,
+      requestedNext: loginNextPath,
+      destination: target,
+    });
     window.location.replace(target);
   }, [mode, authStatus, loginNextPath]);
 
@@ -143,7 +151,9 @@ export function AuthResolutionProvider({
     return (
       <InboxLoadingState
         locale={locale}
-        message={locale === "it" ? "Ti portiamo alla inbox…" : "Taking you to your inbox…"}
+        message={
+          locale === "it" ? "Ti portiamo alla prossima tappa…" : "Taking you to the next step…"
+        }
       />
     );
   }

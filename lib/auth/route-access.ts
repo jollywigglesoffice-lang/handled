@@ -15,7 +15,7 @@ export const AUTH_FLOW_PATH_PREFIXES = [
 
 export const PUBLIC_EXACT_PATHS = new Set(["/"]);
 
-export const APP_PATH_PREFIXES = ["/app", "/emails", "/inbox", "/settings"] as const;
+export const APP_PATH_PREFIXES = ["/app", "/emails", "/inbox", "/settings", "/onboarding"] as const;
 
 export function isAuthFlowPath(pathname: string): boolean {
   if (pathname === "/login") return true;
