@@ -4,6 +4,7 @@ import {
   type AuthResolutionResult,
   type AuthStatus,
 } from "@/lib/auth/auth-resolution";
+import { waitForAuthenticatedSession } from "@/lib/auth/session-hydration";
 import {
   isOnboardingGatedPath,
   isOnboardingRoute,
@@ -59,6 +60,15 @@ async function resolveOnboardingState(
   resetPending: boolean;
 }> {
   const resetPending = hasOnboardingResetPending();
+
+  if (authStatus !== "authenticated" || !userId) {
+    return {
+      onboardingComplete: false,
+      requireOnboarding: true,
+      resetPending,
+    };
+  }
+
   if (resetPending) {
     tryApplyOnboardingReset();
     if (userId) {
@@ -196,7 +206,7 @@ export async function runBoot(input: BootInput): Promise<BootSnapshot> {
       environment: getOnboardingRuntimeEnvironment(),
     });
 
-    const auth = await resolveClientAuth();
+    const auth = await resolveClientAuth(`boot_${input.mode}`);
     const onboarding = await resolveOnboardingState(auth.userId, auth.status);
     const destination = computeDestination({
       mode: input.mode,
@@ -295,6 +305,17 @@ export async function completeBootAfterAuth(
     requestedNext: requestedNext ?? null,
     environment: getOnboardingRuntimeEnvironment(),
   });
+
+  const session = await waitForAuthenticatedSession("post_auth_boot");
+  if (!session.ok) {
+    logPostAuthRoute("auth_success_session_missing", {
+      requestedNext: requestedNext ?? null,
+      attempts: session.attempts,
+      resolutionMs: session.resolutionMs,
+    });
+    window.location.replace("/login?error=oauth");
+    return;
+  }
 
   const snapshot = await runBoot({
     pathname: window.location.pathname,

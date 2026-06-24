@@ -55,9 +55,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let verifiedUserId: string | null = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user?.id) {
+      verifiedUserId = user.id;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 60 * (attempt + 1)));
+  }
+
+  if (!verifiedUserId) {
+    console.error("[auth/callback/route] session not verified after code exchange");
+    return NextResponse.redirect(new URL("/login?error=oauth", url.origin));
+  }
 
   const finishUrl = new URL("/auth/callback/client", url.origin);
   if (next) {
@@ -71,7 +84,7 @@ export async function GET(request: NextRequest) {
     const entries = readRequestCookieEntries(request);
     logAuthDebug("auth-callback-route", {
       path: url.pathname,
-      cookieUserId: user?.id ?? null,
+      cookieUserId: verifiedUserId,
       cookieCount: entries.length,
       supabaseAuthCookieNames: listSupabaseAuthCookieNames(entries),
       failureReason: null,

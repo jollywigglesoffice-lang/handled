@@ -107,7 +107,7 @@ export function AuthResolutionProvider({
     };
   }, [boot]);
 
-  const bootPending = !boot || !boot.ready;
+  const bootPending = !boot || !boot.ready || boot.authStatus === "loading";
 
   if (bootPending) {
     return (

@@ -1,4 +1,9 @@
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import {
+  logSessionHydration,
+  waitForAuthenticatedSession,
+  type SessionHydrationResult,
+} from "@/lib/auth/session-hydration";
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
@@ -8,8 +13,6 @@ export type AuthResolutionResult = {
   email: string | null;
   resolutionMs: number;
 };
-
-const RESOLUTION_DELAYS_MS = [0, 100, 220, 400, 650];
 
 export function logAuthTransition(
   event: string,
@@ -23,55 +26,37 @@ export function logAuthTransition(
   console.log("[auth-transition]", { event, ...detail, at: Date.now() });
 }
 
-/** Resolve client auth once — retries briefly after OAuth cookie hydration. */
-export async function resolveClientAuth(): Promise<AuthResolutionResult> {
-  const started = Date.now();
-
-  for (let attempt = 0; attempt < RESOLUTION_DELAYS_MS.length; attempt++) {
-    const delay = RESOLUTION_DELAYS_MS[attempt];
-    if (delay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-
-    const {
-      data: { user },
-      error,
-    } = await supabaseBrowser.auth.getUser();
-
-    if (user?.id) {
-      const result: AuthResolutionResult = {
-        status: "authenticated",
-        userId: user.id,
-        email: user.email ?? null,
-        resolutionMs: Date.now() - started,
-      };
-      logAuthTransition("session_resolved", {
-        status: result.status,
-        userId: result.userId,
-        attempt,
-        resolutionMs: result.resolutionMs,
-      });
-      return result;
-    }
-
-    if (error) {
-      logAuthTransition("session_probe_error", {
-        attempt,
-        message: error.message,
-        elapsedMs: Date.now() - started,
-      });
-    }
+function fromHydration(result: SessionHydrationResult): AuthResolutionResult {
+  if (result.ok && result.userId) {
+    return {
+      status: "authenticated",
+      userId: result.userId,
+      email: result.email,
+      resolutionMs: result.resolutionMs,
+    };
   }
-
-  const result: AuthResolutionResult = {
+  return {
     status: "unauthenticated",
     userId: null,
     email: null,
-    resolutionMs: Date.now() - started,
+    resolutionMs: result.resolutionMs,
   };
+}
+
+/** Resolve client auth once — retries until session is fully hydrated. */
+export async function resolveClientAuth(
+  reason = "boot",
+): Promise<AuthResolutionResult> {
+  const hydration = await waitForAuthenticatedSession(reason);
+  const result = fromHydration(hydration);
   logAuthTransition("session_resolved", {
     status: result.status,
+    userId: result.userId,
     resolutionMs: result.resolutionMs,
+    attempts: hydration.attempts,
+    reason,
   });
   return result;
 }
+
+export { waitForAuthenticatedSession, logSessionHydration };
