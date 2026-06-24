@@ -6,7 +6,8 @@ import { calmLoadingMessages } from "@/lib/calm-system-copy";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { saveGoogleProviderToken } from "@/lib/google-provider-token";
 import { completeAttachInboxFromCallback } from "@/lib/gmail/connect-account-client";
-import { navigateAfterAuthSuccess } from "@/lib/auth/decide-next-route";
+import { completeBootAfterAuth } from "@/lib/auth/boot-controller";
+import { InboxLoadingState } from "@/app/emails/inbox-loading-state";
 
 const LOADING_EN = calmLoadingMessages("en");
 
@@ -35,10 +36,6 @@ async function waitForSession(maxAttempts = 5): Promise<boolean> {
     await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
   }
   return false;
-}
-
-function navigateAfterAuthWithDecision(requestedNext?: string | null, source?: string): void {
-  navigateAfterAuthSuccess(requestedNext, source);
 }
 
 function AuthCallbackClientContent() {
@@ -98,7 +95,7 @@ function AuthCallbackClientContent() {
           const dest = next.includes("inbox_added")
             ? next
             : `${next}${next.includes("?") ? "&" : "?"}inbox_added=1`;
-          navigateAfterAuthWithDecision(dest, "attach_flow_success");
+          await completeBootAfterAuth(dest);
           return;
         }
 
@@ -138,7 +135,7 @@ function AuthCallbackClientContent() {
         }
 
         if (!cancelled) {
-          navigateAfterAuthWithDecision(next, "oauth_callback_success");
+          await completeBootAfterAuth(next);
         }
       } catch (e) {
         console.error("[auth/callback/client] unexpected", e);
@@ -172,7 +169,7 @@ export default function AuthCallbackClientPage() {
     <Suspense
       fallback={
         <main className="flex min-h-screen items-center justify-center bg-[#F8FAFC] px-4">
-          <p className="text-sm text-gray-500">{defaultLoadingStatus()}</p>
+          <InboxLoadingState locale="en" />
         </main>
       }
     >

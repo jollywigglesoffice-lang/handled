@@ -1,6 +1,6 @@
 import { logAuthTransition } from "@/lib/auth/auth-resolution";
 import type { AuthStatus } from "@/lib/auth/auth-resolution";
-import { commitClientRedirect } from "@/lib/auth/client-redirect-lock";
+import { completeBootAfterAuth } from "@/lib/auth/boot-controller";
 import { isFirstOnboardingComplete } from "@/lib/onboarding/first-time";
 import {
   hasOnboardingResetPending,
@@ -94,37 +94,18 @@ export function decideNextRoute(requestedNext?: string | null): string {
 }
 
 /**
- * Navigate after auth success — the only entry point for post-login redirects.
+ * @deprecated Use completeBootAfterAuth from @/lib/auth/boot-controller.
  */
 export function navigateAfterAuthSuccess(
   requestedNext?: string | null,
   source = "post_auth_navigate",
 ): void {
-  logPostAuthRoute("auth_success", {
+  logPostAuthRoute("auth_success_deprecated", {
     source,
     requestedNext: requestedNext ?? null,
-    onboardingComplete: isFirstOnboardingComplete(),
+    message: "Use completeBootAfterAuth instead",
   });
-
-  const finalRoute = decideNextRoute(requestedNext);
-
-  logPostAuthRoute("auth_success_navigate", {
-    source,
-    requestedNext: requestedNext ?? null,
-    finalRoute,
-    onboardingComplete: isFirstOnboardingComplete(),
-  });
-
-  if (!commitClientRedirect(source, finalRoute)) {
-    logPostAuthRoute("auth_success_navigate_blocked", {
-      source,
-      finalRoute,
-      reason: "redirect_lock",
-    });
-    return;
-  }
-
-  window.location.replace(finalRoute);
+  void completeBootAfterAuth(requestedNext);
 }
 
 /**

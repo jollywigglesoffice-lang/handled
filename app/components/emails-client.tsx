@@ -502,7 +502,7 @@ function EmailCardSkeleton() {
 
 export function EmailsClient() {
   const router = useRouter();
-  const { isAuthenticated, userEmail: authUserEmail } = useAuthResolution();
+  const { isAuthenticated, userEmail: authUserEmail, bootReady } = useAuthResolution();
   const searchParams = useSearchParams();
   const ui = useUiCopy();
   const { catalog } = useInboxCategories();
@@ -569,6 +569,8 @@ export function EmailsClient() {
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
   const isAuthenticatedRef = useRef(isAuthenticated);
   isAuthenticatedRef.current = isAuthenticated;
+  const bootReadyRef = useRef(bootReady);
+  bootReadyRef.current = bootReady;
   const signedIn = isAuthenticated;
   const frozenBucketOrderRef = useRef<Record<string, string[]> | null>(null);
   const [presenceOrderingLocked, setPresenceOrderingLocked] = useState(false);
@@ -640,8 +642,10 @@ export function EmailsClient() {
 
       loadInFlightRef.current = true;
 
-      if (!isAuthenticatedRef.current) {
-        logAuthTransition("inbox_load_skipped", { reason: "auth_not_authenticated" });
+      if (!isAuthenticatedRef.current || !bootReadyRef.current) {
+        logAuthTransition("inbox_load_skipped", {
+          reason: !isAuthenticatedRef.current ? "auth_not_authenticated" : "boot_not_ready",
+        });
         loadInFlightRef.current = false;
         return;
       }
@@ -1139,7 +1143,7 @@ export function EmailsClient() {
   }, [isAuthenticated, authUserEmail]);
 
   useEffect(() => {
-    if (!isAuthenticated || !persistenceReady) return;
+    if (!isAuthenticated || !persistenceReady || !bootReady) return;
     const cache = loadInboxCache();
     const hasCache = Boolean(cache?.gmailMessages.length);
     if (hasCache && cache) {
@@ -1147,7 +1151,7 @@ export function EmailsClient() {
       hasLoadedInboxRef.current = true;
     }
     void loadInbox(hasCache ? { silent: true } : undefined);
-  }, [applyInboxCacheSnapshot, loadInbox, persistenceReady, isAuthenticated]);
+  }, [applyInboxCacheSnapshot, loadInbox, persistenceReady, isAuthenticated, bootReady]);
 
   useEffect(() => {
     const onModeChange = () => {

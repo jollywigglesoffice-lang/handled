@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import {
+  resetBootLock,
+} from "@/lib/auth/boot-controller";
 import { useAuthResolution } from "@/app/auth-resolution-context";
 import { useEmailCompletions } from "@/app/email-completions-context";
 import { GuidedOnboardingFlow } from "@/app/onboarding/guided-onboarding-flow";
@@ -24,7 +26,6 @@ import { trackEvent } from "@/lib/analytics";
 type InboxMode = "loading" | "no_google" | "gmail" | "gmail_empty" | "gmail_error";
 
 export function OnboardingClient() {
-  const router = useRouter();
   const { isAuthenticated, authStatus } = useAuthResolution();
   const { isCompleted } = useEmailCompletions();
   const { uiLanguage } = useUserPreferences();
@@ -124,8 +125,9 @@ export function OnboardingClient() {
     markFirstOnboardingComplete();
     trackEvent("guided_onboarding_completed");
     window.dispatchEvent(new Event(FIRST_ONBOARDING_COMPLETE_EVENT));
-    router.replace("/emails");
-  }, [router]);
+    resetBootLock();
+    window.location.replace("/emails");
+  }, []);
 
   return (
     <main className="min-h-screen bg-white px-4 py-8 sm:px-6 sm:py-12">
