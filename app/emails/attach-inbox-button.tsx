@@ -37,9 +37,7 @@ export function AttachInboxButton({
   async function handleClick() {
     setBusy(true);
     setError(null);
-    const result = await startAttachInbox({
-      next: next ?? "/emails?inbox_added=1",
-    });
+    const result = await startAttachInbox({ next });
     if (!result.ok) {
       setError(result.message);
       setBusy(false);

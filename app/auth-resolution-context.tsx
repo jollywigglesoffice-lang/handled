@@ -13,7 +13,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import type { AuthStatus } from "@/lib/auth/auth-resolution";
 import { logAuthTransition } from "@/lib/auth/auth-resolution";
 import {
-  executeBootNavigation,
+  commitPostAuthRouteDecision,
   resetBootForSignOut,
   runBoot,
   type BootSnapshot,
@@ -70,10 +70,7 @@ export function AuthResolutionProvider({
       if (cancelled) return;
 
       if (snapshot.destination && snapshot.destination !== pathname) {
-        const navigated = executeBootNavigation(snapshot);
-        if (!navigated) {
-          window.location.replace(snapshot.destination);
-        }
+        commitPostAuthRouteDecision(snapshot);
         return;
       }
 

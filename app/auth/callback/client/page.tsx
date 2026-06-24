@@ -51,9 +51,7 @@ function AuthCallbackClientContent() {
         const attach = searchParams.get("attach");
         const isAttachFlow = attach === "true" || attach === "1";
         const nextParam = searchParams.get("next");
-        const attachNext = nextParam?.startsWith("/")
-          ? nextParam
-          : "/emails?inbox_added=1";
+        const attachNext = nextParam?.startsWith("/") ? nextParam : null;
         const next = isAttachFlow
           ? attachNext
           : nextParam?.startsWith("/")
@@ -85,18 +83,20 @@ function AuthCallbackClientContent() {
 
         if (isAttachFlow) {
           setStatus("Bringing your inbox into focus…");
-          const result = await completeAttachInboxFromCallback(attachNext);
+          const result = await completeAttachInboxFromCallback();
           if (cancelled) return;
 
           if (!result.ok) {
             window.location.replace(
-              `/emails?attach_error=${encodeURIComponent(result.message ?? "attach_failed")}`,
+              `/login?attach_error=${encodeURIComponent(result.message ?? "attach_failed")}`,
             );
             return;
           }
-          const dest = attachNext.includes("inbox_added")
-            ? attachNext
-            : `${attachNext}${attachNext.includes("?") ? "&" : "?"}inbox_added=1`;
+          const dest = attachNext
+            ? attachNext.includes("inbox_added")
+              ? attachNext
+              : `${attachNext}${attachNext.includes("?") ? "&" : "?"}inbox_added=1`
+            : null;
           await completeBootAfterAuth(dest);
           return;
         }
@@ -145,7 +145,7 @@ function AuthCallbackClientContent() {
         const isAttachFlow = attach === "true" || attach === "1";
         if (!cancelled) {
           if (isAttachFlow) {
-            window.location.replace("/emails?attach_error=unexpected");
+            window.location.replace("/login?attach_error=unexpected");
           } else {
             router.replace("/login?error=oauth");
           }

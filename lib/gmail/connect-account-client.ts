@@ -45,8 +45,10 @@ export async function startAttachInbox(options?: {
       };
     }
 
-    const next = options?.next ?? "/emails?inbox_added=1";
-    const redirectTo = `${getOAuthRedirectOrigin()}/auth/callback?attach=true&next=${encodeURIComponent(next)}`;
+    const redirectTo =
+      options?.next?.startsWith("/")
+        ? `${getOAuthRedirectOrigin()}/auth/callback?attach=true&next=${encodeURIComponent(options.next)}`
+        : `${getOAuthRedirectOrigin()}/auth/callback?attach=true`;
 
     const { error } = await supabaseBrowser.auth.signInWithOAuth({
       provider: "google",
@@ -76,7 +78,7 @@ export async function startAttachInbox(options?: {
 /** @deprecated Use startAttachInbox */
 export const startConnectGmailAccount = startAttachInbox;
 
-export async function completeAttachInboxFromCallback(next: string): Promise<{
+export async function completeAttachInboxFromCallback(): Promise<{
   ok: boolean;
   message?: string;
 }> {

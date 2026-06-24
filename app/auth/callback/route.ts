@@ -29,11 +29,7 @@ export async function GET(request: NextRequest) {
   const attach = url.searchParams.get("attach");
   const isAttachFlow = attach === "true" || attach === "1";
   const nextParam = url.searchParams.get("next");
-  const next = nextParam?.startsWith("/")
-    ? nextParam
-    : isAttachFlow
-      ? "/emails?inbox_added=1"
-      : null;
+  const next = nextParam?.startsWith("/") ? nextParam : null;
 
   const { supabase, applyAuthCookies } = createRouteHandlerSupabase(request);
   if (!supabase) {
@@ -54,7 +50,7 @@ export async function GET(request: NextRequest) {
     const login = new URL("/login", url.origin);
     login.searchParams.set("error", "oauth");
     if (isAttachFlow) {
-      return NextResponse.redirect(new URL("/emails?attach_error=oauth", url.origin));
+      return NextResponse.redirect(new URL("/login?attach_error=oauth", url.origin));
     }
     return NextResponse.redirect(login);
   }

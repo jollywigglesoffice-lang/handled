@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  completeBootAfterOnboarding,
   resetBootLock,
 } from "@/lib/auth/boot-controller";
 import { useAuthResolution } from "@/app/auth-resolution-context";
@@ -127,7 +128,7 @@ export function OnboardingClient() {
     trackEvent("guided_onboarding_completed");
     window.dispatchEvent(new Event(FIRST_ONBOARDING_COMPLETE_EVENT));
     resetBootLock();
-    window.location.replace("/emails");
+    void completeBootAfterOnboarding();
   }, [userId]);
 
   return (

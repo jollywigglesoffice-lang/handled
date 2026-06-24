@@ -43,6 +43,7 @@ type BootInput = {
 let bootPromise: Promise<BootSnapshot> | null = null;
 let lockedSnapshot: BootSnapshot | null = null;
 let routeDecisionLocked = false;
+let navigationCommitted = false;
 
 function resolveOnboardingState(userId: string | null): {
   onboardingComplete: boolean;
@@ -188,8 +189,6 @@ export function getLockedBootSnapshot(): BootSnapshot | null {
   return lockedSnapshot;
 }
 
-let navigationCommitted = false;
-
 export function resetBootLock(): void {
   routeDecisionLocked = false;
   lockedSnapshot = null;
@@ -202,15 +201,35 @@ export function resetBootForSignOut(): void {
   resetBootLock();
 }
 
-/** One navigation per page load after boot decision. */
-export function executeBootNavigation(snapshot: BootSnapshot): boolean {
-  const target = snapshot.destination;
-  if (!target || target === snapshot.pathname) {
+/**
+ * Single navigation gate — the only place allowed to navigate after
+ * resolveStartRoute() has chosen a destination.
+ */
+export function commitPostAuthRouteDecision(snapshot: BootSnapshot): boolean {
+  const finalRoute = snapshot.destination ?? snapshot.pathname;
+  const willNavigate = Boolean(
+    snapshot.destination && snapshot.destination !== snapshot.pathname,
+  );
+
+  const payload = {
+    from: snapshot.pathname,
+    finalRoute,
+    userId: snapshot.userId,
+    onboardingComplete: snapshot.onboardingComplete,
+    navigated: willNavigate,
+    at: Date.now(),
+  };
+
+  console.log("POST_AUTH_ROUTE_DECISION_EXECUTED", payload);
+  logPostAuthRoute("POST_AUTH_ROUTE_DECISION_EXECUTED", payload);
+
+  if (!willNavigate || !snapshot.destination) {
     return false;
   }
+
   if (navigationCommitted) {
     logPostAuthRoute("boot_navigate_blocked", {
-      target,
+      target: snapshot.destination,
       reason: "navigation_already_committed",
     });
     return false;
@@ -219,16 +238,13 @@ export function executeBootNavigation(snapshot: BootSnapshot): boolean {
   navigationCommitted = true;
   lockedSnapshot = { ...snapshot, phase: "navigating", ready: false };
 
-  logPostAuthRoute("boot_navigate", {
-    from: snapshot.pathname,
-    finalRoute: target,
-    authStatus: snapshot.authStatus,
-    userId: snapshot.userId,
-    onboardingComplete: snapshot.onboardingComplete,
-  });
-
-  window.location.replace(target);
+  window.location.replace(snapshot.destination);
   return true;
+}
+
+/** @deprecated Use commitPostAuthRouteDecision */
+export function executeBootNavigation(snapshot: BootSnapshot): boolean {
+  return commitPostAuthRouteDecision(snapshot);
 }
 
 /** Post-OAuth / post-password — fresh boot then navigate once via resolveStartRoute. */
@@ -247,11 +263,18 @@ export async function completeBootAfterAuth(
     requestedNext,
   });
 
-  logPostAuthRoute("auth_success_route_decided", {
-    userId: snapshot.userId,
-    onboardingComplete: snapshot.onboardingComplete,
-    finalRoute: snapshot.destination,
-  });
+  commitPostAuthRouteDecision(snapshot);
+}
 
-  executeBootNavigation(snapshot);
+/** After onboarding is marked complete — route via resolveStartRoute only. */
+export async function completeBootAfterOnboarding(
+  requestedNext?: string | null,
+): Promise<void> {
+  resetBootLock();
+  const snapshot = await runBoot({
+    pathname: window.location.pathname,
+    mode: "callback",
+    requestedNext,
+  });
+  commitPostAuthRouteDecision(snapshot);
 }
