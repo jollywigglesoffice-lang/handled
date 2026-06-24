@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { EMPTY_CATEGORY_CATALOG } from "@/lib/inbox-category-catalog";
-import { categorizeGmailInboxRows, loadCategorizationContext } from "@/lib/domain/categorization";
+import { categorizeGmailInboxRows, intelligentFallbackCategory, loadCategorizationContext } from "@/lib/domain/categorization";
 import { stampEmailOverridesOnMessages } from "@/lib/email-overrides/apply-to-messages";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +28,7 @@ import { enrichMessageWithCalendarAwareness } from "@/lib/calendar-awareness";
 import { classifyCalendarIntent } from "@/lib/calendar-awareness/classify-intent";
 import { classifyTimeImpact } from "@/lib/time-impact/classify";
 import { classifyAutopilot } from "@/lib/autopilot/classify";
+import { resolveSenderRelationship } from "@/lib/relationship-intelligence/resolve";
 import { hasUnsubscribeSignal } from "@/lib/unsubscribe/detect";
 import {
   classifyGmailThrownError,
@@ -252,15 +253,32 @@ export async function GET(request: Request) {
     );
 
     const categorizeStarted = Date.now();
-    const categorized = await categorizeGmailInboxRows(rows, {
-      emailOverrides: rulesCtx.emailOverrides,
-      memoryRules: rulesCtx.memoryRules,
-      senderRules: rulesCtx.senderRules,
-      userRules: rulesCtx.keywordRules,
-      senderRelationships: rulesCtx.senderRelationships,
-      workflowMode,
-      categoryCatalog: rulesCtx.categoryCatalog,
-    });
+    const categorized = onboardingMode
+      ? rows.map((row) => {
+          const hint = intelligentFallbackCategory(row);
+          const relationship = resolveSenderRelationship(
+            row,
+            "good_to_know",
+            rulesCtx.senderRelationships,
+          );
+          return {
+            ...row,
+            category: "good_to_know" as const,
+            categoryConfidence: 0,
+            categorySource: "heuristic" as const,
+            trainingHint: hint.category,
+            relationship,
+          };
+        })
+      : await categorizeGmailInboxRows(rows, {
+          emailOverrides: rulesCtx.emailOverrides,
+          memoryRules: rulesCtx.memoryRules,
+          senderRules: rulesCtx.senderRules,
+          userRules: rulesCtx.keywordRules,
+          senderRelationships: rulesCtx.senderRelationships,
+          workflowMode,
+          categoryCatalog: rulesCtx.categoryCatalog,
+        });
     timings = mergeTimings(timings, { categorizeMs: elapsedMs(categorizeStarted) });
 
     const enrichStarted = Date.now();

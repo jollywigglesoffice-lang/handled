@@ -2495,12 +2495,9 @@ export function EmailsClient() {
             signedIn={signedIn}
             connectedAccountCount={connectedAccounts.length}
             messages={onboardingDisplayMessages}
-            readStateMap={readStateMap}
             isCompleted={isCompleted}
             onFinished={handleFirstOnboardingFinished}
             onFetchMoreExamples={fetchOnboardingExamples}
-            compactMode={onboardingAdaptive.compactOnboarding}
-            skipPersonalize={onboardingAdaptive.skipPersonalizeStep}
           />
         ) : inboxLoading ? (
           <InboxLoadingState

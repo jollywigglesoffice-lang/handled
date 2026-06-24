@@ -88,6 +88,8 @@ export type GmailCardMessage = {
   accountEmail?: string;
   accountLabel?: string;
   categoryResolution?: CategoryResolutionAudit;
+  /** Onboarding-only heuristic hint — never treated as assigned category. */
+  trainingHint?: InboxAiCategory;
 };
 
 function emailDetailHref(message: GmailCardMessage): string {
