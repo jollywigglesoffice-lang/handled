@@ -15,6 +15,8 @@ export function getOAuthRedirectOrigin(): string {
 }
 
 export function buildLoginUrl(nextPath?: string): string {
-  const next = nextPath?.startsWith("/") ? nextPath : "/emails";
-  return `/login?next=${encodeURIComponent(next)}`;
+  if (nextPath?.startsWith("/")) {
+    return `/login?next=${encodeURIComponent(nextPath)}`;
+  }
+  return "/login";
 }

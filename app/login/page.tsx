@@ -14,8 +14,8 @@ function LoginPageContent() {
   const ui = useUiCopy();
   const next =
     typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("next") || "/emails"
-      : "/emails";
+      ? new URLSearchParams(window.location.search).get("next")
+      : null;
 
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -353,8 +353,8 @@ function LoginPageContent() {
 function LoginNextPathGate({ children }: { children: ReactNode }) {
   const next =
     typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("next") || "/emails"
-      : "/emails";
+      ? new URLSearchParams(window.location.search).get("next")
+      : null;
   return (
     <AuthResolutionProvider mode="login" loginNextPath={next}>
       {children}

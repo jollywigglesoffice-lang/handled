@@ -29,12 +29,11 @@ export async function GET(request: NextRequest) {
   const attach = url.searchParams.get("attach");
   const isAttachFlow = attach === "true" || attach === "1";
   const nextParam = url.searchParams.get("next");
-  const next =
-    nextParam?.startsWith("/")
-      ? nextParam
-      : isAttachFlow
-        ? "/emails?inbox_added=1"
-        : "/onboarding";
+  const next = nextParam?.startsWith("/")
+    ? nextParam
+    : isAttachFlow
+      ? "/emails?inbox_added=1"
+      : null;
 
   const { supabase, applyAuthCookies } = createRouteHandlerSupabase(request);
   if (!supabase) {
@@ -65,7 +64,9 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const finishUrl = new URL("/auth/callback/client", url.origin);
-  finishUrl.searchParams.set("next", next);
+  if (next) {
+    finishUrl.searchParams.set("next", next);
+  }
   if (isAttachFlow) {
     finishUrl.searchParams.set("attach", "true");
   }

@@ -5,7 +5,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -46,24 +45,20 @@ export function useOptionalAuthResolution(): AuthResolutionContextValue | null {
 type AuthResolutionProviderProps = {
   children: ReactNode;
   mode: "app" | "login";
-  loginNextPath?: string;
+  loginNextPath?: string | null;
   locale?: "en" | "it";
 };
 
 export function AuthResolutionProvider({
   children,
   mode,
-  loginNextPath = "/emails",
+  loginNextPath = null,
   locale = "en",
 }: AuthResolutionProviderProps) {
   const pathname = usePathname();
   const [boot, setBoot] = useState<BootSnapshot | null>(null);
-  const bootStartedRef = useRef(false);
 
   useEffect(() => {
-    if (bootStartedRef.current) return;
-    bootStartedRef.current = true;
-
     let cancelled = false;
 
     void (async () => {
@@ -75,7 +70,10 @@ export function AuthResolutionProvider({
       if (cancelled) return;
 
       if (snapshot.destination && snapshot.destination !== pathname) {
-        executeBootNavigation(snapshot);
+        const navigated = executeBootNavigation(snapshot);
+        if (!navigated) {
+          window.location.replace(snapshot.destination);
+        }
         return;
       }
 
@@ -94,7 +92,6 @@ export function AuthResolutionProvider({
       if (event === "SIGNED_OUT") {
         logAuthTransition("auth_state_change", { event, status: "unauthenticated" });
         resetBootForSignOut();
-        bootStartedRef.current = false;
         window.location.replace("/login");
       }
     });

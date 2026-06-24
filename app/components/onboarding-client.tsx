@@ -26,7 +26,7 @@ import { trackEvent } from "@/lib/analytics";
 type InboxMode = "loading" | "no_google" | "gmail" | "gmail_empty" | "gmail_error";
 
 export function OnboardingClient() {
-  const { isAuthenticated, authStatus } = useAuthResolution();
+  const { isAuthenticated, authStatus, userId } = useAuthResolution();
   const { isCompleted } = useEmailCompletions();
   const { uiLanguage } = useUserPreferences();
   const locale = uiLanguage === "it" ? "it" : "en";
@@ -122,12 +122,13 @@ export function OnboardingClient() {
   const displayMessages = useMemo(() => messages, [messages]);
 
   const handleFinished = useCallback(() => {
-    markFirstOnboardingComplete();
+    if (!userId) return;
+    markFirstOnboardingComplete(userId);
     trackEvent("guided_onboarding_completed");
     window.dispatchEvent(new Event(FIRST_ONBOARDING_COMPLETE_EVENT));
     resetBootLock();
     window.location.replace("/emails");
-  }, []);
+  }, [userId]);
 
   return (
     <main className="min-h-screen bg-white px-4 py-8 sm:px-6 sm:py-12">

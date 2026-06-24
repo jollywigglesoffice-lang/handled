@@ -15,7 +15,7 @@ const WORKFLOW_CARD =
 const WORKFLOW_CARD_FINAL =
   "block rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-[#0F172A] transition-colors duration-200 hover:border-gray-300 hover:bg-gray-100/80";
 
-const LOGIN_NEXT = "/login?next=/emails";
+const LOGIN_HREF = "/login";
 
 export function LandingPage() {
   const { uiLanguage } = useUserPreferences();
@@ -26,7 +26,7 @@ export function LandingPage() {
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 sm:px-8">
         <span className="text-sm font-semibold tracking-tight">Handled</span>
         <Link
-          href={LOGIN_NEXT}
+          href={LOGIN_HREF}
           className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-hover"
         >
           <GoogleIcon />
@@ -53,7 +53,7 @@ export function LandingPage() {
 
             <div className="mt-6 flex flex-wrap items-center gap-3 sm:mt-7">
               <Link
-                href={LOGIN_NEXT}
+                href={LOGIN_HREF}
                 className="inline-flex items-center gap-2.5 rounded-xl bg-accent px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-hover active:scale-[0.99]"
               >
                 <GoogleIcon />
@@ -137,7 +137,7 @@ export function LandingPage() {
         <section className="mt-12 border-t border-gray-100 pt-10 text-center sm:mt-14">
           <p className="text-sm text-gray-500">{t.footerTagline}</p>
           <Link
-            href={LOGIN_NEXT}
+            href={LOGIN_HREF}
             className="mt-5 inline-flex items-center gap-2.5 rounded-xl bg-accent px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-hover active:scale-[0.99]"
           >
             <GoogleIcon />

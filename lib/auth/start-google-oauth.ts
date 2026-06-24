@@ -1,8 +1,12 @@
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { getOAuthRedirectOrigin } from "@/lib/auth/app-origin";
 
-export async function startGoogleOAuth(next = "/onboarding"): Promise<{ error?: string }> {
-  const redirectTo = `${getOAuthRedirectOrigin()}/auth/callback?next=${encodeURIComponent(next)}`;
+export async function startGoogleOAuth(requestedNext?: string | null): Promise<{ error?: string }> {
+  const callbackBase = `${getOAuthRedirectOrigin()}/auth/callback`;
+  const redirectTo =
+    requestedNext?.startsWith("/")
+      ? `${callbackBase}?next=${encodeURIComponent(requestedNext)}`
+      : callbackBase;
 
   const { error } = await supabaseBrowser.auth.signInWithOAuth({
     provider: "google",

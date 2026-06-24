@@ -1,4 +1,3 @@
-import { logAuthTransition } from "@/lib/auth/auth-resolution";
 import type { AuthStatus } from "@/lib/auth/auth-resolution";
 import { completeBootAfterAuth } from "@/lib/auth/boot-controller";
 import { isFirstOnboardingComplete } from "@/lib/onboarding/first-time";
@@ -6,91 +5,43 @@ import {
   hasOnboardingResetPending,
   tryApplyOnboardingReset,
 } from "@/lib/onboarding/reset";
+import {
+  INBOX_PATH,
+  isOnboardingGatedPath,
+  isOnboardingRoute,
+  logPostAuthRoute,
+  ONBOARDING_PATH,
+  resolveStartRoute,
+} from "@/lib/auth/resolve-start-route";
 
-export const ONBOARDING_PATH = "/onboarding";
-export const INBOX_PATH = "/emails";
+export {
+  INBOX_PATH,
+  isOnboardingGatedPath,
+  isOnboardingRoute,
+  logPostAuthRoute,
+  ONBOARDING_PATH,
+  resolveStartRoute,
+  type ResolveStartRouteInput,
+} from "@/lib/auth/resolve-start-route";
 
-const ONBOARDING_GATED_PREFIXES = ["/emails", "/inbox", "/settings", "/app"] as const;
-
-function sanitizeInternalPath(path?: string | null): string | null {
-  if (!path?.startsWith("/")) return null;
-  if (path.startsWith("//")) return null;
-  return path;
-}
-
-export function isOnboardingGatedPath(pathname: string): boolean {
-  return ONBOARDING_GATED_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
-}
-
-export function isOnboardingRoute(pathname: string): boolean {
-  return pathname === ONBOARDING_PATH || pathname.startsWith(`${ONBOARDING_PATH}/`);
-}
-
-export function shouldRequireOnboarding(): boolean {
+export function shouldRequireOnboarding(userId?: string | null): boolean {
   if (typeof window === "undefined") return false;
   if (hasOnboardingResetPending()) return true;
-  return !isFirstOnboardingComplete();
+  return !isFirstOnboardingComplete(userId);
 }
 
-export function syncOnboardingCompletionState(): boolean {
+export function syncOnboardingCompletionState(userId?: string | null): boolean {
   if (typeof window === "undefined") return false;
   tryApplyOnboardingReset();
-  return isFirstOnboardingComplete();
+  return isFirstOnboardingComplete(userId);
 }
 
-/** Mandatory post-auth routing log — always emitted. */
-export function logPostAuthRoute(
-  event: string,
-  detail: Record<string, unknown>,
-): void {
-  const payload = {
-    event,
-    ...detail,
-    at: Date.now(),
-  };
-  console.log("[post-auth-route]", payload);
-  logAuthTransition("post_auth_route", payload);
-}
-
-/**
- * Single post-auth routing decision.
- * onboardingCompleted === false → /onboarding
- * onboardingCompleted === true  → /emails (or safe requestedNext)
- */
-export function decideNextRoute(requestedNext?: string | null): string {
-  const resetPending = hasOnboardingResetPending();
-  tryApplyOnboardingReset();
-  const onboardingComplete = isFirstOnboardingComplete();
-
-  let finalRoute: string;
-  let reason: string;
-
-  if (!onboardingComplete) {
-    finalRoute = ONBOARDING_PATH;
-    reason = "onboarding_incomplete";
-  } else {
-    const safe = sanitizeInternalPath(requestedNext) ?? INBOX_PATH;
-    if (isOnboardingRoute(safe)) {
-      finalRoute = INBOX_PATH;
-      reason = "onboarding_already_complete";
-    } else {
-      finalRoute = safe;
-      reason = "onboarding_complete";
-    }
-  }
-
-  logPostAuthRoute("decide_next_route", {
-    requestedNext: requestedNext ?? null,
-    resetPending,
-    onboardingComplete,
-    onboardingRequired: !onboardingComplete,
-    finalRoute,
-    reason,
-  });
-
-  return finalRoute;
+/** @deprecated Use resolveStartRoute */
+export function decideNextRoute(
+  requestedNext?: string | null,
+  userId?: string | null,
+): string {
+  return resolveStartRoute({ requestedNext, userId });
 }
 
 /**
@@ -114,28 +65,26 @@ export function navigateAfterAuthSuccess(
 export function resolveAppRouteGuard(
   pathname: string,
   authStatus: AuthStatus,
+  userId?: string | null,
 ): string | null {
   if (authStatus === "loading") return null;
-
-  const resetPending = hasOnboardingResetPending();
-  tryApplyOnboardingReset();
-  const onboardingComplete = isFirstOnboardingComplete();
-  const requireOnboarding = !onboardingComplete;
-
-  logPostAuthRoute("app_route_guard", {
-    pathname,
-    authStatus,
-    resetPending,
-    onboardingComplete,
-    requireOnboarding,
-  });
 
   if (authStatus === "unauthenticated") {
     logPostAuthRoute("app_route_guard_allow", { pathname, reason: "unauthenticated" });
     return null;
   }
 
-  if (isOnboardingGatedPath(pathname) && requireOnboarding) {
+  const startRoute = resolveStartRoute({ userId });
+
+  logPostAuthRoute("app_route_guard", {
+    pathname,
+    authStatus,
+    userId: userId ?? null,
+    startRoute,
+    onboardingComplete: isFirstOnboardingComplete(userId),
+  });
+
+  if (isOnboardingGatedPath(pathname) && startRoute === ONBOARDING_PATH) {
     logPostAuthRoute("app_route_guard_redirect", {
       pathname,
       finalRoute: ONBOARDING_PATH,
@@ -144,34 +93,36 @@ export function resolveAppRouteGuard(
     return ONBOARDING_PATH;
   }
 
-  if (isOnboardingRoute(pathname) && onboardingComplete && !resetPending) {
+  if (isOnboardingRoute(pathname) && startRoute !== ONBOARDING_PATH) {
     logPostAuthRoute("app_route_guard_redirect", {
       pathname,
-      finalRoute: INBOX_PATH,
+      finalRoute: startRoute,
       reason: "onboarding_already_complete",
     });
-    return INBOX_PATH;
+    return startRoute;
   }
 
   logPostAuthRoute("app_route_guard_allow", { pathname, reason: "route_ok" });
   return null;
 }
 
-/** @deprecated Use decideNextRoute */
+/** @deprecated Use resolveStartRoute */
 export function resolvePostAuthPath(requestedNext?: string | null): string {
-  return decideNextRoute(requestedNext);
+  return resolveStartRoute({ requestedNext });
 }
 
 export function logPostLoginRouteDecision(input: {
   authStatus: AuthStatus;
+  userId?: string | null;
   requestedNext?: string | null;
   destination: string;
 }): void {
   logPostAuthRoute("post_login_route", {
     authStatus: input.authStatus,
+    userId: input.userId ?? null,
     requestedNext: input.requestedNext ?? null,
     destination: input.destination,
-    onboardingComplete: isFirstOnboardingComplete(),
-    requireOnboarding: shouldRequireOnboarding(),
+    onboardingComplete: isFirstOnboardingComplete(input.userId),
+    requireOnboarding: shouldRequireOnboarding(input.userId),
   });
 }

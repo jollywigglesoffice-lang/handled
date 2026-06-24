@@ -11,6 +11,7 @@ export {
   resolveAppRouteGuard,
   resolvePostAuthPath,
   logPostLoginRouteDecision,
+  resolveStartRoute,
 } from "@/lib/auth/decide-next-route";
 
 export { logPostAuthRoute as logOnboardingRouteDecision } from "@/lib/auth/decide-next-route";

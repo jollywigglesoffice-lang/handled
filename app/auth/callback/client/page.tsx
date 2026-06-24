@@ -51,12 +51,14 @@ function AuthCallbackClientContent() {
         const attach = searchParams.get("attach");
         const isAttachFlow = attach === "true" || attach === "1";
         const nextParam = searchParams.get("next");
-        const next =
-          nextParam?.startsWith("/")
+        const attachNext = nextParam?.startsWith("/")
+          ? nextParam
+          : "/emails?inbox_added=1";
+        const next = isAttachFlow
+          ? attachNext
+          : nextParam?.startsWith("/")
             ? nextParam
-            : isAttachFlow
-              ? "/emails?inbox_added=1"
-              : "/onboarding";
+            : null;
 
         const fromHash = parseHashTokens();
         if (fromHash) {
@@ -83,7 +85,7 @@ function AuthCallbackClientContent() {
 
         if (isAttachFlow) {
           setStatus("Bringing your inbox into focus…");
-          const result = await completeAttachInboxFromCallback(next);
+          const result = await completeAttachInboxFromCallback(attachNext);
           if (cancelled) return;
 
           if (!result.ok) {
@@ -92,9 +94,9 @@ function AuthCallbackClientContent() {
             );
             return;
           }
-          const dest = next.includes("inbox_added")
-            ? next
-            : `${next}${next.includes("?") ? "&" : "?"}inbox_added=1`;
+          const dest = attachNext.includes("inbox_added")
+            ? attachNext
+            : `${attachNext}${attachNext.includes("?") ? "&" : "?"}inbox_added=1`;
           await completeBootAfterAuth(dest);
           return;
         }

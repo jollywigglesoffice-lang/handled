@@ -4,19 +4,18 @@ import {
   type AuthResolutionResult,
   type AuthStatus,
 } from "@/lib/auth/auth-resolution";
-import { isFirstOnboardingComplete } from "@/lib/onboarding/first-time";
 import {
-  decideNextRoute,
-  INBOX_PATH,
   isOnboardingGatedPath,
   isOnboardingRoute,
   logPostAuthRoute,
   ONBOARDING_PATH,
-} from "@/lib/auth/decide-next-route";
+  resolveStartRoute,
+} from "@/lib/auth/resolve-start-route";
 import {
   hasOnboardingResetPending,
   tryApplyOnboardingReset,
 } from "@/lib/onboarding/reset";
+import { isFirstOnboardingComplete } from "@/lib/onboarding/first-time";
 
 export type BootMode = "app" | "login" | "callback";
 
@@ -45,14 +44,14 @@ let bootPromise: Promise<BootSnapshot> | null = null;
 let lockedSnapshot: BootSnapshot | null = null;
 let routeDecisionLocked = false;
 
-function resolveOnboardingState(): {
+function resolveOnboardingState(userId: string | null): {
   onboardingComplete: boolean;
   requireOnboarding: boolean;
   resetPending: boolean;
 } {
   const resetPending = hasOnboardingResetPending();
   tryApplyOnboardingReset();
-  const onboardingComplete = isFirstOnboardingComplete();
+  const onboardingComplete = isFirstOnboardingComplete(userId);
   return {
     onboardingComplete,
     requireOnboarding: !onboardingComplete,
@@ -64,12 +63,9 @@ function computeDestination(input: {
   mode: BootMode;
   pathname: string;
   auth: AuthResolutionResult;
-  onboardingComplete: boolean;
-  requireOnboarding: boolean;
-  resetPending: boolean;
   requestedNext?: string | null;
 }): string | null {
-  const { mode, pathname, auth, requireOnboarding, resetPending, requestedNext } = input;
+  const { mode, pathname, auth, requestedNext } = input;
 
   if (auth.status === "unauthenticated") {
     if (mode === "app") {
@@ -78,16 +74,21 @@ function computeDestination(input: {
     return null;
   }
 
+  const startRoute = resolveStartRoute({
+    requestedNext,
+    userId: auth.userId,
+  });
+
   if (mode === "login" || mode === "callback") {
-    return decideNextRoute(requestedNext);
+    return startRoute;
   }
 
-  if (isOnboardingGatedPath(pathname) && requireOnboarding) {
+  if (isOnboardingGatedPath(pathname) && startRoute === ONBOARDING_PATH) {
     return ONBOARDING_PATH;
   }
 
-  if (isOnboardingRoute(pathname) && input.onboardingComplete && !resetPending) {
-    return INBOX_PATH;
+  if (isOnboardingRoute(pathname) && startRoute !== ONBOARDING_PATH) {
+    return startRoute;
   }
 
   return null;
@@ -118,9 +119,11 @@ function logBootComplete(snapshot: BootSnapshot, input: BootInput): void {
     mode: input.mode,
     pathname: input.pathname,
     authStatus: snapshot.authStatus,
+    userId: snapshot.userId,
     onboardingComplete: snapshot.onboardingComplete,
     requireOnboarding: snapshot.requireOnboarding,
     destination: snapshot.destination,
+    finalRoute: snapshot.destination,
     ready: snapshot.ready,
     routeLocked: routeDecisionLocked,
   });
@@ -135,7 +138,7 @@ function logBootComplete(snapshot: BootSnapshot, input: BootInput): void {
 
 /**
  * Deterministic boot — runs once per full page load.
- * 1. resolve auth  2. resolve onboarding  3. choose route  4. lock
+ * 1. resolve auth  2. resolveStartRoute  3. lock
  */
 export async function runBoot(input: BootInput): Promise<BootSnapshot> {
   if (lockedSnapshot && lockedSnapshot.pathname !== input.pathname) {
@@ -157,12 +160,11 @@ export async function runBoot(input: BootInput): Promise<BootSnapshot> {
     });
 
     const auth = await resolveClientAuth();
-    const onboarding = resolveOnboardingState();
+    const onboarding = resolveOnboardingState(auth.userId);
     const destination = computeDestination({
       mode: input.mode,
       pathname: input.pathname,
       auth,
-      ...onboarding,
       requestedNext: input.requestedNext,
     });
 
@@ -221,6 +223,7 @@ export function executeBootNavigation(snapshot: BootSnapshot): boolean {
     from: snapshot.pathname,
     finalRoute: target,
     authStatus: snapshot.authStatus,
+    userId: snapshot.userId,
     onboardingComplete: snapshot.onboardingComplete,
   });
 
@@ -228,15 +231,27 @@ export function executeBootNavigation(snapshot: BootSnapshot): boolean {
   return true;
 }
 
-/** Post-OAuth / post-password — fresh boot then navigate once. */
+/** Post-OAuth / post-password — fresh boot then navigate once via resolveStartRoute. */
 export async function completeBootAfterAuth(
   requestedNext?: string | null,
 ): Promise<void> {
   resetBootLock();
+
+  logPostAuthRoute("auth_success", {
+    requestedNext: requestedNext ?? null,
+  });
+
   const snapshot = await runBoot({
     pathname: window.location.pathname,
     mode: "callback",
     requestedNext,
   });
+
+  logPostAuthRoute("auth_success_route_decided", {
+    userId: snapshot.userId,
+    onboardingComplete: snapshot.onboardingComplete,
+    finalRoute: snapshot.destination,
+  });
+
   executeBootNavigation(snapshot);
 }

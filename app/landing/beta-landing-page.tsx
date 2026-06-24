@@ -14,7 +14,7 @@ export function BetaLandingPage() {
     setAuthError("");
     setOauthLoading(true);
     try {
-      const { error } = await startGoogleOAuth("/onboarding");
+      const { error } = await startGoogleOAuth();
       if (error) setAuthError(ui.auth.oauthFailed);
     } catch {
       setAuthError(ui.auth.oauthFailed);
