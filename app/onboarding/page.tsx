@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default function OnboardingPage() {
   return (
-    <AuthResolutionProvider mode="app">
+    <AuthResolutionProvider mode="app" gate="onboarding">
       <Suspense fallback={<InboxLoadingState locale="en" />}>
         <OnboardingClient />
       </Suspense>

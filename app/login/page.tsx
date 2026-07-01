@@ -167,7 +167,7 @@ function LoginPageContent() {
         }
       }
 
-      completeBootAfterAuth();
+      await completeBootAfterAuth();
     } catch (error) {
       console.error("auth failed", error);
       setAuthError(ui.auth.authConnectFailed);

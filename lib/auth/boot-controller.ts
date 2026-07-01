@@ -4,7 +4,7 @@ import {
   type AuthResolutionResult,
   type AuthStatus,
 } from "@/lib/auth/auth-resolution";
-import { getPostLoginDestination, redirectToInboxAfterLogin } from "@/lib/auth/post-login-destination";
+import { redirectAfterAuthenticatedLogin, INBOX_PATH, redirectOnceToDestination } from "@/lib/onboarding/post-auth-gate";
 
 export type BootMode = "app" | "login";
 
@@ -31,10 +31,7 @@ function buildSnapshot(auth: AuthResolutionResult): BootSnapshot {
   };
 }
 
-/**
- * Resolve auth once per page load — NO routing decisions, NO redirects.
- * Middleware handles unauthenticated access to app paths.
- */
+/** Resolve auth once per page load — NO routing decisions, NO redirects. */
 export async function runBoot(_input: BootInput): Promise<BootSnapshot> {
   if (lockedSnapshot) {
     return lockedSnapshot;
@@ -67,27 +64,24 @@ export function resetBootForSignOut(): void {
   resetBootLock();
 }
 
-/** Password login — one redirect to inbox. OAuth uses server callback redirect. */
-export function completeBootAfterAuth(_requestedNext?: string | null): void {
+/** Password login — fetch profile once, redirect once. OAuth uses server callback. */
+export async function completeBootAfterAuth(_requestedNext?: string | null): Promise<void> {
   resetBootLock();
-  redirectToInboxAfterLogin();
+  await redirectAfterAuthenticatedLogin("password_login");
 }
 
-/** @deprecated Emergency mode — same as completeBootAfterAuth */
-export function completeBootAfterOnboarding(_requestedNext?: string | null): void {
-  completeBootAfterAuth();
+/** After onboarding finished — go to inbox (completion already saved). */
+export function completeBootAfterOnboarding(): void {
+  resetBootLock();
+  redirectOnceToDestination(INBOX_PATH, "onboarding_finished");
 }
 
-/** @deprecated No client routing in emergency mode */
+/** @deprecated No client boot routing */
 export function commitPostAuthRouteDecision(): boolean {
   return false;
 }
 
-/** @deprecated No client routing in emergency mode */
+/** @deprecated No client boot routing */
 export function executeBootNavigation(): boolean {
   return false;
-}
-
-export function getPostLoginPath(): string {
-  return getPostLoginDestination();
 }

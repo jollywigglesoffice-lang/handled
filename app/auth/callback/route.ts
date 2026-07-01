@@ -4,12 +4,15 @@ import {
   listSupabaseAuthCookieNames,
   readRequestCookieEntries,
 } from "@/lib/auth/request-cookies";
-import { POST_LOGIN_DESTINATION } from "@/lib/auth/post-login-destination";
+import {
+  destinationForOnboardingCompleted,
+  INBOX_PATH,
+  resolvePostAuthDestinationForUser,
+} from "@/lib/onboarding/post-auth-gate";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 
 /**
- * OAuth callback — exchange code, verify session, redirect ONCE to inbox.
- * No client routing logic.
+ * OAuth callback — exchange code, verify session, fetch profile, redirect ONCE.
  */
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
@@ -61,9 +64,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login?error=oauth", url.origin));
   }
 
-  const destination = isAttachFlow
-    ? `${POST_LOGIN_DESTINATION}?inbox_added=1`
-    : POST_LOGIN_DESTINATION;
+  const { destination: profileDestination, onboardingCompleted } =
+    await resolvePostAuthDestinationForUser(verifiedUserId);
+
+  let destination = profileDestination;
+  if (isAttachFlow && onboardingCompleted) {
+    destination = `${INBOX_PATH}?inbox_added=1`;
+  }
 
   if (AUTH_DEBUG_ENABLED) {
     const entries = readRequestCookieEntries(request);
@@ -74,8 +81,15 @@ export async function GET(request: NextRequest) {
       supabaseAuthCookieNames: listSupabaseAuthCookieNames(entries),
       failureReason: null,
       redirectDecision: destination,
+      onboardingCompleted,
     });
   }
+
+  console.log("[onboarding-gate] oauth_callback_redirect", {
+    userId: verifiedUserId,
+    onboardingCompleted,
+    destination,
+  });
 
   return applyAuthCookies(NextResponse.redirect(new URL(destination, url.origin)));
 }

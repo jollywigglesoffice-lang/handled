@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default function EmailsPage() {
   return (
-    <AuthResolutionProvider mode="app">
+    <AuthResolutionProvider mode="app" gate="inbox">
       <Suspense fallback={<InboxLoadingState locale="en" />}>
         <EmailsClient />
       </Suspense>

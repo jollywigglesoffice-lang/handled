@@ -1,7 +1,11 @@
 import { logAuthTransition } from "@/lib/auth/auth-resolution";
+import {
+  destinationForOnboardingCompleted,
+  INBOX_PATH,
+  ONBOARDING_PATH,
+} from "@/lib/onboarding/post-auth-gate";
 
-export const ONBOARDING_PATH = "/onboarding";
-export const INBOX_PATH = "/emails";
+export { INBOX_PATH, ONBOARDING_PATH };
 
 const ONBOARDING_GATED_PREFIXES = ["/emails", "/inbox", "/settings", "/app"] as const;
 
@@ -27,7 +31,6 @@ export function isOnboardingRoute(pathname: string): boolean {
   return pathname === ONBOARDING_PATH || pathname.startsWith(`${ONBOARDING_PATH}/`);
 }
 
-/** Mandatory post-auth routing log — always emitted. */
 export function logPostAuthRoute(
   event: string,
   detail: Record<string, unknown>,
@@ -42,16 +45,23 @@ export function logPostAuthRoute(
 }
 
 export function resolveStartRoute(input: ResolveStartRouteInput = {}): string {
-  const safe = sanitizeInternalPath(input.requestedNext) ?? INBOX_PATH;
-  const finalRoute = isOnboardingRoute(safe) ? INBOX_PATH : safe;
+  const onboardingComplete = input.onboardingComplete === true;
+  const safe = sanitizeInternalPath(input.requestedNext);
+  const finalRoute = onboardingComplete
+    ? (isOnboardingRoute(safe ?? "") ? INBOX_PATH : (safe ?? INBOX_PATH))
+    : ONBOARDING_PATH;
 
   logPostAuthRoute("resolve_start_route", {
     userId: input.userId ?? null,
     requestedNext: input.requestedNext ?? null,
+    onboardingComplete,
     finalRoute,
-    reason: "emergency_inbox_only",
-    onboardingDisabled: true,
+    reason: onboardingComplete ? "onboarding_complete" : "onboarding_incomplete",
   });
 
   return finalRoute;
+}
+
+export function resolveStartRouteFromFlag(onboardingCompleted: boolean): string {
+  return destinationForOnboardingCompleted(onboardingCompleted);
 }

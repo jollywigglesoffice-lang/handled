@@ -19,6 +19,7 @@ export type AuthDebugSnapshot = {
   failureReason: string | null;
   /** Middleware-only: why the request was allowed or redirected. */
   redirectDecision?: string;
+  onboardingCompleted?: boolean;
 };
 
 export function logAuthDebug(label: string, snapshot: Partial<AuthDebugSnapshot>): void {

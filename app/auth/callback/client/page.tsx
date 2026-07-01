@@ -2,7 +2,11 @@
 
 import { Suspense, useEffect, useRef } from "react";
 import { AuthCallbackLoading } from "@/app/components/auth-callback-loading";
-import { POST_LOGIN_DESTINATION } from "@/lib/auth/post-login-destination";
+import {
+  fetchOnboardingGateStatus,
+  redirectOnceToDestination,
+  destinationForOnboardingCompleted,
+} from "@/lib/onboarding/post-auth-gate";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 function parseHashTokens(): { access_token: string; refresh_token: string } | null {
@@ -16,7 +20,7 @@ function parseHashTokens(): { access_token: string; refresh_token: string } | nu
   return { access_token, refresh_token };
 }
 
-/** Hash-only OAuth fallback — set session then ONE redirect to inbox. */
+/** Hash-only OAuth fallback — set session, one API call, one redirect. */
 function AuthCallbackClientContent() {
   const startedRef = useRef(false);
 
@@ -27,18 +31,20 @@ function AuthCallbackClientContent() {
     const fromHash = parseHashTokens();
     if (!fromHash) return;
 
-    void supabaseBrowser.auth
-      .setSession({
+    void (async () => {
+      const { error } = await supabaseBrowser.auth.setSession({
         access_token: fromHash.access_token,
         refresh_token: fromHash.refresh_token,
-      })
-      .then(({ error }) => {
-        if (error) {
-          console.error("[auth/callback/client] setSession from hash", error);
-          return;
-        }
-        window.location.replace(POST_LOGIN_DESTINATION);
       });
+      if (error) {
+        console.error("[auth/callback/client] setSession from hash", error);
+        return;
+      }
+
+      const status = await fetchOnboardingGateStatus();
+      const destination = destinationForOnboardingCompleted(status.onboardingCompleted);
+      redirectOnceToDestination(destination, "oauth_hash_callback");
+    })();
   }, []);
 
   return <AuthCallbackLoading />;

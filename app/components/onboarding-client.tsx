@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  completeBootAfterAuth,
+  completeBootAfterOnboarding,
 } from "@/lib/auth/boot-controller";
 import { useAuthResolution } from "@/app/auth-resolution-context";
 import { useEmailCompletions } from "@/app/email-completions-context";
@@ -124,10 +124,11 @@ export function OnboardingClient() {
   const handleFinished = useCallback(() => {
     if (!userId) return;
     void (async () => {
-      await markFirstOnboardingComplete(userId);
+      const saved = await markFirstOnboardingComplete(userId);
+      if (!saved) return;
       trackEvent("guided_onboarding_completed");
       window.dispatchEvent(new Event(FIRST_ONBOARDING_COMPLETE_EVENT));
-      completeBootAfterAuth();
+      completeBootAfterOnboarding();
     })();
   }, [userId]);
 

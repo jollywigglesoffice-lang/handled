@@ -19,8 +19,9 @@ export function shouldRequireOnboarding(_userId?: string | null): boolean {
   return false;
 }
 
-export function syncOnboardingCompletionState(_userId?: string | null): boolean {
-  return true;
+export function syncOnboardingCompletionState(userId?: string | null): boolean {
+  if (!userId) return false;
+  return false;
 }
 
 /** @deprecated Use resolveStartRoute */
