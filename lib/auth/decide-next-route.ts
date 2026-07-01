@@ -1,16 +1,7 @@
 import type { AuthStatus } from "@/lib/auth/auth-resolution";
 import { completeBootAfterAuth } from "@/lib/auth/boot-controller";
-import { isFirstOnboardingComplete } from "@/lib/onboarding/first-time";
 import {
-  hasOnboardingResetPending,
-  tryApplyOnboardingReset,
-} from "@/lib/onboarding/reset";
-import {
-  INBOX_PATH,
-  isOnboardingGatedPath,
-  isOnboardingRoute,
   logPostAuthRoute,
-  ONBOARDING_PATH,
   resolveStartRoute,
 } from "@/lib/auth/resolve-start-route";
 
@@ -24,16 +15,12 @@ export {
   type ResolveStartRouteInput,
 } from "@/lib/auth/resolve-start-route";
 
-export function shouldRequireOnboarding(userId?: string | null): boolean {
-  if (typeof window === "undefined") return false;
-  if (hasOnboardingResetPending()) return true;
-  return !isFirstOnboardingComplete(userId);
+export function shouldRequireOnboarding(_userId?: string | null): boolean {
+  return false;
 }
 
-export function syncOnboardingCompletionState(userId?: string | null): boolean {
-  if (typeof window === "undefined") return false;
-  tryApplyOnboardingReset();
-  return isFirstOnboardingComplete(userId);
+export function syncOnboardingCompletionState(_userId?: string | null): boolean {
+  return true;
 }
 
 /** @deprecated Use resolveStartRoute */
@@ -56,7 +43,7 @@ export function navigateAfterAuthSuccess(
     requestedNext: requestedNext ?? null,
     message: "Use completeBootAfterAuth instead",
   });
-  void completeBootAfterAuth(requestedNext);
+  completeBootAfterAuth(requestedNext);
 }
 
 /**
@@ -65,44 +52,13 @@ export function navigateAfterAuthSuccess(
 export function resolveAppRouteGuard(
   pathname: string,
   authStatus: AuthStatus,
-  userId?: string | null,
+  _userId?: string | null,
 ): string | null {
-  if (authStatus === "loading") return null;
-
-  if (authStatus === "unauthenticated") {
-    logPostAuthRoute("app_route_guard_allow", { pathname, reason: "unauthenticated" });
-    return null;
-  }
-
-  const startRoute = resolveStartRoute({ userId });
-
-  logPostAuthRoute("app_route_guard", {
+  logPostAuthRoute("app_route_guard_allow", {
     pathname,
     authStatus,
-    userId: userId ?? null,
-    startRoute,
-    onboardingComplete: isFirstOnboardingComplete(userId),
+    reason: "emergency_no_client_redirects",
   });
-
-  if (isOnboardingGatedPath(pathname) && startRoute === ONBOARDING_PATH) {
-    logPostAuthRoute("app_route_guard_redirect", {
-      pathname,
-      finalRoute: ONBOARDING_PATH,
-      reason: "onboarding_required",
-    });
-    return ONBOARDING_PATH;
-  }
-
-  if (isOnboardingRoute(pathname) && startRoute !== ONBOARDING_PATH) {
-    logPostAuthRoute("app_route_guard_redirect", {
-      pathname,
-      finalRoute: startRoute,
-      reason: "onboarding_already_complete",
-    });
-    return startRoute;
-  }
-
-  logPostAuthRoute("app_route_guard_allow", { pathname, reason: "route_ok" });
   return null;
 }
 
@@ -122,7 +78,7 @@ export function logPostLoginRouteDecision(input: {
     userId: input.userId ?? null,
     requestedNext: input.requestedNext ?? null,
     destination: input.destination,
-    onboardingComplete: isFirstOnboardingComplete(input.userId),
-    requireOnboarding: shouldRequireOnboarding(input.userId),
+    onboardingDisabled: true,
+    requireOnboarding: false,
   });
 }

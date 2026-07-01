@@ -4,11 +4,12 @@ import {
   listSupabaseAuthCookieNames,
   readRequestCookieEntries,
 } from "@/lib/auth/request-cookies";
+import { POST_LOGIN_DESTINATION } from "@/lib/auth/post-login-destination";
 import { createRouteHandlerSupabase } from "@/lib/supabase/route-handler";
 
 /**
- * Server-side OAuth code exchange — sets Supabase auth cookies on the response
- * before the app shell loads, so middleware can read the session on the next hop.
+ * OAuth callback — exchange code, verify session, redirect ONCE to inbox.
+ * No client routing logic.
  */
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
@@ -28,8 +29,6 @@ export async function GET(request: NextRequest) {
 
   const attach = url.searchParams.get("attach");
   const isAttachFlow = attach === "true" || attach === "1";
-  const nextParam = url.searchParams.get("next");
-  const next = nextParam?.startsWith("/") ? nextParam : null;
 
   const { supabase, applyAuthCookies } = createRouteHandlerSupabase(request);
   if (!supabase) {
@@ -40,18 +39,8 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     console.error("[auth/callback/route] exchangeCodeForSession", error);
-    if (AUTH_DEBUG_ENABLED) {
-      logAuthDebug("auth-callback-route", {
-        path: url.pathname,
-        cookieUserError: error.message,
-        failureReason: "exchange_failed",
-      });
-    }
     const login = new URL("/login", url.origin);
     login.searchParams.set("error", "oauth");
-    if (isAttachFlow) {
-      return NextResponse.redirect(new URL("/login?attach_error=oauth", url.origin));
-    }
     return NextResponse.redirect(login);
   }
 
@@ -72,13 +61,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login?error=oauth", url.origin));
   }
 
-  const finishUrl = new URL("/auth/callback/client", url.origin);
-  if (next) {
-    finishUrl.searchParams.set("next", next);
-  }
-  if (isAttachFlow) {
-    finishUrl.searchParams.set("attach", "true");
-  }
+  const destination = isAttachFlow
+    ? `${POST_LOGIN_DESTINATION}?inbox_added=1`
+    : POST_LOGIN_DESTINATION;
 
   if (AUTH_DEBUG_ENABLED) {
     const entries = readRequestCookieEntries(request);
@@ -88,8 +73,9 @@ export async function GET(request: NextRequest) {
       cookieCount: entries.length,
       supabaseAuthCookieNames: listSupabaseAuthCookieNames(entries),
       failureReason: null,
+      redirectDecision: destination,
     });
   }
 
-  return applyAuthCookies(NextResponse.redirect(finishUrl));
+  return applyAuthCookies(NextResponse.redirect(new URL(destination, url.origin)));
 }

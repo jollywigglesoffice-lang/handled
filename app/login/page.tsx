@@ -167,7 +167,7 @@ function LoginPageContent() {
         }
       }
 
-      await completeBootAfterAuth(next);
+      completeBootAfterAuth();
     } catch (error) {
       console.error("auth failed", error);
       setAuthError(ui.auth.authConnectFailed);
@@ -351,15 +351,7 @@ function LoginPageContent() {
 }
 
 function LoginNextPathGate({ children }: { children: ReactNode }) {
-  const next =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("next")
-      : null;
-  return (
-    <AuthResolutionProvider mode="login" loginNextPath={next}>
-      {children}
-    </AuthResolutionProvider>
-  );
+  return <AuthResolutionProvider mode="login">{children}</AuthResolutionProvider>;
 }
 
 export default function LoginPage() {

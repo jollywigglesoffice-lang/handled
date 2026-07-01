@@ -1,12 +1,8 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef } from "react";
 import { AuthCallbackLoading } from "@/app/components/auth-callback-loading";
-import { completeBootAfterAuth } from "@/lib/auth/boot-controller";
-import { runPostAuthSideEffects } from "@/lib/auth/post-auth-side-effects";
-import { waitForAuthenticatedSession } from "@/lib/auth/session-hydration";
-import { completeAttachInboxFromCallback } from "@/lib/gmail/connect-account-client";
+import { POST_LOGIN_DESTINATION } from "@/lib/auth/post-login-destination";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 function parseHashTokens(): { access_token: string; refresh_token: string } | null {
@@ -20,87 +16,30 @@ function parseHashTokens(): { access_token: string; refresh_token: string } | nu
   return { access_token, refresh_token };
 }
 
+/** Hash-only OAuth fallback — set session then ONE redirect to inbox. */
 function AuthCallbackClientContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    if (startedRef.current) return;
+    startedRef.current = true;
 
-    async function finishAuth() {
-      try {
-        const attach = searchParams.get("attach");
-        const isAttachFlow = attach === "true" || attach === "1";
-        const nextParam = searchParams.get("next");
-        const attachNext = nextParam?.startsWith("/") ? nextParam : null;
-        const next = isAttachFlow
-          ? attachNext
-          : nextParam?.startsWith("/")
-            ? nextParam
-            : null;
+    const fromHash = parseHashTokens();
+    if (!fromHash) return;
 
-        const fromHash = parseHashTokens();
-        if (fromHash) {
-          const { error: setSessionError } = await supabaseBrowser.auth.setSession({
-            access_token: fromHash.access_token,
-            refresh_token: fromHash.refresh_token,
-          });
-          if (setSessionError) {
-            console.error("[auth/callback/client] setSession from hash", setSessionError);
-            if (!cancelled) router.replace("/login?error=oauth");
-            return;
-          }
-        }
-
-        const session = await waitForAuthenticatedSession("oauth_callback");
-        if (cancelled) return;
-
-        if (!session.ok || !session.userId) {
-          router.replace("/login?error=oauth");
+    void supabaseBrowser.auth
+      .setSession({
+        access_token: fromHash.access_token,
+        refresh_token: fromHash.refresh_token,
+      })
+      .then(({ error }) => {
+        if (error) {
+          console.error("[auth/callback/client] setSession from hash", error);
           return;
         }
-
-        if (isAttachFlow) {
-          const result = await completeAttachInboxFromCallback();
-          if (cancelled) return;
-
-          if (!result.ok) {
-            window.location.replace(
-              `/login?attach_error=${encodeURIComponent(result.message ?? "attach_failed")}`,
-            );
-            return;
-          }
-
-          const dest = attachNext
-            ? attachNext.includes("inbox_added")
-              ? attachNext
-              : `${attachNext}${attachNext.includes("?") ? "&" : "?"}inbox_added=1`
-            : null;
-          await completeBootAfterAuth(dest);
-          return;
-        }
-
-        runPostAuthSideEffects(session.userId, session.email);
-        await completeBootAfterAuth(next);
-      } catch (e) {
-        console.error("[auth/callback/client] unexpected", e);
-        if (!cancelled) {
-          const attach = searchParams.get("attach");
-          const isAttachFlow = attach === "true" || attach === "1";
-          if (isAttachFlow) {
-            window.location.replace("/login?attach_error=unexpected");
-          } else {
-            router.replace("/login?error=oauth");
-          }
-        }
-      }
-    }
-
-    void finishAuth();
-    return () => {
-      cancelled = true;
-    };
-  }, [router, searchParams]);
+        window.location.replace(POST_LOGIN_DESTINATION);
+      });
+  }, []);
 
   return <AuthCallbackLoading />;
 }

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
+import { POST_LOGIN_DESTINATION } from "@/lib/auth/post-login-destination";
 
-/** Server entry — client boot uses resolveStartRoute(). */
 export default function AppEntryPage() {
-  redirect("/onboarding");
+  redirect(POST_LOGIN_DESTINATION);
 }

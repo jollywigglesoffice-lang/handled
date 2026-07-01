@@ -8,16 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePathname } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import type { AuthStatus } from "@/lib/auth/auth-resolution";
 import { logAuthTransition } from "@/lib/auth/auth-resolution";
-import {
-  commitPostAuthRouteDecision,
-  resetBootForSignOut,
-  runBoot,
-  type BootSnapshot,
-} from "@/lib/auth/boot-controller";
+import { resetBootForSignOut, runBoot, type BootSnapshot } from "@/lib/auth/boot-controller";
 import { InboxLoadingState } from "@/app/emails/inbox-loading-state";
 
 export type AuthResolutionContextValue = {
@@ -45,42 +39,34 @@ export function useOptionalAuthResolution(): AuthResolutionContextValue | null {
 type AuthResolutionProviderProps = {
   children: ReactNode;
   mode: "app" | "login";
-  loginNextPath?: string | null;
   locale?: "en" | "it";
 };
 
+/**
+ * Resolves auth once — loading screen until ready.
+ * NO client redirects (middleware handles unauthenticated app access).
+ */
 export function AuthResolutionProvider({
   children,
   mode,
-  loginNextPath = null,
   locale = "en",
 }: AuthResolutionProviderProps) {
-  const pathname = usePathname();
   const [boot, setBoot] = useState<BootSnapshot | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
-      const snapshot = await runBoot({
-        pathname,
-        mode,
-        requestedNext: mode === "login" ? loginNextPath : null,
-      });
-      if (cancelled) return;
-
-      if (snapshot.destination && snapshot.destination !== pathname) {
-        commitPostAuthRouteDecision(snapshot);
-        return;
+      const snapshot = await runBoot({ mode });
+      if (!cancelled) {
+        setBoot(snapshot);
       }
-
-      setBoot(snapshot);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [pathname, mode, loginNextPath]);
+  }, [mode]);
 
   useEffect(() => {
     const {
@@ -89,7 +75,6 @@ export function AuthResolutionProvider({
       if (event === "SIGNED_OUT") {
         logAuthTransition("auth_state_change", { event, status: "unauthenticated" });
         resetBootForSignOut();
-        window.location.replace("/login");
       }
     });
 
@@ -107,9 +92,7 @@ export function AuthResolutionProvider({
     };
   }, [boot]);
 
-  const bootPending = !boot || !boot.ready || boot.authStatus === "loading";
-
-  if (bootPending) {
+  if (!boot?.ready) {
     return (
       <InboxLoadingState
         locale={locale}
